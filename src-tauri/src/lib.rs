@@ -33,6 +33,7 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::open_folder,
+            commands::open_shortcut,
             commands::get_system_info,
             commands::test_network_latency
         ])

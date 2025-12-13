@@ -5,11 +5,13 @@
 mod data_dir;
 mod network;
 mod settings;
+mod shortcuts;
 mod system_info;
 mod utils;
 
 pub use data_dir::*;
 pub use network::*;
 pub use settings::*;
+pub use shortcuts::*;
 pub use system_info::*;
 pub use utils::*;
