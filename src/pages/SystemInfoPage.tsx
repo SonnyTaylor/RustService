@@ -21,7 +21,10 @@ import {
   Gpu,
   Battery,
   Thermometer,
-  Zap
+  Zap,
+  Network,
+  Users,
+  Activity
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -415,7 +418,169 @@ export function SystemInfoPage() {
             </CardContent>
           </Card>
         ))}
+
+        {/* Temperature Sensors Card (if any) */}
+        {systemInfo.components.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Thermometer className="h-5 w-5 text-red-500" />
+                Temperature Sensors
+              </CardTitle>
+              <CardDescription>Hardware component temperatures</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {systemInfo.components.map((component, index) => (
+                <div key={`temp-${index}`} className="flex justify-between items-center py-1.5">
+                  <span className="text-muted-foreground text-sm truncate max-w-[60%]">
+                    {component.label}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {component.temperature !== null && (
+                      <Badge 
+                        variant={
+                          component.criticalTemperature !== null && 
+                          component.temperature >= component.criticalTemperature 
+                            ? 'destructive' 
+                            : component.temperature > 70 
+                              ? 'default' 
+                              : 'secondary'
+                        }
+                      >
+                        {component.temperature.toFixed(0)}°C
+                      </Badge>
+                    )}
+                    {component.criticalTemperature !== null && (
+                      <span className="text-xs text-muted-foreground">
+                        (max: {component.criticalTemperature.toFixed(0)}°C)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Load Average Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Activity className="h-5 w-5 text-cyan-500" />
+              System Load
+            </CardTitle>
+            <CardDescription>CPU load averages</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center py-1.5">
+              <span className="text-muted-foreground text-sm">1 minute</span>
+              <Badge variant={systemInfo.loadAvg.one > 1.0 ? 'destructive' : 'secondary'}>
+                {systemInfo.loadAvg.one.toFixed(2)}
+              </Badge>
+            </div>
+            <div className="flex justify-between items-center py-1.5">
+              <span className="text-muted-foreground text-sm">5 minutes</span>
+              <Badge variant={systemInfo.loadAvg.five > 1.0 ? 'destructive' : 'secondary'}>
+                {systemInfo.loadAvg.five.toFixed(2)}
+              </Badge>
+            </div>
+            <div className="flex justify-between items-center py-1.5">
+              <span className="text-muted-foreground text-sm">15 minutes</span>
+              <Badge variant={systemInfo.loadAvg.fifteen > 1.0 ? 'destructive' : 'secondary'}>
+                {systemInfo.loadAvg.fifteen.toFixed(2)}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Users Card */}
+        {systemInfo.users.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Users className="h-5 w-5 text-indigo-500" />
+                System Users
+              </CardTitle>
+              <CardDescription>{systemInfo.users.length} user(s) on this system</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {systemInfo.users.map((user, index) => (
+                <div key={`user-${index}`} className="py-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-sm">{user.name}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {user.groups.length} group(s)
+                    </Badge>
+                  </div>
+                  {user.groups.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {user.groups.slice(0, 5).map((group, gi) => (
+                        <Badge key={gi} variant="secondary" className="text-xs">
+                          {group}
+                        </Badge>
+                      ))}
+                      {user.groups.length > 5 && (
+                        <span className="text-xs text-muted-foreground">
+                          +{user.groups.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* Network Interfaces Section */}
+      {systemInfo.networks.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Network className="h-5 w-5" />
+            Network Interfaces
+          </h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {systemInfo.networks.map((net, index) => (
+              <Card key={`net-${index}`} className="overflow-hidden">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-medium truncate">
+                      {net.name}
+                    </CardTitle>
+                  </div>
+                  <CardDescription className="text-xs font-mono">
+                    {net.macAddress}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-muted-foreground block text-xs">↓ Received</span>
+                      <span className="font-medium">{formatBytes(net.totalReceived)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs">↑ Transmitted</span>
+                      <span className="font-medium">{formatBytes(net.totalTransmitted)}</span>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <div>Packets In: {net.packetsReceived.toLocaleString()}</div>
+                    <div>Packets Out: {net.packetsTransmitted.toLocaleString()}</div>
+                    {(net.errorsReceived > 0 || net.errorsTransmitted > 0) && (
+                      <>
+                        <div className="text-destructive">RX Errors: {net.errorsReceived}</div>
+                        <div className="text-destructive">TX Errors: {net.errorsTransmitted}</div>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Disks Section */}
       <div className="space-y-4">

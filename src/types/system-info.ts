@@ -148,6 +148,70 @@ export interface BatteryInfo {
 }
 
 /**
+ * Temperature sensor/component information
+ */
+export interface ComponentInfo {
+  /** Component label/name */
+  label: string;
+  /** Current temperature in Celsius */
+  temperature: number | null;
+  /** Maximum recorded temperature in Celsius */
+  maxTemperature: number | null;
+  /** Critical temperature threshold in Celsius */
+  criticalTemperature: number | null;
+  /** Component identifier */
+  id: string | null;
+}
+
+/**
+ * System load average information
+ */
+export interface LoadAvgInfo {
+  /** Average load within one minute */
+  one: number;
+  /** Average load within five minutes */
+  five: number;
+  /** Average load within fifteen minutes */
+  fifteen: number;
+}
+
+/**
+ * Network interface information
+ */
+export interface NetworkInfo {
+  /** Interface name (e.g., "eth0", "Wi-Fi") */
+  name: string;
+  /** MAC address */
+  macAddress: string;
+  /** Bytes received since last refresh */
+  received: number;
+  /** Total bytes received */
+  totalReceived: number;
+  /** Bytes transmitted since last refresh */
+  transmitted: number;
+  /** Total bytes transmitted */
+  totalTransmitted: number;
+  /** Packets received since last refresh */
+  packetsReceived: number;
+  /** Packets transmitted since last refresh */
+  packetsTransmitted: number;
+  /** Receive errors since last refresh */
+  errorsReceived: number;
+  /** Transmit errors since last refresh */
+  errorsTransmitted: number;
+}
+
+/**
+ * System user information
+ */
+export interface UserInfo {
+  /** Username */
+  name: string;
+  /** User groups */
+  groups: string[];
+}
+
+/**
  * Complete system information response
  */
 export interface SystemInfo {
@@ -165,6 +229,14 @@ export interface SystemInfo {
   gpu: GpuInfo | null;
   /** List of all batteries */
   batteries: BatteryInfo[];
+  /** Temperature sensors */
+  components: ComponentInfo[];
+  /** System load average */
+  loadAvg: LoadAvgInfo;
+  /** Network interfaces */
+  networks: NetworkInfo[];
+  /** System users */
+  users: UserInfo[];
   /** System uptime in seconds */
   uptimeSeconds: number;
   /** Boot time as Unix timestamp */

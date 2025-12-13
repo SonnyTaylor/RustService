@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use sysinfo::{Disks, Motherboard, System};
+use sysinfo::{Components, Disks, Motherboard, Networks, System, Users};
 
 // ============================================================================
 // Settings Types
@@ -146,6 +146,70 @@ pub struct BatteryInfo {
     pub time_to_empty_secs: Option<u64>,
 }
 
+/// Temperature sensor/component information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComponentInfo {
+    /// Component label/name
+    pub label: String,
+    /// Current temperature in Celsius
+    pub temperature: Option<f32>,
+    /// Maximum recorded temperature in Celsius
+    pub max_temperature: Option<f32>,
+    /// Critical temperature threshold in Celsius
+    pub critical_temperature: Option<f32>,
+    /// Component identifier
+    pub id: Option<String>,
+}
+
+/// System load average information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadAvgInfo {
+    /// Average load within one minute
+    pub one: f64,
+    /// Average load within five minutes
+    pub five: f64,
+    /// Average load within fifteen minutes
+    pub fifteen: f64,
+}
+
+/// Network interface information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkInfo {
+    /// Interface name (e.g., "eth0", "Wi-Fi")
+    pub name: String,
+    /// MAC address
+    pub mac_address: String,
+    /// Bytes received since last refresh
+    pub received: u64,
+    /// Total bytes received
+    pub total_received: u64,
+    /// Bytes transmitted since last refresh
+    pub transmitted: u64,
+    /// Total bytes transmitted
+    pub total_transmitted: u64,
+    /// Packets received since last refresh
+    pub packets_received: u64,
+    /// Packets transmitted since last refresh
+    pub packets_transmitted: u64,
+    /// Receive errors since last refresh
+    pub errors_received: u64,
+    /// Transmit errors since last refresh
+    pub errors_transmitted: u64,
+}
+
+/// System user information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInfo {
+    /// Username
+    pub name: String,
+    /// User groups
+    pub groups: Vec<String>,
+}
+
 /// Complete system information response
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,6 +221,14 @@ pub struct SystemInfo {
     pub motherboard: Option<MotherboardInfo>,
     pub gpu: Option<GpuInfo>,
     pub batteries: Vec<BatteryInfo>,
+    /// Temperature sensors
+    pub components: Vec<ComponentInfo>,
+    /// System load average
+    pub load_avg: LoadAvgInfo,
+    /// Network interfaces
+    pub networks: Vec<NetworkInfo>,
+    /// System users
+    pub users: Vec<UserInfo>,
     pub uptime_seconds: u64,
     pub boot_time: u64,
 }
@@ -289,6 +361,55 @@ fn get_system_info() -> Result<SystemInfo, String> {
         })
         .unwrap_or_default();
 
+    // Collect component/temperature sensor info
+    let component_list = Components::new_with_refreshed_list();
+    let components: Vec<ComponentInfo> = component_list
+        .iter()
+        .map(|c| ComponentInfo {
+            label: c.label().to_string(),
+            temperature: c.temperature(),
+            max_temperature: c.max(),
+            critical_temperature: c.critical(),
+            id: c.id().map(|s| s.to_string()),
+        })
+        .collect();
+
+    // Collect load average
+    let sys_load = System::load_average();
+    let load_avg = LoadAvgInfo {
+        one: sys_load.one,
+        five: sys_load.five,
+        fifteen: sys_load.fifteen,
+    };
+
+    // Collect network interface info
+    let network_list = Networks::new_with_refreshed_list();
+    let networks: Vec<NetworkInfo> = network_list
+        .iter()
+        .map(|(name, data)| NetworkInfo {
+            name: name.clone(),
+            mac_address: data.mac_address().to_string(),
+            received: data.received(),
+            total_received: data.total_received(),
+            transmitted: data.transmitted(),
+            total_transmitted: data.total_transmitted(),
+            packets_received: data.packets_received(),
+            packets_transmitted: data.packets_transmitted(),
+            errors_received: data.errors_on_received(),
+            errors_transmitted: data.errors_on_transmitted(),
+        })
+        .collect();
+
+    // Collect user info
+    let user_list = Users::new_with_refreshed_list();
+    let users: Vec<UserInfo> = user_list
+        .iter()
+        .map(|u| UserInfo {
+            name: u.name().to_string(),
+            groups: u.groups().iter().map(|g| g.name().to_string()).collect(),
+        })
+        .collect();
+
     Ok(SystemInfo {
         os,
         cpu,
@@ -297,6 +418,10 @@ fn get_system_info() -> Result<SystemInfo, String> {
         motherboard,
         gpu,
         batteries,
+        components,
+        load_avg,
+        networks,
+        users,
         uptime_seconds: System::uptime(),
         boot_time: System::boot_time(),
     })
