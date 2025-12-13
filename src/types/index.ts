@@ -3,3 +3,4 @@
  */
 export * from './settings';
 export * from './system-info';
+export * from './component-test';
