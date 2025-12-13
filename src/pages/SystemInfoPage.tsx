@@ -17,7 +17,11 @@ import {
   RefreshCw,
   Server,
   Clock,
-  CircuitBoard
+  CircuitBoard,
+  Gpu,
+  Battery,
+  Thermometer,
+  Zap
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -296,6 +300,121 @@ export function SystemInfoPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* GPU Card */}
+        {systemInfo.gpu && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Gpu className="h-5 w-5 text-red-500" />
+                Graphics Card
+              </CardTitle>
+              <CardDescription>GPU specifications and usage</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <InfoRow label="Model" value={systemInfo.gpu.model} />
+              <InfoRow label="Vendor" value={systemInfo.gpu.vendor} />
+              <InfoRow label="Family" value={systemInfo.gpu.family} />
+              <InfoRow 
+                label="Device ID" 
+                value={`0x${systemInfo.gpu.deviceId.toString(16).toUpperCase()}`} 
+                mono 
+              />
+              <Separator className="my-2" />
+              <UsageBar
+                label="VRAM"
+                used={systemInfo.gpu.usedVram}
+                total={systemInfo.gpu.totalVram}
+              />
+              <Separator className="my-2" />
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground text-sm flex items-center gap-1">
+                  <Zap className="h-3 w-3" /> GPU Load
+                </span>
+                <Badge variant={systemInfo.gpu.loadPct > 80 ? 'destructive' : 'secondary'}>
+                  {systemInfo.gpu.loadPct}%
+                </Badge>
+              </div>
+              {systemInfo.gpu.temperature > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground text-sm flex items-center gap-1">
+                    <Thermometer className="h-3 w-3" /> Temperature
+                  </span>
+                  <Badge variant={systemInfo.gpu.temperature / 1000 > 80 ? 'destructive' : 'secondary'}>
+                    {(systemInfo.gpu.temperature / 1000).toFixed(0)}°C
+                  </Badge>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Battery Cards */}
+        {systemInfo.batteries.map((battery, index) => (
+          <Card key={`battery-${index}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Battery className="h-5 w-5 text-yellow-500" />
+                Battery {systemInfo.batteries.length > 1 ? index + 1 : ''}
+              </CardTitle>
+              <CardDescription>
+                {battery.vendor || 'Unknown'} • {battery.technology}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Charge</span>
+                  <span className="font-medium flex items-center gap-2">
+                    <Badge 
+                      variant={battery.state === 'Charging' ? 'default' : 
+                               battery.stateOfCharge < 0.2 ? 'destructive' : 'secondary'}
+                    >
+                      {battery.state}
+                    </Badge>
+                    {(battery.stateOfCharge * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <Progress value={battery.stateOfCharge * 100} className="h-2" />
+              </div>
+              <Separator className="my-2" />
+              <InfoRow 
+                label="Capacity" 
+                value={`${battery.energyWh.toFixed(1)} / ${battery.energyFullWh.toFixed(1)} Wh`} 
+              />
+              <InfoRow 
+                label="Health" 
+                value={`${(battery.stateOfHealth * 100).toFixed(0)}%`} 
+              />
+              <InfoRow 
+                label="Power" 
+                value={`${battery.powerRateW.toFixed(1)} W`} 
+              />
+              <InfoRow 
+                label="Voltage" 
+                value={`${battery.voltage.toFixed(2)} V`} 
+              />
+              {battery.cycleCount && (
+                <InfoRow label="Cycles" value={battery.cycleCount.toString()} />
+              )}
+              {battery.temperature && (
+                <InfoRow label="Temp" value={`${battery.temperature.toFixed(1)}°C`} />
+              )}
+              {battery.timeToFullSecs && (
+                <InfoRow 
+                  label="Time to Full" 
+                  value={formatUptime(battery.timeToFullSecs)} 
+                />
+              )}
+              {battery.timeToEmptySecs && (
+                <InfoRow 
+                  label="Time Remaining" 
+                  value={formatUptime(battery.timeToEmptySecs)} 
+                />
+              )}
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Disks Section */}

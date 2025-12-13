@@ -154,6 +154,17 @@ The System Info page uses the `sysinfo` Rust crate (v0.37+) for hardware/OS data
 | `Components` | Temperature sensors |
 | `Motherboard` | Vendor, model, serial |
 
+### GPU Info (gfxinfo crate)
+Uses `gfxinfo::active_gpu()` to get graphics card info:
+- Vendor, model, family, device ID
+- VRAM total/used, load %, temperature
+
+### Battery Info (battery crate)
+Uses `battery::Manager` to enumerate batteries:
+- State of charge, energy, power rate
+- Health, cycles, temperature
+- Time to full/empty estimates
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -163,3 +174,5 @@ The System Info page uses the `sysinfo` Rust crate (v0.37+) for hardware/OS data
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
 | `sysinfo` | System hardware/OS info (Rust) |
+| `gfxinfo` | GPU information (Rust) |
+| `battery` | Battery status (Rust) |

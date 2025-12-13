@@ -92,6 +92,60 @@ pub struct MotherboardInfo {
     pub serial_number: Option<String>,
 }
 
+/// GPU/Graphics card information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    pub vendor: String,
+    pub model: String,
+    pub family: String,
+    pub device_id: u32,
+    /// Total VRAM in bytes
+    pub total_vram: u64,
+    /// Used VRAM in bytes
+    pub used_vram: u64,
+    /// GPU load percentage (0-100)
+    pub load_pct: u32,
+    /// Temperature in millicelsius (divide by 1000 for Celsius)
+    pub temperature: u32,
+}
+
+/// Battery information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatteryInfo {
+    /// State of charge (0.0 - 1.0)
+    pub state_of_charge: f32,
+    /// Current energy in watt-hours
+    pub energy_wh: f32,
+    /// Full charge energy in watt-hours
+    pub energy_full_wh: f32,
+    /// Design capacity in watt-hours
+    pub energy_full_design_wh: f32,
+    /// Power draw/charge rate in watts
+    pub power_rate_w: f32,
+    /// Voltage in volts
+    pub voltage: f32,
+    /// State of health (0.0 - 1.0)
+    pub state_of_health: f32,
+    /// Current state: "Charging", "Discharging", "Full", "Empty", "Unknown"
+    pub state: String,
+    /// Battery technology
+    pub technology: String,
+    /// Temperature in Celsius (if available)
+    pub temperature: Option<f32>,
+    /// Cycle count (if available)
+    pub cycle_count: Option<u32>,
+    /// Vendor name
+    pub vendor: Option<String>,
+    /// Model name
+    pub model: Option<String>,
+    /// Time to full in seconds (if charging)
+    pub time_to_full_secs: Option<u64>,
+    /// Time to empty in seconds (if discharging)
+    pub time_to_empty_secs: Option<u64>,
+}
+
 /// Complete system information response
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +155,8 @@ pub struct SystemInfo {
     pub memory: MemoryInfo,
     pub disks: Vec<DiskInfo>,
     pub motherboard: Option<MotherboardInfo>,
+    pub gpu: Option<GpuInfo>,
+    pub batteries: Vec<BatteryInfo>,
     pub uptime_seconds: u64,
     pub boot_time: u64,
 }
@@ -111,7 +167,7 @@ pub struct SystemInfo {
 
 /// Collects comprehensive system information
 ///
-/// Returns OS, CPU, memory, disk, and motherboard information.
+/// Returns OS, CPU, memory, disk, motherboard, GPU, and battery information.
 /// This is designed to be extensible for future additions.
 #[tauri::command]
 fn get_system_info() -> Result<SystemInfo, String> {
@@ -177,12 +233,70 @@ fn get_system_info() -> Result<SystemInfo, String> {
         serial_number: mb.serial_number(),
     });
 
+    // Collect GPU info using gfxinfo crate
+    let gpu = match gfxinfo::active_gpu() {
+        Ok(gpu_device) => {
+            use gfxinfo::GpuInfo as _;
+            let info = gpu_device.info();
+            Some(GpuInfo {
+                vendor: gpu_device.vendor().to_string(),
+                model: gpu_device.model().to_string(),
+                family: gpu_device.family().to_string(),
+                device_id: *gpu_device.device_id(),
+                total_vram: info.total_vram(),
+                used_vram: info.used_vram(),
+                load_pct: info.load_pct(),
+                temperature: info.temperature(),
+            })
+        }
+        Err(_) => None,
+    };
+
+    // Collect battery info using battery crate
+    let batteries: Vec<BatteryInfo> = battery::Manager::new()
+        .ok()
+        .and_then(|manager| manager.batteries().ok())
+        .map(|batteries_iter| {
+            batteries_iter
+                .filter_map(|b| b.ok())
+                .map(|b| {
+                    use battery::units::electric_potential::volt;
+                    use battery::units::energy::watt_hour;
+                    use battery::units::power::watt;
+                    use battery::units::ratio::percent;
+                    use battery::units::thermodynamic_temperature::degree_celsius;
+                    use battery::units::time::second;
+
+                    BatteryInfo {
+                        state_of_charge: b.state_of_charge().get::<percent>() / 100.0,
+                        energy_wh: b.energy().get::<watt_hour>(),
+                        energy_full_wh: b.energy_full().get::<watt_hour>(),
+                        energy_full_design_wh: b.energy_full_design().get::<watt_hour>(),
+                        power_rate_w: b.energy_rate().get::<watt>(),
+                        voltage: b.voltage().get::<volt>(),
+                        state_of_health: b.state_of_health().get::<percent>() / 100.0,
+                        state: format!("{}", b.state()),
+                        technology: format!("{}", b.technology()),
+                        temperature: b.temperature().map(|t| t.get::<degree_celsius>()),
+                        cycle_count: b.cycle_count(),
+                        vendor: b.vendor().map(|s| s.to_string()),
+                        model: b.model().map(|s| s.to_string()),
+                        time_to_full_secs: b.time_to_full().map(|t| t.get::<second>() as u64),
+                        time_to_empty_secs: b.time_to_empty().map(|t| t.get::<second>() as u64),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(SystemInfo {
         os,
         cpu,
         memory,
         disks,
         motherboard,
+        gpu,
+        batteries,
         uptime_seconds: System::uptime(),
         boot_time: System::boot_time(),
     })
