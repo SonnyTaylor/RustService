@@ -121,3 +121,68 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom Titlebar Styles */
+.titlebar {
+  height: 36px;
+  background: var(--card);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.titlebar-drag-region {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  cursor: default;
+}
+
+.titlebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.titlebar-button {
+  appearance: none;
+  padding: 0;
+  margin: 0;
+  border: none;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 46px;
+  height: 100%;
+  background-color: transparent;
+  color: var(--foreground);
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.titlebar-button:hover {
+  background-color: var(--accent);
+}
+
+.titlebar-button-close:hover {
+  background-color: oklch(0.577 0.245 27.325);
+  color: white;
+}
+
+/* Touch/pen input support for Windows */
+*[data-tauri-drag-region] {
+  app-region: drag;
+}

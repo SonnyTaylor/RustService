@@ -1,50 +1,104 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+/**
+ * RustService Main Application
+ * 
+ * Windows desktop toolkit for computer repair technicians.
+ * Tab-based navigation with 8 main sections.
+ */
 
+import { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import {
+  Wrench,
+  Monitor,
+  TestTube,
+  Zap,
+  AppWindow,
+  ScrollText,
+  FileText,
+  Settings,
+} from 'lucide-react';
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Titlebar } from '@/components/titlebar';
+import {
+  ServicePage,
+  SystemInfoPage,
+  ComponentTestPage,
+  ShortcutsPage,
+  ProgramsPage,
+  ScriptsPage,
+  ReportsPage,
+  SettingsPage,
+} from '@/pages';
+
+import '@/styles/globals.css';
+
+/**
+ * Tab configuration for main navigation
+ */
+const TABS = [
+  { id: 'service', label: 'Service', icon: Wrench, component: ServicePage },
+  { id: 'system-info', label: 'System Info', icon: Monitor, component: SystemInfoPage },
+  { id: 'component-test', label: 'Component Test', icon: TestTube, component: ComponentTestPage },
+  { id: 'shortcuts', label: 'Shortcuts', icon: Zap, component: ShortcutsPage },
+  { id: 'programs', label: 'Programs', icon: AppWindow, component: ProgramsPage },
+  { id: 'scripts', label: 'Scripts', icon: ScrollText, component: ScriptsPage },
+  { id: 'reports', label: 'Reports', icon: FileText, component: ReportsPage },
+  { id: 'settings', label: 'Settings', icon: Settings, component: SettingsPage },
+] as const;
+
+/**
+ * Main application component with tab-based navigation
+ */
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  // Ensure data directory exists on startup
+  useEffect(() => {
+    async function initializeDataDir() {
+      try {
+        await invoke('ensure_data_dir');
+      } catch (error) {
+        console.error('Failed to initialize data directory:', error);
+      }
+    }
+    initializeDataDir();
+  }, []);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <ThemeProvider defaultTheme="system">
+      <div className="h-screen flex flex-col bg-background overflow-hidden">
+        {/* Custom Titlebar */}
+        <Titlebar />
 
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+        {/* Main Content with Tabs */}
+        <Tabs defaultValue="service" className="flex-1 flex flex-col min-h-0">
+          {/* Tab Navigation */}
+          <TabsList className="w-full justify-start rounded-none border-b bg-muted/50 px-2 h-auto py-1 flex-shrink-0">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md"
+              >
+                <Icon className="h-4 w-4" />
+                <span className="hidden sm:inline">{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {/* Tab Content */}
+          {TABS.map(({ id, component: Component }) => (
+            <TabsContent
+              key={id}
+              value={id}
+              className="flex-1 m-0 overflow-auto"
+            >
+              <Component />
+            </TabsContent>
+          ))}
+        </Tabs>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    </ThemeProvider>
   );
 }
 

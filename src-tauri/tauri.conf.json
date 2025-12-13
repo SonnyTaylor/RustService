@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "rustservice",
-        "width": 800,
-        "height": 600
+        "title": "RustService",
+        "width": 1100,
+        "height": 700,
+        "decorations": false
       }
     ],
     "security": {

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# RustService data folder (created at runtime)
+data/
+src-tauri/data/
