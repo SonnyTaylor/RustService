@@ -1,20 +1,347 @@
 /**
  * System Info Page Component
  * 
- * System diagnostics tab - Comprehensive hardware/OS information collection
+ * Displays comprehensive hardware and OS information using shadcn components.
+ * Data is collected via the sysinfo Rust crate on the backend.
+ * 
+ * Designed to be extensible for additional system info sections.
  */
 
-import { Monitor } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { 
+  Monitor, 
+  Cpu, 
+  MemoryStick, 
+  HardDrive, 
+  RefreshCw,
+  Server,
+  Clock,
+  CircuitBoard
+} from 'lucide-react';
 
-export function SystemInfoPage() {
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+
+import { 
+  SystemInfo, 
+  formatBytes, 
+  formatUptime, 
+  calculatePercentage 
+} from '@/types';
+
+/**
+ * Info row component for displaying label-value pairs
+ */
+function InfoRow({ label, value, mono = false }: { 
+  label: string; 
+  value: string | null | undefined;
+  mono?: boolean;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-      <Monitor className="h-16 w-16" />
-      <h2 className="text-2xl font-semibold text-foreground">System Information</h2>
-      <p className="text-center max-w-md">
-        Comprehensive hardware and OS information collection.
-        CPU, RAM, storage, network, and more.
-      </p>
+    <div className="flex justify-between items-center py-1.5">
+      <span className="text-muted-foreground text-sm">{label}</span>
+      <span className={`text-sm font-medium ${mono ? 'font-mono' : ''}`}>
+        {value || 'N/A'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Usage bar component for memory/disk usage visualization
+ */
+function UsageBar({ 
+  label, 
+  used, 
+  total,
+}: { 
+  label: string;
+  used: number;
+  total: number;
+}) {
+  const percentage = calculatePercentage(used, total);
+  const isHigh = percentage > 85;
+  
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">
+          {formatBytes(used)} / {formatBytes(total)}
+          <Badge 
+            variant={isHigh ? 'destructive' : 'secondary'} 
+            className="ml-2 text-xs"
+          >
+            {percentage}%
+          </Badge>
+        </span>
+      </div>
+      <Progress 
+        value={percentage} 
+        className={`h-2 ${isHigh ? '[&>div]:bg-destructive' : ''}`}
+      />
+    </div>
+  );
+}
+
+/**
+ * Loading skeleton for system info cards
+ */
+function LoadingSkeleton() {
+  return (
+    <div className="p-6 grid gap-6 md:grid-cols-2">
+      {[1, 2, 3, 4].map((i) => (
+        <Card key={i}>
+          <CardHeader>
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-48" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * System Info Page - Main component
+ */
+export function SystemInfoPage() {
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  /**
+   * Fetch system information from backend
+   */
+  const fetchSystemInfo = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      
+      setError(null);
+      const info = await invoke<SystemInfo>('get_system_info');
+      setSystemInfo(info);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchSystemInfo();
+  }, [fetchSystemInfo]);
+
+  // Handle refresh
+  const handleRefresh = () => fetchSystemInfo(true);
+
+  // Loading state
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive">
+        <Monitor className="h-16 w-16" />
+        <h2 className="text-xl font-semibold">Failed to load system info</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <Button onClick={() => fetchSystemInfo()}>Try Again</Button>
+      </div>
+    );
+  }
+
+  if (!systemInfo) return null;
+
+  return (
+    <div className="p-6 space-y-6 overflow-auto">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Monitor className="h-6 w-6" />
+            System Information
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            Hardware and operating system details
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Info Cards Grid */}
+      <div className="grid gap-6 md:grid-cols-2">
+        
+        {/* OS Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Server className="h-5 w-5 text-blue-500" />
+              Operating System
+            </CardTitle>
+            <CardDescription>System and kernel information</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <InfoRow label="Name" value={systemInfo.os.name} />
+            <InfoRow label="Version" value={systemInfo.os.osVersion} />
+            <InfoRow label="Build" value={systemInfo.os.longOsVersion} />
+            <InfoRow label="Kernel" value={systemInfo.os.kernelVersion} mono />
+            <InfoRow label="Hostname" value={systemInfo.os.hostname} />
+            <Separator className="my-2" />
+            <InfoRow 
+              label="Uptime" 
+              value={formatUptime(systemInfo.uptimeSeconds)} 
+            />
+          </CardContent>
+        </Card>
+
+        {/* CPU Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Cpu className="h-5 w-5 text-orange-500" />
+              Processor
+            </CardTitle>
+            <CardDescription>CPU specifications and usage</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <InfoRow label="Model" value={systemInfo.cpu.brand} />
+            <InfoRow label="Vendor" value={systemInfo.cpu.vendorId} />
+            <InfoRow 
+              label="Cores" 
+              value={systemInfo.cpu.physicalCores?.toString() || 'N/A'} 
+            />
+            <InfoRow label="Threads" value={systemInfo.cpu.logicalCpus.toString()} />
+            <InfoRow 
+              label="Frequency" 
+              value={`${systemInfo.cpu.frequencyMhz} MHz`} 
+            />
+            <Separator className="my-2" />
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground text-sm">CPU Usage</span>
+              <Badge variant={systemInfo.cpu.globalUsage > 80 ? 'destructive' : 'secondary'}>
+                {systemInfo.cpu.globalUsage.toFixed(1)}%
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Memory Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <MemoryStick className="h-5 w-5 text-green-500" />
+              Memory
+            </CardTitle>
+            <CardDescription>RAM and swap usage</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <UsageBar
+              label="RAM"
+              used={systemInfo.memory.usedMemory}
+              total={systemInfo.memory.totalMemory}
+            />
+            {systemInfo.memory.totalSwap > 0 && (
+              <UsageBar
+                label="Swap"
+                used={systemInfo.memory.usedSwap}
+                total={systemInfo.memory.totalSwap}
+              />
+            )}
+            <Separator className="my-2" />
+            <InfoRow 
+              label="Available" 
+              value={formatBytes(systemInfo.memory.availableMemory)} 
+            />
+          </CardContent>
+        </Card>
+
+        {/* Motherboard Card */}
+        {systemInfo.motherboard && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <CircuitBoard className="h-5 w-5 text-purple-500" />
+                Motherboard
+              </CardTitle>
+              <CardDescription>Board manufacturer and model</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <InfoRow label="Manufacturer" value={systemInfo.motherboard.vendor} />
+              <InfoRow label="Model" value={systemInfo.motherboard.name} />
+              <InfoRow label="Version" value={systemInfo.motherboard.version} />
+              <InfoRow label="Serial" value={systemInfo.motherboard.serialNumber} mono />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Disks Section */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <HardDrive className="h-5 w-5" />
+          Storage Devices
+        </h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {systemInfo.disks.map((disk, index) => (
+            <Card key={index} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-medium">
+                    {disk.mountPoint}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs">
+                    {disk.diskType}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs">
+                  {disk.name || 'Local Disk'} • {disk.fileSystem}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <UsageBar
+                  label="Used"
+                  used={disk.totalSpace - disk.availableSpace}
+                  total={disk.totalSpace}
+                />
+                {disk.isRemovable && (
+                  <Badge variant="secondary" className="mt-2 text-xs">
+                    Removable
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer with timestamp */}
+      <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
+        <Clock className="h-3 w-3" />
+        Last updated: {new Date().toLocaleTimeString()}
+      </div>
     </div>
   );
 }

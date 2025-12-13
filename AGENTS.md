@@ -129,6 +129,31 @@ These CSS warnings are **expected** and can be ignored:
 - `Unknown at rule @apply` - TailwindCSS directive
 - `Unknown property: 'app-region'` - Windows-specific CSS for titlebar dragging
 
+## System Info (sysinfo crate)
+
+The System Info page uses the `sysinfo` Rust crate (v0.37+) for hardware/OS data collection.
+
+### Key Patterns
+- Keep a single `System` instance and call `refresh_*()` methods
+- Use `System::new_all()` for initial load, specific refresh methods for updates
+- CPU usage requires two measurements with `MINIMUM_CPU_UPDATE_INTERVAL` between them
+- All structs use `#[serde(rename_all = "camelCase")]` for JS interop
+
+### Adding New System Info
+1. Add fields to Rust struct in `lib.rs` (e.g., `NetworkInfo`)
+2. Mirror in TypeScript type in `src/types/system-info.ts`
+3. Collect data in `get_system_info()` command
+4. Add UI card in `SystemInfoPage.tsx`
+
+### Available sysinfo Data
+| Type | Data Available |
+|------|----------------|
+| `System` | Memory, swap, CPUs, processes, uptime |
+| `Disks` | Name, mount, space, filesystem, type |
+| `Networks` | Interface name, MAC, TX/RX bytes |
+| `Components` | Temperature sensors |
+| `Motherboard` | Vendor, model, serial |
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -137,3 +162,4 @@ These CSS warnings are **expected** and can be ignored:
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
+| `sysinfo` | System hardware/OS info (Rust) |
