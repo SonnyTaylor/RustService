@@ -33,7 +33,8 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::open_folder,
-            commands::get_system_info
+            commands::get_system_info,
+            commands::test_network_latency
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

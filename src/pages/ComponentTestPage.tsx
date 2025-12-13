@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Camera,
   Mic,
@@ -27,8 +28,6 @@ import {
   Download,
   Bluetooth,
   Usb,
-  Battery,
-  HardDrive,
 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -40,7 +39,6 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 
 import type { MouseTestState, DisplayPattern } from '@/types';
 
@@ -64,7 +62,10 @@ function CameraTestTab() {
     async function getDevices() {
       try {
         // Request permission first
-        await navigator.mediaDevices.getUserMedia({ video: true });
+        const initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Stop the initial stream immediately - we just needed permission
+        initialStream.getTracks().forEach(track => track.stop());
+        
         const allDevices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
         setDevices(videoDevices);
@@ -82,6 +83,9 @@ function CameraTestTab() {
   const toggleCamera = useCallback(async () => {
     if (isActive && stream) {
       stream.getTracks().forEach(track => track.stop());
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       setStream(null);
       setIsActive(false);
       return;
@@ -95,6 +99,10 @@ function CameraTestTab() {
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        // Ensure video plays
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(console.error);
+        };
       }
       setStream(mediaStream);
       setIsActive(true);
@@ -197,19 +205,18 @@ function CameraTestTab() {
 
           {/* Video Preview */}
           <div className="relative bg-muted rounded-lg overflow-hidden aspect-video flex items-center justify-center">
-            {!isActive ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${!isActive ? 'hidden' : ''} ${isMirrored ? 'scale-x-[-1]' : ''}`}
+            />
+            {!isActive && (
               <div className="text-muted-foreground text-center">
                 <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>Click Start to preview camera</p>
               </div>
-            ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${isMirrored ? 'scale-x-[-1]' : ''}`}
-              />
             )}
           </div>
 
@@ -454,15 +461,41 @@ function AudioTestTab() {
 // KEYBOARD TEST TAB
 // ============================================================================
 
-// Standard keyboard layout
-const KEYBOARD_ROWS = [
-  ['Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'],
-  ['Backquote', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'Backspace'],
-  ['Tab', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight', 'Backslash'],
-  ['CapsLock', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'Enter'],
-  ['ShiftLeft', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash', 'ShiftRight'],
-  ['ControlLeft', 'MetaLeft', 'AltLeft', 'Space', 'AltRight', 'MetaRight', 'ContextMenu', 'ControlRight'],
-];
+// Keyboard layouts
+const KEYBOARD_LAYOUTS = {
+  full: {
+    name: 'Full (104 keys)',
+    rows: [
+      ['Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'PrintScreen', 'ScrollLock', 'Pause'],
+      ['Backquote', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'Backspace', 'Insert', 'Home', 'PageUp', 'NumLock', 'NumpadDivide', 'NumpadMultiply', 'NumpadSubtract'],
+      ['Tab', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight', 'Backslash', 'Delete', 'End', 'PageDown', 'Numpad7', 'Numpad8', 'Numpad9', 'NumpadAdd'],
+      ['CapsLock', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'Enter', 'Numpad4', 'Numpad5', 'Numpad6'],
+      ['ShiftLeft', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash', 'ShiftRight', 'ArrowUp', 'Numpad1', 'Numpad2', 'Numpad3', 'NumpadEnter'],
+      ['ControlLeft', 'MetaLeft', 'AltLeft', 'Space', 'AltRight', 'MetaRight', 'ContextMenu', 'ControlRight', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Numpad0', 'NumpadDecimal'],
+    ],
+  },
+  tkl: {
+    name: 'TKL (87 keys)',
+    rows: [
+      ['Escape', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'PrintScreen', 'ScrollLock', 'Pause'],
+      ['Backquote', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'Backspace', 'Insert', 'Home', 'PageUp'],
+      ['Tab', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight', 'Backslash', 'Delete', 'End', 'PageDown'],
+      ['CapsLock', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'Enter'],
+      ['ShiftLeft', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash', 'ShiftRight', 'ArrowUp'],
+      ['ControlLeft', 'MetaLeft', 'AltLeft', 'Space', 'AltRight', 'MetaRight', 'ContextMenu', 'ControlRight', 'ArrowLeft', 'ArrowDown', 'ArrowRight'],
+    ],
+  },
+  compact: {
+    name: 'Compact (60%)',
+    rows: [
+      ['Escape', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'Backspace'],
+      ['Tab', 'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP', 'BracketLeft', 'BracketRight', 'Backslash'],
+      ['CapsLock', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote', 'Enter'],
+      ['ShiftLeft', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash', 'ShiftRight'],
+      ['ControlLeft', 'MetaLeft', 'AltLeft', 'Space', 'AltRight', 'MetaRight', 'ContextMenu', 'ControlRight'],
+    ],
+  },
+};
 
 const KEY_LABELS: Record<string, string> = {
   Escape: 'Esc', Backspace: '⌫', Tab: 'Tab', CapsLock: 'Caps', Enter: '↵',
@@ -471,13 +504,21 @@ const KEY_LABELS: Record<string, string> = {
   Space: ' ', Backquote: '`', Minus: '-', Equal: '=',
   BracketLeft: '[', BracketRight: ']', Backslash: '\\',
   Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
-  ContextMenu: '☰',
+  ContextMenu: '☰', PrintScreen: 'PrtSc', ScrollLock: 'ScrLk', Pause: 'Pause',
+  Insert: 'Ins', Delete: 'Del', Home: 'Home', End: 'End', PageUp: 'PgUp', PageDown: 'PgDn',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  NumLock: 'Num', NumpadDivide: '/', NumpadMultiply: '*', NumpadSubtract: '-', NumpadAdd: '+',
+  NumpadEnter: '↵', NumpadDecimal: '.', Numpad0: '0', Numpad1: '1', Numpad2: '2', Numpad3: '3',
+  Numpad4: '4', Numpad5: '5', Numpad6: '6', Numpad7: '7', Numpad8: '8', Numpad9: '9',
 };
+
+type KeyboardLayoutId = keyof typeof KEYBOARD_LAYOUTS;
 
 function KeyboardTestTab() {
   const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set());
   const [testedKeys, setTestedKeys] = useState<Set<string>>(new Set());
   const [lastKey, setLastKey] = useState<{ code: string; key: string } | null>(null);
+  const [layout, setLayout] = useState<KeyboardLayoutId>('tkl');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -505,8 +546,10 @@ function KeyboardTestTab() {
     };
   }, []);
 
-  const totalKeys = KEYBOARD_ROWS.flat().length;
-  const testedCount = KEYBOARD_ROWS.flat().filter(k => testedKeys.has(k)).length;
+  const currentLayout = KEYBOARD_LAYOUTS[layout];
+  const allKeys = currentLayout.rows.flat();
+  const totalKeys = allKeys.length;
+  const testedCount = allKeys.filter(k => testedKeys.has(k)).length;
   const percentage = Math.round((testedCount / totalKeys) * 100);
 
   const reset = () => {
@@ -518,7 +561,7 @@ function KeyboardTestTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Keyboard className="h-5 w-5 text-purple-500" />
@@ -526,10 +569,21 @@ function KeyboardTestTab() {
               </CardTitle>
               <CardDescription>Press keys to test - tested keys turn green</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={reset}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset
-            </Button>
+            <div className="flex items-center gap-2">
+              <select
+                className="px-3 py-1.5 rounded-md border bg-background text-sm"
+                value={layout}
+                onChange={(e) => setLayout(e.target.value as KeyboardLayoutId)}
+              >
+                {Object.entries(KEYBOARD_LAYOUTS).map(([id, l]) => (
+                  <option key={id} value={id}>{l.name}</option>
+                ))}
+              </select>
+              <Button variant="outline" size="sm" onClick={reset}>
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -554,25 +608,25 @@ function KeyboardTestTab() {
           {/* Keyboard Layout */}
           <ScrollArea className="w-full">
             <div className="space-y-1 min-w-[700px] pb-2">
-              {KEYBOARD_ROWS.map((row, rowIndex) => (
+              {currentLayout.rows.map((row, rowIndex) => (
                 <div key={rowIndex} className="flex gap-1 justify-center">
                   {row.map((keyCode) => {
                     const isPressed = pressedKeys.has(keyCode);
                     const isTested = testedKeys.has(keyCode);
                     const label = KEY_LABELS[keyCode] || keyCode.replace('Key', '').replace('Digit', '');
                     
-                    let width = 'w-10';
-                    if (keyCode === 'Space') width = 'w-64';
-                    else if (keyCode === 'Backspace' || keyCode === 'Tab' || keyCode === 'CapsLock') width = 'w-16';
-                    else if (keyCode === 'Enter' || keyCode.includes('Shift')) width = 'w-20';
-                    else if (keyCode.includes('Control') || keyCode.includes('Alt') || keyCode.includes('Meta')) width = 'w-14';
+                    let width = 'w-9';
+                    if (keyCode === 'Space') width = 'w-48';
+                    else if (keyCode === 'Backspace' || keyCode === 'Tab' || keyCode === 'CapsLock') width = 'w-14';
+                    else if (keyCode === 'Enter' || keyCode.includes('Shift')) width = 'w-16';
+                    else if (keyCode.includes('Control') || keyCode.includes('Alt') || keyCode.includes('Meta')) width = 'w-12';
 
                     return (
                       <div
                         key={keyCode}
                         className={`
-                          ${width} h-10 rounded-md border flex items-center justify-center text-xs font-medium
-                          transition-all duration-100
+                          ${width} h-9 rounded border flex items-center justify-center text-xs font-medium
+                          transition-all duration-100 select-none
                           ${isPressed 
                             ? 'bg-primary text-primary-foreground scale-95 shadow-inner' 
                             : isTested 
@@ -764,11 +818,16 @@ function MouseTestTab() {
 // NETWORK TEST TAB
 // ============================================================================
 
+interface NetworkTestResult {
+  isOnline: boolean;
+  latencyMs: number | null;
+  error: string | null;
+}
+
 function NetworkTestTab() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [testing, setTesting] = useState(false);
-  const [latency, setLatency] = useState<number | null>(null);
-  const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
+  const [result, setResult] = useState<NetworkTestResult | null>(null);
 
   // Online status listener
   useEffect(() => {
@@ -784,39 +843,20 @@ function NetworkTestTab() {
     };
   }, []);
 
-  // Latency test
-  const testLatency = async () => {
+  // Network test using Tauri backend
+  const runTest = async () => {
     setTesting(true);
-    setLatency(null);
-    setDownloadSpeed(null);
+    setResult(null);
 
     try {
-      // Test latency with multiple pings
-      const pings: number[] = [];
-      for (let i = 0; i < 3; i++) {
-        const start = performance.now();
-        await fetch('https://www.google.com/favicon.ico', { 
-          mode: 'no-cors',
-          cache: 'no-store' 
-        });
-        pings.push(performance.now() - start);
-      }
-      const avgLatency = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
-      setLatency(avgLatency);
-
-      // Simple speed test with a small file
-      const speedStart = performance.now();
-      const response = await fetch('https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png', {
-        cache: 'no-store'
-      });
-      const blob = await response.blob();
-      const speedEnd = performance.now();
-      const duration = (speedEnd - speedStart) / 1000; // seconds
-      const sizeInBits = blob.size * 8;
-      const speedMbps = (sizeInBits / duration / 1000000).toFixed(2);
-      setDownloadSpeed(`~${speedMbps} Mbps`);
+      const testResult = await invoke<NetworkTestResult>('test_network_latency');
+      setResult(testResult);
     } catch (err) {
-      setLatency(-1);
+      setResult({
+        isOnline: false,
+        latencyMs: null,
+        error: String(err),
+      });
     } finally {
       setTesting(false);
     }
@@ -846,7 +886,7 @@ function NetworkTestTab() {
 
           {/* Test Button */}
           <Button 
-            onClick={testLatency} 
+            onClick={runTest} 
             disabled={!isOnline || testing}
             className="w-full"
           >
@@ -858,31 +898,31 @@ function NetworkTestTab() {
             ) : (
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Run Speed Test
+                Run Latency Test
               </>
             )}
           </Button>
 
           {/* Results */}
-          {latency !== null && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">
-                  {latency === -1 ? 'Error' : `${latency} ms`}
-                </div>
-                <div className="text-sm text-muted-foreground">Latency</div>
-                {latency > 0 && (
-                  <Badge className="mt-1" variant={latency < 50 ? 'default' : latency < 150 ? 'secondary' : 'destructive'}>
-                    {latency < 50 ? 'Excellent' : latency < 150 ? 'Good' : 'Poor'}
+          {result && (
+            <div className="p-4 rounded-lg bg-muted/50 text-center">
+              {result.error ? (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertTitle>Test Failed</AlertTitle>
+                  <AlertDescription>{result.error}</AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="text-3xl font-bold">
+                    {result.latencyMs} ms
+                  </div>
+                  <div className="text-sm text-muted-foreground mb-2">Average Latency</div>
+                  <Badge variant={result.latencyMs! < 50 ? 'default' : result.latencyMs! < 150 ? 'secondary' : 'destructive'}>
+                    {result.latencyMs! < 50 ? 'Excellent' : result.latencyMs! < 150 ? 'Good' : 'Poor'}
                   </Badge>
-                )}
-              </div>
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">
-                  {downloadSpeed || '—'}
-                </div>
-                <div className="text-sm text-muted-foreground">Download Speed</div>
-              </div>
+                </>
+              )}
             </div>
           )}
 
@@ -890,7 +930,7 @@ function NetworkTestTab() {
             <Wifi className="h-4 w-4" />
             <AlertTitle>Note</AlertTitle>
             <AlertDescription className="text-xs">
-              Speed test is approximate. Uses Google's favicon for latency and logo for throughput estimation.
+              Tests connectivity to Google, Cloudflare, and Microsoft servers. Average latency is calculated from successful responses.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -1089,105 +1129,15 @@ function DisplayTestTab() {
 // ============================================================================
 
 function MoreTestsTab() {
-  const [batteryInfo, setBatteryInfo] = useState<{
-    level: number;
-    charging: boolean;
-    chargingTime: number | null;
-    dischargingTime: number | null;
-  } | null>(null);
   const [bluetoothSupported, setBluetoothSupported] = useState<boolean | null>(null);
-  const [storageEstimate, setStorageEstimate] = useState<{ usage: number; quota: number } | null>(null);
 
   useEffect(() => {
-    // Battery API
-    if ('getBattery' in navigator) {
-      (navigator as any).getBattery().then((battery: any) => {
-        const updateBattery = () => {
-          setBatteryInfo({
-            level: battery.level * 100,
-            charging: battery.charging,
-            chargingTime: battery.chargingTime === Infinity ? null : battery.chargingTime,
-            dischargingTime: battery.dischargingTime === Infinity ? null : battery.dischargingTime,
-          });
-        };
-        updateBattery();
-        battery.addEventListener('levelchange', updateBattery);
-        battery.addEventListener('chargingchange', updateBattery);
-      });
-    }
-
     // Bluetooth API
     setBluetoothSupported('bluetooth' in navigator);
-
-    // Storage API
-    if ('storage' in navigator && 'estimate' in navigator.storage) {
-      navigator.storage.estimate().then((estimate) => {
-        setStorageEstimate({
-          usage: estimate.usage || 0,
-          quota: estimate.quota || 0,
-        });
-      });
-    }
   }, []);
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {/* Battery */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Battery className="h-5 w-5 text-yellow-500" />
-            Battery Status
-          </CardTitle>
-          <CardDescription>Battery level and charging state</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {batteryInfo ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Level</span>
-                <Badge variant={batteryInfo.level > 20 ? 'default' : 'destructive'}>
-                  {batteryInfo.level.toFixed(0)}%
-                </Badge>
-              </div>
-              <Progress value={batteryInfo.level} className="h-3" />
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant={batteryInfo.charging ? 'default' : 'secondary'}>
-                  {batteryInfo.charging ? 'Charging' : 'On Battery'}
-                </Badge>
-              </div>
-              {batteryInfo.chargingTime !== null && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Time to Full</span>
-                  <span>{Math.round(batteryInfo.chargingTime / 60)} min</span>
-                </div>
-              )}
-              {batteryInfo.dischargingTime !== null && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Time Remaining</span>
-                  <span>{Math.round(batteryInfo.dischargingTime / 60)} min</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-4">
-              <Battery className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Battery API not available</p>
-              <p className="text-xs">Desktop or unsupported browser</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Bluetooth */}
       <Card>
         <CardHeader className="pb-3">
@@ -1256,40 +1206,6 @@ function MoreTestsTab() {
               <Usb className="h-4 w-4 mr-2" />
               Request USB Device
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Storage */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <HardDrive className="h-5 w-5 text-emerald-500" />
-            Browser Storage
-          </CardTitle>
-          <CardDescription>Storage quota and usage</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {storageEstimate ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Used</span>
-                <span className="font-mono">{formatBytes(storageEstimate.usage)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Quota</span>
-                <span className="font-mono">{formatBytes(storageEstimate.quota)}</span>
-              </div>
-              <Progress 
-                value={(storageEstimate.usage / storageEstimate.quota) * 100} 
-                className="h-2" 
-              />
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-4">
-              <HardDrive className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Storage API not available</p>
-            </div>
           )}
         </CardContent>
       </Card>
