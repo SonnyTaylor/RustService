@@ -2,6 +2,7 @@
  * Settings Page Component
  *
  * Scalable settings interface with sidebar navigation for categories.
+ * Features a modern, spacious layout with cards that fill the available space.
  */
 
 import { useState } from 'react';
@@ -16,6 +17,9 @@ import {
   Monitor,
   ChevronRight,
   Check,
+  ExternalLink,
+  Github,
+  Heart,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -31,6 +35,7 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { useSettings } from '@/components/settings-context';
 import { useTheme } from '@/components/theme-provider';
 import type { SettingsCategory, ThemeMode, LogLevel } from '@/types/settings';
@@ -140,84 +145,143 @@ function AppearancePanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-semibold mb-1">Appearance</h3>
-        <p className="text-muted-foreground text-sm">
+        <h3 className="text-2xl font-semibold mb-1">Appearance</h3>
+        <p className="text-muted-foreground">
           Customize how the application looks
         </p>
       </div>
 
-      {/* Theme Mode */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Theme Mode</CardTitle>
-          <CardDescription>Choose between light and dark mode</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            {themeOptions.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                onClick={() => setThemeMode(value)}
-                className={`
-                  flex flex-col items-center gap-2 p-4 rounded-lg border-2
-                  transition-all duration-150
-                  ${themeMode === value
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                  }
-                `}
-              >
-                <Icon className={`h-5 w-5 ${themeMode === value ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className={`text-sm font-medium ${themeMode === value ? 'text-primary' : ''}`}>
-                  {label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Theme Mode & Color Scheme - Side by Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Theme Mode Card */}
+        <Card className="h-fit">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sun className="h-5 w-5 text-amber-500" />
+              Theme Mode
+            </CardTitle>
+            <CardDescription>Choose between light and dark mode</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              {themeOptions.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setThemeMode(value)}
+                  className={`
+                    flex flex-col items-center gap-3 p-5 rounded-xl border-2
+                    transition-all duration-200 hover:scale-[1.02]
+                    ${themeMode === value
+                      ? 'border-primary bg-primary/10 shadow-md'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                    }
+                  `}
+                >
+                  <Icon className={`h-6 w-6 ${themeMode === value ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className={`text-sm font-medium ${themeMode === value ? 'text-primary' : ''}`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Color Scheme */}
+        {/* Quick Color Preview Card */}
+        <Card className="h-fit">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Palette className="h-5 w-5 text-pink-500" />
+              Current Theme
+            </CardTitle>
+            <CardDescription>Preview of your current color scheme</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Current scheme display */}
+              {(() => {
+                const currentScheme = COLOR_SCHEMES.find(s => s.id === colorScheme);
+                return currentScheme ? (
+                  <div className="p-4 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-2">
+                        <div 
+                          className="w-8 h-8 rounded-full border-2 border-background shadow-md"
+                          style={{ backgroundColor: currentScheme.preview.primary }}
+                        />
+                        <div 
+                          className="w-8 h-8 rounded-full border-2 border-background shadow-md"
+                          style={{ backgroundColor: currentScheme.preview.accent }}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-lg">{currentScheme.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {currentScheme.description}
+                        </div>
+                      </div>
+                      <Check className="h-5 w-5 text-primary" />
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+              {/* Sample UI elements */}
+              <div className="flex flex-wrap gap-2">
+                <Badge>Primary Badge</Badge>
+                <Badge variant="secondary">Secondary</Badge>
+                <Badge variant="outline">Outline</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Color Scheme Selection - Full Width Grid */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Color Scheme</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Palette className="h-5 w-5 text-primary" />
+            Color Scheme
+          </CardTitle>
           <CardDescription>Choose a color palette for the interface</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {COLOR_SCHEMES.map((scheme) => (
               <button
                 key={scheme.id}
                 onClick={() => setColorScheme(scheme.id)}
                 className={`
-                  relative flex items-center gap-3 p-4 rounded-lg border-2 text-left
-                  transition-all duration-150
+                  relative flex flex-col gap-3 p-4 rounded-xl border-2 text-left
+                  transition-all duration-200 hover:scale-[1.02]
                   ${colorScheme === scheme.id
-                    ? 'border-primary bg-primary/5'
+                    ? 'border-primary bg-primary/5 shadow-md'
                     : 'border-border hover:border-primary/50 hover:bg-muted/50'
                   }
                 `}
               >
                 {/* Color preview dots */}
-                <div className="flex gap-1">
+                <div className="flex gap-2">
                   <div 
-                    className="w-4 h-4 rounded-full border border-border/50"
+                    className="w-5 h-5 rounded-full border border-border/50 shadow-sm"
                     style={{ backgroundColor: scheme.preview.primary }}
                   />
                   <div 
-                    className="w-4 h-4 rounded-full border border-border/50"
+                    className="w-5 h-5 rounded-full border border-border/50 shadow-sm"
                     style={{ backgroundColor: scheme.preview.accent }}
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{scheme.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    {scheme.name}
+                    {colorScheme === scheme.id && (
+                      <Check className="h-3.5 w-3.5 text-primary" />
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate mt-0.5">
                     {scheme.description}
                   </div>
                 </div>
-                {colorScheme === scheme.id && (
-                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                )}
               </button>
             ))}
           </div>
@@ -246,50 +310,83 @@ function DataPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-semibold mb-1">Data & Storage</h3>
-        <p className="text-muted-foreground text-sm">
-          Manage data folder and logging
+        <h3 className="text-2xl font-semibold mb-1">Data & Storage</h3>
+        <p className="text-muted-foreground">
+          Manage data folder and logging preferences
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Data Folder</CardTitle>
-          <CardDescription>
-            Programs, scripts, logs, and reports are stored here
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" onClick={handleOpenDataFolder}>
-            <FolderOpen className="mr-2 h-4 w-4" />
-            Open Data Folder
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Data Folder & Logging - Side by Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FolderOpen className="h-5 w-5 text-green-500" />
+              Data Folder
+            </CardTitle>
+            <CardDescription>
+              Programs, scripts, logs, and reports are stored here
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              All your portable data is stored in a dedicated folder for easy backup and USB portability.
+            </p>
+            <Button variant="outline" onClick={handleOpenDataFolder} className="w-full sm:w-auto">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open Data Folder
+            </Button>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Logging</CardTitle>
-          <CardDescription>Configure log verbosity level</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="log-level">Log Level</Label>
-            <Select
-              value={settings.data.logLevel}
-              onValueChange={(value) => handleLogLevelChange(value as LogLevel)}
-              disabled={isLoading}
-            >
-              <SelectTrigger className="w-32" id="log-level">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="error">Error</SelectItem>
-                <SelectItem value="warn">Warn</SelectItem>
-                <SelectItem value="info">Info</SelectItem>
-                <SelectItem value="debug">Debug</SelectItem>
-              </SelectContent>
-            </Select>
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Info className="h-5 w-5 text-blue-500" />
+              Logging
+            </CardTitle>
+            <CardDescription>Configure application log verbosity</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Higher verbosity levels provide more detailed logs for troubleshooting.
+            </p>
+            <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-muted/50">
+              <Label htmlFor="log-level" className="text-sm font-medium">Log Level</Label>
+              <Select
+                value={settings.data.logLevel}
+                onValueChange={(value) => handleLogLevelChange(value as LogLevel)}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="w-36" id="log-level">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="warn">Warning</SelectItem>
+                  <SelectItem value="info">Info</SelectItem>
+                  <SelectItem value="debug">Debug</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Storage Info Card - Full Width */}
+      <Card className="bg-muted/20">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-lg bg-primary/10">
+              <FolderOpen className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium mb-1">Portable Storage</h4>
+              <p className="text-sm text-muted-foreground">
+                RustService stores all data relative to the application directory, making it fully portable.
+                You can copy the entire folder to a USB drive and use it on any Windows computer.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -301,36 +398,87 @@ function AboutPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-semibold mb-1">About</h3>
-        <p className="text-muted-foreground text-sm">
+        <h3 className="text-2xl font-semibold mb-1">About</h3>
+        <p className="text-muted-foreground">
           Information about RustService
         </p>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">RustService</CardTitle>
-          <CardDescription>Windows Desktop Toolkit</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Version</span>
-            <code className="font-mono bg-muted px-2 py-0.5 rounded">0.1.0</code>
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Platform</span>
-            <code className="font-mono bg-muted px-2 py-0.5 rounded">Windows 10/11</code>
-          </div>
-        </CardContent>
-      </Card>
+      {/* App Info & Build Info - Side by Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Settings className="h-5 w-5 text-primary" />
+              RustService
+            </CardTitle>
+            <CardDescription>Windows Desktop Toolkit</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <div className="text-xs text-muted-foreground mb-1">Version</div>
+                <code className="font-mono font-semibold">0.1.0</code>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50">
+                <div className="text-xs text-muted-foreground mb-1">Platform</div>
+                <span className="font-semibold text-sm">Windows 10/11</span>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">Tauri 2.0</Badge>
+              <Badge variant="outline">React 19</Badge>
+              <Badge variant="outline">Rust</Badge>
+              <Badge variant="outline">TypeScript</Badge>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Heart className="h-5 w-5 text-red-500" />
+              Credits
+            </CardTitle>
+            <CardDescription>Built with love</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              A portable toolkit for computer repair technicians and power users.
+              Designed for efficiency and ease of use.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Github className="h-4 w-4" />
+                GitHub
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Features Card - Full Width */}
+      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
         <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">
-            A portable toolkit for computer repair technicians and power users.
-            Built with Tauri, React, and Rust.
-          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="p-4">
+              <div className="text-3xl font-bold text-primary">100%</div>
+              <div className="text-sm text-muted-foreground">Portable</div>
+            </div>
+            <div className="p-4">
+              <div className="text-3xl font-bold text-primary">Fast</div>
+              <div className="text-sm text-muted-foreground">Rust Powered</div>
+            </div>
+            <div className="p-4">
+              <div className="text-3xl font-bold text-primary">Modern</div>
+              <div className="text-sm text-muted-foreground">UI Design</div>
+            </div>
+            <div className="p-4">
+              <div className="text-3xl font-bold text-primary">Free</div>
+              <div className="text-sm text-muted-foreground">Open Source</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -367,7 +515,7 @@ export function SettingsPage() {
 
       {/* Content Panel */}
       <ScrollArea className="flex-1">
-        <div className="p-6 max-w-xl">
+        <div className="p-8">
           {renderPanel()}
         </div>
       </ScrollArea>
