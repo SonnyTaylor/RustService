@@ -114,12 +114,79 @@ pnpm tauri build
 3. Create UI in `ServicePage.tsx`
 
 ### Add settings option
-1. Update `AppSettings` type in `src/types/settings.ts`
-2. Update Rust `AppSettings` struct in `lib.rs`
-3. Add UI control in `SettingsPage.tsx`
+1. Add field to appropriate Rust struct in `src-tauri/src/types/settings.rs`
+   - `AppearanceSettings` for visual settings
+   - `DataSettings` for storage/logging settings  
+   - `ApplicationSettings` for app behavior
+2. Add corresponding TypeScript field in `src/types/settings.ts`
+3. Add key to `SettingKey` union type in `src/types/settings.ts`
+4. Add match arm in `update_setting()` in `src-tauri/src/commands/settings.rs`
+5. Add UI control in appropriate panel in `SettingsPage.tsx`
 
 ### Update window config
 Edit `src-tauri/tauri.conf.json` - requires dev server restart
+
+## Settings System
+
+### Architecture
+- **Storage**: JSON file at `data/settings.json` (human-readable, USB-portable)
+- **Backend**: Rust types in `src-tauri/src/types/settings.rs`
+- **Frontend Access**: React Context via `useSettings()` hook
+- **Theme/Color**: `useTheme()` hook for theme mode + color scheme
+- **Categories**: Appearance, Data, Application
+
+### Using Settings from Any Component
+```tsx
+import { useSettings } from '@/components/settings-context';
+
+function MyComponent() {
+  const { settings, updateSetting, isLoading } = useSettings();
+  
+  // Read a setting
+  const theme = settings.appearance.theme;
+  
+  // Update a setting
+  await updateSetting('appearance.theme', 'dark');
+}
+```
+
+### Using Theme/Color Scheme
+```tsx
+import { useTheme } from '@/components/theme-provider';
+
+function MyComponent() {
+  const { themeMode, colorScheme, setThemeMode, setColorScheme } = useTheme();
+  
+  // Change to dark mode
+  setThemeMode('dark');
+  
+  // Change color scheme
+  setColorScheme('techbay');
+}
+```
+
+### Adding a New Color Scheme (TweakCN)
+1. Add theme CSS to `src/styles/globals.css`:
+   ```css
+   .theme-mytheme { /* light mode vars */ }
+   .theme-mytheme.dark { /* dark mode vars */ }
+   ```
+2. Add to `COLOR_SCHEMES` array in `src/types/settings.ts`:
+   ```ts
+   { id: 'mytheme', name: 'My Theme', description: '...', preview: {...} }
+   ```
+3. Add to `ColorScheme` type union in `src/types/settings.ts`
+
+### Settings File Format
+```json
+{
+  "version": "0.3.0",
+  "appearance": { "theme": "system", "colorScheme": "techbay", "accentColor": "#3b82f6" },
+  "data": { "autoBackup": false, "logLevel": "info" },
+  "application": { "startMinimized": false, "checkUpdates": true, "confirmOnExit": false }
+}
+```
+
 
 ## Known Lint Warnings
 

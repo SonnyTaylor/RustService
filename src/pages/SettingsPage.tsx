@@ -1,15 +1,245 @@
 /**
  * Settings Page Component
- * 
- * Application settings - Theme, data folder, and configuration
+ *
+ * Scalable settings interface with sidebar navigation for categories.
+ * Uses React Context for global settings access.
  */
 
-import { Settings, FolderOpen } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import {
+  Settings,
+  Palette,
+  FolderOpen,
+  Cog,
+  Info,
+  Sun,
+  Moon,
+  Monitor,
+  ChevronRight,
+  Check,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-export function SettingsPage() {
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { useSettings } from '@/components/settings-context';
+import { useTheme } from '@/components/theme-provider';
+import type { SettingsCategory, ThemeMode, LogLevel } from '@/types/settings';
+import { COLOR_SCHEMES } from '@/types/settings';
+
+// =============================================================================
+// Types
+// =============================================================================
+
+interface SidebarItem {
+  id: SettingsCategory;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  iconColor: string;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const SIDEBAR_ITEMS: SidebarItem[] = [
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    description: 'Theme and visual settings',
+    icon: Palette,
+    iconColor: 'text-pink-500',
+  },
+  {
+    id: 'data',
+    label: 'Data & Storage',
+    description: 'Logs, backups, and folders',
+    icon: FolderOpen,
+    iconColor: 'text-green-500',
+  },
+  {
+    id: 'application',
+    label: 'Application',
+    description: 'Startup and behavior',
+    icon: Cog,
+    iconColor: 'text-blue-500',
+  },
+  {
+    id: 'about',
+    label: 'About',
+    description: 'Version and info',
+    icon: Info,
+    iconColor: 'text-purple-500',
+  },
+];
+
+// =============================================================================
+// Sidebar Component
+// =============================================================================
+
+interface SettingsSidebarProps {
+  activeCategory: SettingsCategory;
+  onCategoryChange: (category: SettingsCategory) => void;
+}
+
+function SettingsSidebar({ activeCategory, onCategoryChange }: SettingsSidebarProps) {
+  return (
+    <div className="w-52 border-r bg-muted/30 flex flex-col">
+      <div className="flex items-center gap-2 p-4 border-b">
+        <Settings className="h-5 w-5 text-primary" />
+        <h2 className="font-semibold">Settings</h2>
+      </div>
+
+      <nav className="flex-1 p-2 space-y-1">
+        {SIDEBAR_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeCategory === item.id;
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => onCategoryChange(item.id)}
+              className={`
+                w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left
+                transition-colors duration-150
+                ${isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-muted'
+                }
+              `}
+            >
+              <Icon className={`h-4 w-4 ${isActive ? '' : item.iconColor}`} />
+              <span className="text-sm font-medium truncate">{item.label}</span>
+              {isActive && (
+                <ChevronRight className="h-4 w-4 ml-auto flex-shrink-0" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+// =============================================================================
+// Panel Components
+// =============================================================================
+
+function AppearancePanel() {
+  const { themeMode, colorScheme, setThemeMode, setColorScheme } = useTheme();
+
+  const themeOptions: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
+    { value: 'light', label: 'Light', icon: Sun },
+    { value: 'dark', label: 'Dark', icon: Moon },
+    { value: 'system', label: 'System', icon: Monitor },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-1">Appearance</h3>
+        <p className="text-muted-foreground text-sm">
+          Customize how the application looks and feels
+        </p>
+      </div>
+
+      {/* Theme Mode */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Theme Mode</CardTitle>
+          <CardDescription>Choose between light and dark mode</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-3">
+            {themeOptions.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setThemeMode(value)}
+                className={`
+                  flex flex-col items-center gap-2 p-4 rounded-lg border-2
+                  transition-all duration-150
+                  ${themeMode === value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                  }
+                `}
+              >
+                <Icon className={`h-5 w-5 ${themeMode === value ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className={`text-sm font-medium ${themeMode === value ? 'text-primary' : ''}`}>
+                  {label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Color Scheme */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Color Scheme</CardTitle>
+          <CardDescription>Choose a color palette for the interface</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            {COLOR_SCHEMES.map((scheme) => (
+              <button
+                key={scheme.id}
+                onClick={() => setColorScheme(scheme.id)}
+                className={`
+                  relative flex items-center gap-3 p-4 rounded-lg border-2 text-left
+                  transition-all duration-150
+                  ${colorScheme === scheme.id
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                  }
+                `}
+              >
+                {/* Color preview dots */}
+                <div className="flex gap-1">
+                  <div 
+                    className="w-4 h-4 rounded-full border border-border/50"
+                    style={{ backgroundColor: scheme.preview.primary }}
+                  />
+                  <div 
+                    className="w-4 h-4 rounded-full border border-border/50"
+                    style={{ backgroundColor: scheme.preview.accent }}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{scheme.name}</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {scheme.description}
+                  </div>
+                </div>
+                {colorScheme === scheme.id && (
+                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function DataPanel() {
+  const { settings, updateSetting, isLoading } = useSettings();
+
   const handleOpenDataFolder = async () => {
     try {
       const dataDir = await invoke<string>('get_data_dir');
@@ -19,57 +249,262 @@ export function SettingsPage() {
     }
   };
 
+  const handleAutoBackupChange = async (checked: boolean) => {
+    await updateSetting('data.autoBackup', checked);
+  };
+
+  const handleLogLevelChange = async (level: LogLevel) => {
+    await updateSetting('data.logLevel', level);
+  };
+
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <Settings className="h-8 w-8" />
-        <h2 className="text-2xl font-semibold">Settings</h2>
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-1">Data & Storage</h3>
+        <p className="text-muted-foreground text-sm">
+          Manage where your data is stored and how it's handled
+        </p>
       </div>
 
-      {/* Theme Section */}
-      <section className="mb-8">
-        <h3 className="text-lg font-medium mb-4">Appearance</h3>
-        <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-          <div>
-            <p className="font-medium">Theme</p>
-            <p className="text-sm text-muted-foreground">
-              Select your preferred color scheme
-            </p>
-          </div>
-          <ThemeToggle />
-        </div>
-      </section>
-
-      {/* Data Folder Section */}
-      <section className="mb-8">
-        <h3 className="text-lg font-medium mb-4">Data & Storage</h3>
-        <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-          <div>
-            <p className="font-medium">Data Folder</p>
-            <p className="text-sm text-muted-foreground">
-              Programs, scripts, logs, and reports are stored here
-            </p>
-          </div>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Data Folder</CardTitle>
+          <CardDescription>
+            Programs, scripts, logs, and reports are stored here
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           <Button variant="outline" onClick={handleOpenDataFolder}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            Open Folder
+            Open Data Folder
           </Button>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      {/* About Section */}
-      <section>
-        <h3 className="text-lg font-medium mb-4">About</h3>
-        <div className="p-4 rounded-lg border bg-card">
-          <p className="font-medium">RustService</p>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Logging</CardTitle>
+          <CardDescription>Configure log verbosity level</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="log-level">Log Level</Label>
+            <Select
+              value={settings.data.logLevel}
+              onValueChange={(value) => handleLogLevelChange(value as LogLevel)}
+              disabled={isLoading}
+            >
+              <SelectTrigger className="w-32" id="log-level">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="error">Error</SelectItem>
+                <SelectItem value="warn">Warn</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="debug">Debug</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Backup</CardTitle>
+          <CardDescription>Automatic settings backup</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="auto-backup">Auto Backup</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Automatically backup settings on changes
+              </p>
+            </div>
+            <Switch
+              id="auto-backup"
+              checked={settings.data.autoBackup}
+              onCheckedChange={handleAutoBackupChange}
+              disabled={isLoading}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ApplicationPanel() {
+  const { settings, updateSetting, isLoading } = useSettings();
+
+  const handleStartMinimizedChange = async (checked: boolean) => {
+    await updateSetting('application.startMinimized', checked);
+  };
+
+  const handleCheckUpdatesChange = async (checked: boolean) => {
+    await updateSetting('application.checkUpdates', checked);
+  };
+
+  const handleConfirmOnExitChange = async (checked: boolean) => {
+    await updateSetting('application.confirmOnExit', checked);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-1">Application</h3>
+        <p className="text-muted-foreground text-sm">
+          Configure application startup and behavior
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Startup</CardTitle>
+          <CardDescription>How the application starts</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="start-minimized">Start Minimized</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Start the application minimized to tray
+              </p>
+            </div>
+            <Switch
+              id="start-minimized"
+              checked={settings.application.startMinimized}
+              onCheckedChange={handleStartMinimizedChange}
+              disabled={isLoading}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="check-updates">Check for Updates</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Automatically check for updates on startup
+              </p>
+            </div>
+            <Switch
+              id="check-updates"
+              checked={settings.application.checkUpdates}
+              onCheckedChange={handleCheckUpdatesChange}
+              disabled={isLoading}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">Behavior</CardTitle>
+          <CardDescription>General application behavior</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="confirm-exit">Confirm on Exit</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ask for confirmation before closing
+              </p>
+            </div>
+            <Switch
+              id="confirm-exit"
+              checked={settings.application.confirmOnExit}
+              onCheckedChange={handleConfirmOnExitChange}
+              disabled={isLoading}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function AboutPanel() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-1">About</h3>
+        <p className="text-muted-foreground text-sm">
+          Information about RustService
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base">RustService</CardTitle>
+          <CardDescription>Windows Desktop Toolkit</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Version</span>
+            <code className="font-mono bg-muted px-2 py-0.5 rounded">0.1.0</code>
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Settings Schema</span>
+            <code className="font-mono bg-muted px-2 py-0.5 rounded">0.3.0</code>
+          </div>
+          <Separator />
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Platform</span>
+            <code className="font-mono bg-muted px-2 py-0.5 rounded">Windows 10/11</code>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
           <p className="text-sm text-muted-foreground">
-            Version 0.1.0 - Windows Desktop Toolkit
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">
             A portable toolkit for computer repair technicians and power users.
+            Built with Tauri, React, and Rust.
           </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Component
+// =============================================================================
+
+export function SettingsPage() {
+  const [activeCategory, setActiveCategory] = useState<SettingsCategory>('appearance');
+
+  const renderPanel = () => {
+    switch (activeCategory) {
+      case 'appearance':
+        return <AppearancePanel />;
+      case 'data':
+        return <DataPanel />;
+      case 'application':
+        return <ApplicationPanel />;
+      case 'about':
+        return <AboutPanel />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="h-full flex">
+      {/* Sidebar */}
+      <SettingsSidebar
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+      />
+
+      {/* Content Panel */}
+      <ScrollArea className="flex-1">
+        <div className="p-6 max-w-xl">
+          {renderPanel()}
         </div>
-      </section>
+      </ScrollArea>
     </div>
   );
 }

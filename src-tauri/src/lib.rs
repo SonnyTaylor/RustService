@@ -32,6 +32,7 @@ pub fn run() {
             commands::ensure_data_dir,
             commands::get_settings,
             commands::save_settings,
+            commands::update_setting,
             commands::open_folder,
             commands::open_shortcut,
             commands::get_system_info,

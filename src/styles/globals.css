@@ -3,6 +3,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* =============================================================================
+   Default Theme (System)
+   ============================================================================= */
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -74,6 +78,86 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+/* =============================================================================
+   Techbay Theme (Coral/Red accent)
+   Apply with: .theme-techbay on <html>
+   ============================================================================= */
+
+.theme-techbay {
+  --background: #ffffff;
+  --foreground: #141414;
+  --card: #ffffff;
+  --card-foreground: #141414;
+  --popover: #ffffff;
+  --popover-foreground: #141414;
+  --primary: #ce5d5b;
+  --primary-foreground: #ffffff;
+  --secondary: #f8f7f7;
+  --secondary-foreground: #141414;
+  --muted: #f8f7f7;
+  --muted-foreground: #666666;
+  --accent: #d77c7a;
+  --accent-foreground: #ffffff;
+  --destructive: #c94442;
+  --destructive-foreground: #ffffff;
+  --border: #e5e0e0;
+  --input: #e5e0e0;
+  --ring: #ce5d5b;
+  --chart-1: #ce5d5b;
+  --chart-2: #d77c7a;
+  --chart-3: #e09b99;
+  --chart-4: #333333;
+  --chart-5: #141414;
+  --sidebar: #333333;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ce5d5b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #444444;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #444444;
+  --sidebar-ring: #ce5d5b;
+  --radius: 0.625rem;
+}
+
+.theme-techbay.dark {
+  --background: #141414;
+  --foreground: #f8f7f7;
+  --card: #1e1e1e;
+  --card-foreground: #f8f7f7;
+  --popover: #252525;
+  --popover-foreground: #f8f7f7;
+  --primary: #ce5d5b;
+  --primary-foreground: #ffffff;
+  --secondary: #2a2a2a;
+  --secondary-foreground: #f8f7f7;
+  --muted: #2a2a2a;
+  --muted-foreground: #a0a0a0;
+  --accent: #d77c7a;
+  --accent-foreground: #ffffff;
+  --destructive: #e06462;
+  --destructive-foreground: #ffffff;
+  --border: #333333;
+  --input: #3a3a3a;
+  --ring: #ce5d5b;
+  --chart-1: #ce5d5b;
+  --chart-2: #d77c7a;
+  --chart-3: #e09b99;
+  --chart-4: #f5efef;
+  --chart-5: #ffffff;
+  --sidebar: #1e1e1e;
+  --sidebar-foreground: #f8f7f7;
+  --sidebar-primary: #ce5d5b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #333333;
+  --sidebar-accent-foreground: #f8f7f7;
+  --sidebar-border: #333333;
+  --sidebar-ring: #ce5d5b;
+}
+
+/* =============================================================================
+   Tailwind Theme Bindings
+   ============================================================================= */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -122,7 +206,10 @@
   }
 }
 
-/* Custom Titlebar Styles */
+/* =============================================================================
+   Custom Titlebar Styles
+   ============================================================================= */
+
 .titlebar {
   height: 36px;
   background: var(--card);
@@ -178,7 +265,7 @@
 }
 
 .titlebar-button-close:hover {
-  background-color: oklch(0.577 0.245 27.325);
+  background-color: #c94442;
   color: white;
 }
 

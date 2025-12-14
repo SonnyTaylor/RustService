@@ -20,6 +20,7 @@ import {
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeProvider } from '@/components/theme-provider';
+import { SettingsProvider } from '@/components/settings-context';
 import { Titlebar } from '@/components/titlebar';
 import {
   ServicePage,
@@ -66,7 +67,8 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="system">
-      <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <SettingsProvider>
+        <div className="h-screen flex flex-col bg-background overflow-hidden">
         {/* Custom Titlebar */}
         <Titlebar />
 
@@ -97,7 +99,8 @@ function App() {
             </TabsContent>
           ))}
         </Tabs>
-      </div>
+        </div>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }
