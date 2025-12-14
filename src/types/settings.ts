@@ -86,30 +86,14 @@ export interface AppearanceSettings {
   theme: ThemeMode;
   /** Color scheme (applied as CSS class) */
   colorScheme: ColorScheme;
-  /** Legacy: Accent color for UI elements (hex format) - deprecated, use colorScheme */
-  accentColor: string;
 }
 
 /**
  * Data and storage related settings
  */
 export interface DataSettings {
-  /** Enable automatic settings backup */
-  autoBackup: boolean;
   /** Logging verbosity level */
   logLevel: LogLevel;
-}
-
-/**
- * Application behavior settings
- */
-export interface ApplicationSettings {
-  /** Start the application minimized to tray */
-  startMinimized: boolean;
-  /** Check for updates on startup */
-  checkUpdates: boolean;
-  /** Confirm before closing the application */
-  confirmOnExit: boolean;
 }
 
 // =============================================================================
@@ -133,8 +117,6 @@ export interface AppSettings {
   appearance: AppearanceSettings;
   /** Data and storage settings */
   data: DataSettings;
-  /** Application behavior settings */
-  application: ApplicationSettings;
 }
 
 // =============================================================================
@@ -147,34 +129,22 @@ export interface AppSettings {
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: 'system',
   colorScheme: 'default',
-  accentColor: '#3b82f6',
 };
 
 /**
  * Default data settings
  */
 export const DEFAULT_DATA: DataSettings = {
-  autoBackup: false,
   logLevel: 'info',
 };
 
 /**
  * Default application settings
  */
-export const DEFAULT_APPLICATION: ApplicationSettings = {
-  startMinimized: false,
-  checkUpdates: true,
-  confirmOnExit: false,
-};
-
-/**
- * Default application settings
- */
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: '0.3.0',
+  version: '0.4.0',
   appearance: DEFAULT_APPEARANCE,
   data: DEFAULT_DATA,
-  application: DEFAULT_APPLICATION,
 };
 
 // =============================================================================
@@ -187,12 +157,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export type SettingKey = 
   | 'appearance.theme'
   | 'appearance.colorScheme'
-  | 'appearance.accentColor'
-  | 'data.autoBackup'
-  | 'data.logLevel'
-  | 'application.startMinimized'
-  | 'application.checkUpdates'
-  | 'application.confirmOnExit';
+  | 'data.logLevel';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -200,15 +165,10 @@ export type SettingKey =
 export type SettingValueType<K extends SettingKey> = 
   K extends 'appearance.theme' ? ThemeMode :
   K extends 'appearance.colorScheme' ? ColorScheme :
-  K extends 'appearance.accentColor' ? string :
-  K extends 'data.autoBackup' ? boolean :
   K extends 'data.logLevel' ? LogLevel :
-  K extends 'application.startMinimized' ? boolean :
-  K extends 'application.checkUpdates' ? boolean :
-  K extends 'application.confirmOnExit' ? boolean :
   never;
 
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'application' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'about';

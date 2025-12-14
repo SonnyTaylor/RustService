@@ -21,26 +21,42 @@ pub fn get_settings() -> Result<AppSettings, String> {
     let content = fs::read_to_string(&settings_path)
         .map_err(|e| format!("Failed to read settings: {}", e))?;
 
-    // Try to parse as new format first
+    // Try to parse, falling back to defaults for missing fields
     let settings: AppSettings = match serde_json::from_str(&content) {
         Ok(s) => s,
         Err(_) => {
             // Try to parse old format and migrate
-            // Old format had only theme and version at root level
             #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
             struct OldSettings {
                 theme: Option<String>,
-                version: Option<String>,
+                #[serde(default)]
+                appearance: Option<OldAppearance>,
+            }
+            #[derive(serde::Deserialize, Default)]
+            #[serde(rename_all = "camelCase")]
+            struct OldAppearance {
+                theme: Option<String>,
+                color_scheme: Option<String>,
             }
 
             if let Ok(old) = serde_json::from_str::<OldSettings>(&content) {
                 let mut settings = AppSettings::default();
+                // Handle old root-level theme
                 if let Some(theme) = old.theme {
                     settings.appearance.theme = theme;
                 }
+                // Handle nested appearance
+                if let Some(appearance) = old.appearance {
+                    if let Some(theme) = appearance.theme {
+                        settings.appearance.theme = theme;
+                    }
+                    if let Some(scheme) = appearance.color_scheme {
+                        settings.appearance.color_scheme = scheme;
+                    }
+                }
                 settings
             } else {
-                // Fallback to defaults if parsing fails completely
                 AppSettings::default()
             }
         }
@@ -85,12 +101,6 @@ pub fn save_settings(settings: AppSettings) -> Result<(), String> {
 /// # Arguments
 /// * `key` - Dot-separated path to the setting (e.g., "appearance.theme")
 /// * `value` - JSON value to set
-///
-/// # Example
-/// ```ignore
-/// update_setting("appearance.theme", "\"dark\"")
-/// update_setting("data.autoBackup", "true")
-/// ```
 #[tauri::command]
 pub fn update_setting(key: String, value: String) -> Result<AppSettings, String> {
     let mut settings = get_settings()?;
@@ -102,33 +112,13 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.appearance.theme =
                 serde_json::from_str(&value).map_err(|e| format!("Invalid theme value: {}", e))?;
         }
-        ["appearance", "accentColor"] => {
-            settings.appearance.accent_color = serde_json::from_str(&value)
-                .map_err(|e| format!("Invalid accentColor value: {}", e))?;
-        }
         ["appearance", "colorScheme"] => {
             settings.appearance.color_scheme = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid colorScheme value: {}", e))?;
         }
-        ["data", "autoBackup"] => {
-            settings.data.auto_backup = serde_json::from_str(&value)
-                .map_err(|e| format!("Invalid autoBackup value: {}", e))?;
-        }
         ["data", "logLevel"] => {
             settings.data.log_level = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid logLevel value: {}", e))?;
-        }
-        ["application", "startMinimized"] => {
-            settings.application.start_minimized = serde_json::from_str(&value)
-                .map_err(|e| format!("Invalid startMinimized value: {}", e))?;
-        }
-        ["application", "checkUpdates"] => {
-            settings.application.check_updates = serde_json::from_str(&value)
-                .map_err(|e| format!("Invalid checkUpdates value: {}", e))?;
-        }
-        ["application", "confirmOnExit"] => {
-            settings.application.confirm_on_exit = serde_json::from_str(&value)
-                .map_err(|e| format!("Invalid confirmOnExit value: {}", e))?;
         }
         _ => {
             return Err(format!("Unknown setting key: {}", key));

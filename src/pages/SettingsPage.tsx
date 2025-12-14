@@ -2,7 +2,6 @@
  * Settings Page Component
  *
  * Scalable settings interface with sidebar navigation for categories.
- * Uses React Context for global settings access.
  */
 
 import { useState } from 'react';
@@ -11,7 +10,6 @@ import {
   Settings,
   Palette,
   FolderOpen,
-  Cog,
   Info,
   Sun,
   Moon,
@@ -23,7 +21,6 @@ import type { LucideIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -59,28 +56,21 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   {
     id: 'appearance',
     label: 'Appearance',
-    description: 'Theme and visual settings',
+    description: 'Theme and colors',
     icon: Palette,
     iconColor: 'text-pink-500',
   },
   {
     id: 'data',
     label: 'Data & Storage',
-    description: 'Logs, backups, and folders',
+    description: 'Folders and logs',
     icon: FolderOpen,
     iconColor: 'text-green-500',
   },
   {
-    id: 'application',
-    label: 'Application',
-    description: 'Startup and behavior',
-    icon: Cog,
-    iconColor: 'text-blue-500',
-  },
-  {
     id: 'about',
     label: 'About',
-    description: 'Version and info',
+    description: 'Version info',
     icon: Info,
     iconColor: 'text-purple-500',
   },
@@ -152,7 +142,7 @@ function AppearancePanel() {
       <div>
         <h3 className="text-xl font-semibold mb-1">Appearance</h3>
         <p className="text-muted-foreground text-sm">
-          Customize how the application looks and feels
+          Customize how the application looks
         </p>
       </div>
 
@@ -249,10 +239,6 @@ function DataPanel() {
     }
   };
 
-  const handleAutoBackupChange = async (checked: boolean) => {
-    await updateSetting('data.autoBackup', checked);
-  };
-
   const handleLogLevelChange = async (level: LogLevel) => {
     await updateSetting('data.logLevel', level);
   };
@@ -262,7 +248,7 @@ function DataPanel() {
       <div>
         <h3 className="text-xl font-semibold mb-1">Data & Storage</h3>
         <p className="text-muted-foreground text-sm">
-          Manage where your data is stored and how it's handled
+          Manage data folder and logging
         </p>
       </div>
 
@@ -307,119 +293,6 @@ function DataPanel() {
           </div>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Backup</CardTitle>
-          <CardDescription>Automatic settings backup</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="auto-backup">Auto Backup</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Automatically backup settings on changes
-              </p>
-            </div>
-            <Switch
-              id="auto-backup"
-              checked={settings.data.autoBackup}
-              onCheckedChange={handleAutoBackupChange}
-              disabled={isLoading}
-            />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function ApplicationPanel() {
-  const { settings, updateSetting, isLoading } = useSettings();
-
-  const handleStartMinimizedChange = async (checked: boolean) => {
-    await updateSetting('application.startMinimized', checked);
-  };
-
-  const handleCheckUpdatesChange = async (checked: boolean) => {
-    await updateSetting('application.checkUpdates', checked);
-  };
-
-  const handleConfirmOnExitChange = async (checked: boolean) => {
-    await updateSetting('application.confirmOnExit', checked);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-xl font-semibold mb-1">Application</h3>
-        <p className="text-muted-foreground text-sm">
-          Configure application startup and behavior
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Startup</CardTitle>
-          <CardDescription>How the application starts</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="start-minimized">Start Minimized</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Start the application minimized to tray
-              </p>
-            </div>
-            <Switch
-              id="start-minimized"
-              checked={settings.application.startMinimized}
-              onCheckedChange={handleStartMinimizedChange}
-              disabled={isLoading}
-            />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="check-updates">Check for Updates</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Automatically check for updates on startup
-              </p>
-            </div>
-            <Switch
-              id="check-updates"
-              checked={settings.application.checkUpdates}
-              onCheckedChange={handleCheckUpdatesChange}
-              disabled={isLoading}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Behavior</CardTitle>
-          <CardDescription>General application behavior</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="confirm-exit">Confirm on Exit</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Ask for confirmation before closing
-              </p>
-            </div>
-            <Switch
-              id="confirm-exit"
-              checked={settings.application.confirmOnExit}
-              onCheckedChange={handleConfirmOnExitChange}
-              disabled={isLoading}
-            />
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -443,11 +316,6 @@ function AboutPanel() {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Version</span>
             <code className="font-mono bg-muted px-2 py-0.5 rounded">0.1.0</code>
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Settings Schema</span>
-            <code className="font-mono bg-muted px-2 py-0.5 rounded">0.3.0</code>
           </div>
           <Separator />
           <div className="flex items-center justify-between text-sm">
@@ -482,8 +350,6 @@ export function SettingsPage() {
         return <AppearancePanel />;
       case 'data':
         return <DataPanel />;
-      case 'application':
-        return <ApplicationPanel />;
       case 'about':
         return <AboutPanel />;
       default:
