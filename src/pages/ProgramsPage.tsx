@@ -538,7 +538,7 @@ function ProgramCard({
   }, [program.iconPath]);
 
   return (
-    <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50">
+    <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50 w-full">
       <CardContent className="p-3 py-2">
         <div className="flex items-start gap-3">
           {/* Icon */}
@@ -570,7 +570,7 @@ function ProgramCard({
               )}
             </div>
             {program.description && (
-              <p className="text-sm text-muted-foreground truncate">
+              <p className="text-sm text-muted-foreground break-words">
                 {program.description}
               </p>
             )}
@@ -797,7 +797,7 @@ export function ProgramsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -854,7 +854,7 @@ export function ProgramsPage() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-full">
         {programs.length === 0 ? (
           <EmptyState onAddClick={handleAddProgram} />
         ) : filteredPrograms.length === 0 ? (
@@ -863,7 +863,7 @@ export function ProgramsPage() {
             <p>No programs match "{searchQuery}"</p>
           </div>
         ) : (
-          <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="p-4 flex flex-col gap-2 overflow-hidden">
             {filteredPrograms.map(program => (
               <ProgramCard
                 key={program.id}

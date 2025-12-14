@@ -332,7 +332,7 @@ function ScriptCard({
   onDelete,
 }: ScriptCardProps) {
   return (
-    <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50">
+    <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50 w-full">
       <CardContent className="p-3 py-2">
         <div className="flex items-start gap-3">
           {/* Icon */}
@@ -563,7 +563,7 @@ export function ScriptsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -612,7 +612,7 @@ export function ScriptsPage() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-full">
         {scripts.length === 0 ? (
           <EmptyState onAddClick={handleAddScript} />
         ) : filteredScripts.length === 0 ? (
@@ -621,7 +621,7 @@ export function ScriptsPage() {
             <p>No scripts match "{searchQuery}"</p>
           </div>
         ) : (
-          <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="p-4 flex flex-col gap-2 overflow-hidden">
             {filteredScripts.map((script) => (
               <ScriptCard
                 key={script.id}
