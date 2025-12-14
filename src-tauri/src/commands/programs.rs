@@ -383,3 +383,100 @@ pub fn get_program_icon(icon_path: String) -> Result<Option<String>, String> {
 
     Ok(Some(format!("data:{};base64,{}", mime, base64_data)))
 }
+
+// =============================================================================
+// Legacy Import
+// =============================================================================
+
+/// Legacy program format from autoservice
+#[derive(Debug, serde::Deserialize)]
+struct LegacyProgram {
+    #[allow(dead_code)]
+    id: String,
+    name: String,
+    version: String,
+    description: String,
+    exe_path: String,
+    logo_data_url: Option<String>,
+    launch_count: u32,
+}
+
+/// Import programs from legacy autoservice JSON format
+#[tauri::command]
+pub fn import_legacy_programs(file_path: String, reset_launch_count: bool) -> Result<u32, String> {
+    use base64::Engine;
+
+    // Read JSON file
+    let json_content =
+        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // Parse legacy JSON
+    let legacy_programs: Vec<LegacyProgram> = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Failed to parse legacy JSON: {}", e))?;
+
+    let mut config = load_programs_config()?;
+    let icons_dir = get_icons_dir();
+    let data_dir = super::data_dir::get_data_dir_path();
+
+    // Ensure icons directory exists
+    if !icons_dir.exists() {
+        fs::create_dir_all(&icons_dir)
+            .map_err(|e| format!("Failed to create icons directory: {}", e))?;
+    }
+
+    let mut imported_count = 0u32;
+
+    for legacy in legacy_programs {
+        // Convert legacy exe_path (relative with backslashes) to absolute path
+        // Legacy format: "programs\\Folder\\program.exe"
+        let exe_path = data_dir.join(&legacy.exe_path.replace("\\", "/"));
+        let exe_path_str = exe_path.to_string_lossy().to_string();
+
+        // Handle logo_data_url - extract base64 and save as PNG
+        let icon_path = if let Some(data_url) = &legacy.logo_data_url {
+            if let Some(base64_start) = data_url.find(",") {
+                let base64_data = &data_url[base64_start + 1..];
+                if let Ok(icon_bytes) =
+                    base64::engine::general_purpose::STANDARD.decode(base64_data)
+                {
+                    let icon_filename = format!("{}.png", uuid::Uuid::new_v4());
+                    let icon_output_path = icons_dir.join(&icon_filename);
+
+                    if fs::write(&icon_output_path, &icon_bytes).is_ok() {
+                        Some(format!("programs/icons/{}", icon_filename))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Create new program
+        let mut program = Program::new(
+            legacy.name,
+            legacy.description,
+            legacy.version,
+            exe_path_str,
+            false, // Legacy programs are not CLI-only
+        );
+        program.icon_path = icon_path;
+        program.launch_count = if reset_launch_count {
+            0
+        } else {
+            legacy.launch_count
+        };
+
+        config.programs.push(program);
+        imported_count += 1;
+    }
+
+    save_programs_config(&config)?;
+
+    Ok(imported_count)
+}

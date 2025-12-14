@@ -46,6 +46,7 @@ pub fn run() {
             commands::extract_program_icon,
             commands::reveal_program,
             commands::get_program_icon,
+            commands::import_legacy_programs,
             commands::get_scripts,
             commands::add_script,
             commands::update_script,
