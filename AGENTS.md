@@ -232,14 +232,53 @@ Uses `battery::Manager` to enumerate batteries:
 - Health, cycles, temperature
 - Time to full/empty estimates
 
+## Programs System
+
+Portable programs launcher for managing and running tools from the data folder.
+
+### Data Storage
+- **Config**: `data/programs.json` - List of all programs with metadata
+- **Icons**: `data/programs/icons/` - Extracted/custom program icons (PNG)
+
+### Tauri Commands
+| Command | Description |
+|---------|-------------|
+| `get_programs` | Get all programs |
+| `add_program` | Add new program with auto icon extraction |
+| `update_program` | Update program details |
+| `delete_program` | Remove program |
+| `launch_program` | Launch via tauri-plugin-opener |
+| `extract_program_icon` | Extract icon from .exe (Windows API) |
+| `reveal_program` | Show in file explorer |
+
+### Icon Extraction
+Uses Windows `ExtractIconExW` API via `winapi` crate. Extracts first large icon from exe and saves as PNG using `image` crate.
+
+### Frontend Usage
+```tsx
+import { invoke } from '@tauri-apps/api/core';
+
+// Get all programs
+const programs = await invoke<Program[]>('get_programs');
+
+// Launch a program (increments launch count)
+await invoke('launch_program', { id: programId });
+```
+
 ## Dependencies to Know
 
 | Package | Purpose |
 |---------|---------|
 | `@tauri-apps/api` | Frontend-to-Rust IPC |
+| `@tauri-apps/plugin-dialog` | File picker dialogs |
+| `@tauri-apps/plugin-opener` | Open files/URLs, reveal in explorer |
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
 | `sysinfo` | System hardware/OS info (Rust) |
 | `gfxinfo` | GPU information (Rust) |
 | `battery` | Battery status (Rust) |
+| `uuid` | Unique IDs for programs (Rust) |
+| `chrono` | Timestamps (Rust) |
+| `image` | Icon conversion (Rust) |
+| `winapi` | Windows icon extraction (Rust) |

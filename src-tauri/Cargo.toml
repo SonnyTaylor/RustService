@@ -27,4 +27,11 @@ gfxinfo = "0.1"
 battery = "0.7"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+image = "0.25"
+tauri-plugin-dialog = "2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "libloaderapi"] }
 

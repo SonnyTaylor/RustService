@@ -26,6 +26,7 @@ pub use commands::*;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_data_dir,
@@ -36,7 +37,14 @@ pub fn run() {
             commands::open_folder,
             commands::open_shortcut,
             commands::get_system_info,
-            commands::test_network_latency
+            commands::test_network_latency,
+            commands::get_programs,
+            commands::add_program,
+            commands::update_program,
+            commands::delete_program,
+            commands::launch_program,
+            commands::extract_program_icon,
+            commands::reveal_program
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

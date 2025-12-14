@@ -2,8 +2,10 @@
 //!
 //! This module contains all the data structures used throughout the application.
 
+mod program;
 mod settings;
 mod system_info;
 
+pub use program::*;
 pub use settings::*;
 pub use system_info::*;
