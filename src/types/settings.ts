@@ -234,7 +234,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /**
  * Valid setting key paths for the update_setting command
  */
-export type SettingKey = 
+export type SettingKey =
   | 'appearance.theme'
   | 'appearance.colorScheme'
   | 'data.logLevel';
@@ -242,7 +242,7 @@ export type SettingKey =
 /**
  * Type-safe mapping of setting keys to their value types
  */
-export type SettingValueType<K extends SettingKey> = 
+export type SettingValueType<K extends SettingKey> =
   K extends 'appearance.theme' ? ThemeMode :
   K extends 'appearance.colorScheme' ? ColorScheme :
   K extends 'data.logLevel' ? LogLevel :
