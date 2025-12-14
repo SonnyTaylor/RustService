@@ -45,7 +45,12 @@ pub fn run() {
             commands::launch_program,
             commands::extract_program_icon,
             commands::reveal_program,
-            commands::get_program_icon
+            commands::get_program_icon,
+            commands::get_scripts,
+            commands::add_script,
+            commands::update_script,
+            commands::delete_script,
+            commands::run_script
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
