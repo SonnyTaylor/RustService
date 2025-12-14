@@ -45,12 +45,11 @@ import {
   FileText,
   Users,
   Clock,
-  Zap,
   ChevronRight,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -226,27 +225,39 @@ interface PresetsViewProps {
 }
 
 function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
-  const colorClasses: Record<string, { gradient: string; border: string; icon: string }> = {
-    blue: {
-      gradient: 'from-blue-500/20 via-blue-500/10 to-transparent',
-      border: 'border-blue-500/20 hover:border-blue-500/40',
-      icon: 'from-blue-500 to-blue-600',
-    },
-    green: {
-      gradient: 'from-green-500/20 via-green-500/10 to-transparent',
-      border: 'border-green-500/20 hover:border-green-500/40',
-      icon: 'from-green-500 to-green-600',
-    },
-    purple: {
-      gradient: 'from-purple-500/20 via-purple-500/10 to-transparent',
-      border: 'border-purple-500/20 hover:border-purple-500/40',
-      icon: 'from-purple-500 to-purple-600',
-    },
-    orange: {
-      gradient: 'from-orange-500/20 via-orange-500/10 to-transparent',
-      border: 'border-orange-500/20 hover:border-orange-500/40',
-      icon: 'from-orange-500 to-orange-600',
-    },
+  // Detailed descriptions for each preset
+  const presetDetails: Record<string, string[]> = {
+    diagnostics: [
+      'SMART Disk Report',
+      'Disk Space Analysis',
+      'Windows Satisfaction Report',
+      'Battery Health',
+      'Network Tests (Ping & Speed)',
+    ],
+    general: [
+      'Adware & Malware Removal (ADWCleaner)',
+      'Virus Scanning (KVRT)',
+      'Registry & Junk Cleanup (BleachBit)',
+      'Drive Cleanup (DriveCleanup)',
+      'Browser Notifications Disable',
+      'Startup Programs Disable',
+      'System Diagnostics (SMART, Disk Space, Battery, Disk Performance)',
+      'Network Tests',
+    ],
+    complete: [
+      'All General Service tasks',
+      'System File Check (SFC Scan)',
+      'Windows Image Repair (DISM)',
+      'Disk Check (ChkDsk)',
+      'Windows Update Check',
+      'Extended Network Testing (10 min iPerf)',
+    ],
+    custom: [
+      'Pick and choose from all services',
+      'Configure options per service',
+      'Reorder execution queue',
+      'Save as custom preset',
+    ],
   };
 
   return (
@@ -254,13 +265,13 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
       {/* Header */}
       <div className="p-6 pb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
-            <Zap className="h-6 w-6 text-primary" />
+          <div className="p-2 rounded-lg bg-muted">
+            <Wrench className="h-5 w-5 text-foreground" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold">Service Presets</h2>
-            <p className="text-muted-foreground">
-              Select a preset to get started, or build your own custom configuration.
+            <h2 className="text-xl font-semibold">Service Presets</h2>
+            <p className="text-sm text-muted-foreground">
+              Select a preset or configure custom services
             </p>
           </div>
         </div>
@@ -269,47 +280,46 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
       <Separator className="mx-6" />
 
       {/* 4-Column Preset Grid */}
-      <div className="flex-1 p-6 pt-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 h-full">
-          {presets.map((preset) => {
-            const Icon = getIcon(preset.icon);
-            const colors = colorClasses[preset.color] || colorClasses.blue;
-            const enabledCount = preset.services.filter((s) => s.enabled).length;
+      <ScrollArea className="flex-1">
+        <div className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {presets.map((preset) => {
+              const Icon = getIcon(preset.icon);
+              const details = presetDetails[preset.id] || [];
 
-            return (
-              <Card
-                key={preset.id}
-                className={`group cursor-pointer transition-all duration-300 bg-gradient-to-br ${colors.gradient} ${colors.border} border-2 hover:scale-[1.02] hover:shadow-xl backdrop-blur-sm flex flex-col`}
-                onClick={() => onSelectPreset(preset)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex flex-col items-center text-center gap-3">
-                    <div
-                      className={`p-4 rounded-2xl bg-gradient-to-br ${colors.icon} shadow-lg group-hover:scale-110 transition-transform duration-300`}
-                    >
-                      <Icon className="h-8 w-8 text-white" />
+              return (
+                <Card
+                  key={preset.id}
+                  className="group cursor-pointer transition-all duration-150 hover:bg-muted/50 border hover:border-foreground/20 flex flex-col"
+                  onClick={() => onSelectPreset(preset)}
+                >
+                  <CardHeader className="pb-2 pt-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-md bg-muted group-hover:bg-background transition-colors shrink-0">
+                        <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-sm font-medium">{preset.name}</CardTitle>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">{preset.name}</CardTitle>
-                      <CardDescription className="mt-1 text-sm">
-                        {preset.description}
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-1 flex flex-col justify-end">
-                  <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                    <span className="text-sm text-muted-foreground">
-                      {enabledCount} {enabledCount === 1 ? 'service' : 'services'}
-                    </span>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all" />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-4 flex-1">
+                    <ul className="space-y-1">
+                      {details.map((item, idx) => (
+                        <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                          <span className="text-muted-foreground/60 mt-1">•</span>
+                          <span className="leading-tight">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -561,79 +571,128 @@ interface PrintableReportProps {
 const PrintableReport = ({ report, definitions, variant }: PrintableReportProps) => {
   const definitionMap = new Map(definitions.map((d) => [d.id, d]));
 
-  const allFindings = report.results.flatMap((r) =>
-    r.findings.map((f) => ({
-      ...f,
-      serviceId: r.serviceId,
-      serviceName: definitionMap.get(r.serviceId)?.name || r.serviceId,
-    }))
-  );
-
-  const majorFindings = allFindings.filter(
-    (f) => f.severity === 'warning' || f.severity === 'error' || f.severity === 'critical'
-  );
-
   const totalDuration = report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) : '?';
   const successCount = report.results.filter((r) => r.success).length;
   const totalCount = report.results.length;
 
+  // Get hostname for customer print
+  const hostname = typeof window !== 'undefined' ? 'DESKTOP' : 'DEVICE';
+
+  // Group findings by category
+  const findingsByCategory = report.results.reduce((acc, result) => {
+    const def = definitionMap.get(result.serviceId);
+    const category = def?.category || 'other';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push({ result, definition: def });
+    return acc;
+  }, {} as Record<string, { result: typeof report.results[0]; definition: ServiceDefinition | undefined }[]>);
+
+  const categoryLabels: Record<string, string> = {
+    diagnostics: 'Diagnostics',
+    cleanup: 'Cleanup',
+    security: 'Security',
+    maintenance: 'Maintenance',
+    other: 'Other',
+  };
+
   if (variant === 'customer') {
     return (
-      <div className="bg-white text-black p-8 min-h-[800px]" style={{ fontFamily: 'Arial, sans-serif' }}>
+      <div className="bg-white text-gray-800 p-8 min-h-[800px]" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         {/* Header */}
-        <div className="text-center mb-8 pb-6 border-b-2 border-gray-200">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">System Health Report</h1>
-          <p className="text-gray-500">{new Date(report.startedAt).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}</p>
-        </div>
-
-        {/* Status Badge */}
-        <div className="flex justify-center mb-8">
-          <div className={`px-8 py-4 rounded-xl ${
-            successCount === totalCount ? 'bg-green-50 border-2 border-green-200' : 'bg-yellow-50 border-2 border-yellow-200'
-          }`}>
-            <div className="text-center">
-              <div className="text-5xl mb-2">{successCount === totalCount ? '✓' : '⚠'}</div>
-              <p className="text-xl font-bold text-gray-800">
-                {successCount === totalCount ? 'All Tests Passed' : 'Attention Required'}
-              </p>
-              <p className="text-gray-500 text-sm mt-1">{successCount} of {totalCount} services completed successfully</p>
-            </div>
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">RustService</h1>
+            <p className="text-sm text-blue-600 tracking-wide uppercase">Customer Service Summary</p>
+          </div>
+          <div className="text-right p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <p className="text-sm font-semibold text-gray-700">Service Details</p>
+            <p className="text-sm text-gray-500">Device: {hostname}</p>
           </div>
         </div>
 
-        {/* Major Findings */}
-        {majorFindings.length > 0 ? (
-          <div className="mb-8">
-            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="text-yellow-500">⚠</span> Items Requiring Attention
+        {/* Divider */}
+        <div className="h-px bg-gray-200 mb-6" />
+
+        {/* Status Row */}
+        <div className="flex items-center justify-between mb-4">
+          <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+            successCount === totalCount 
+              ? 'bg-green-50 text-green-700 border border-green-200' 
+              : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+          }`}>
+            <span>{successCount === totalCount ? '✓' : '⚠'}</span>
+            {successCount === totalCount ? 'All Tasks Successful' : 'Attention Required'}
+          </div>
+          <p className="text-sm text-gray-500">
+            {totalCount} tasks • {new Date(report.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+
+        {/* Description */}
+        <p className="text-gray-500 text-sm mb-6">
+          Here's a concise overview of the maintenance and diagnostics completed during your visit.
+        </p>
+
+        {/* Results by Category */}
+        {Object.entries(findingsByCategory).map(([category, items]) => (
+          <div key={category} className="mb-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-3">
+              {categoryLabels[category] || category}
             </h2>
             <div className="space-y-3">
-              {majorFindings.map((finding, idx) => (
-                <div key={idx} className="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg">
-                  <p className="font-semibold text-gray-800">{finding.title}</p>
-                  {finding.recommendation && (
-                    <p className="text-gray-600 text-sm mt-1">→ {finding.recommendation}</p>
-                  )}
-                </div>
-              ))}
+              {items.map(({ result, definition }) => {
+                // Get main finding for this service
+                const mainFinding = result.findings[0];
+                const Icon = definition ? getIcon(definition.icon) : Wrench;
+                
+                return (
+                  <div 
+                    key={result.serviceId} 
+                    className="p-4 border border-gray-200 rounded-lg bg-white"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-gray-100 text-gray-500">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-blue-600 uppercase tracking-wide font-medium">
+                          {definition?.name || result.serviceId}
+                        </p>
+                        {mainFinding && (
+                          <>
+                            <p className="text-xl font-bold text-gray-900">
+                              {mainFinding.title}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {mainFinding.description}
+                            </p>
+                          </>
+                        )}
+                        {result.findings.length > 1 && (
+                          <ul className="mt-2 space-y-1">
+                            {result.findings.slice(1).map((f, idx) => (
+                              <li key={idx} className="text-sm text-gray-600 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                {f.title}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {result.error && (
+                          <p className="text-sm text-red-600 mt-1">Error: {result.error}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ) : (
-          <div className="text-center py-8 mb-8 bg-green-50 rounded-xl">
-            <div className="text-green-500 text-4xl mb-2">✓</div>
-            <p className="text-gray-700 font-medium">No issues requiring immediate attention</p>
-            <p className="text-gray-500 text-sm mt-1">Your system is running smoothly</p>
-          </div>
-        )}
+        ))}
 
         {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-400 text-sm">
-          <p>Report generated by RustService • {new Date().toLocaleTimeString()}</p>
+        <div className="mt-8 pt-4 border-t border-gray-200 text-center text-gray-400 text-xs">
+          Report generated by RustService
         </div>
       </div>
     );
@@ -819,7 +878,7 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
                 const SeverityIcon = severityIcons[finding.severity];
                 const colorClass = severityColors[finding.severity];
                 return (
-                  <div key={idx} className={`p-3 rounded-lg border ${colorClass}`}>
+                <div key={idx} className={`px-3 py-2 rounded-lg border ${colorClass}`}>
                     <div className="flex items-start gap-2">
                       <SeverityIcon className="h-4 w-4 mt-0.5 shrink-0" />
                       <div className="flex-1">
@@ -945,22 +1004,11 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
       </Tabs>
 
       {/* Bottom Action Bar */}
-      <div className="p-6 pt-4 border-t bg-muted/30">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={onBack} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Presets
-          </Button>
-          <div className="flex-1" />
-          <Button variant="outline" onClick={() => handlePrintCustomer()} className="gap-2">
-            <Users className="h-4 w-4" />
-            Customer Print
-          </Button>
-          <Button onClick={() => handlePrintDetailed()} className="gap-2">
-            <Printer className="h-4 w-4" />
-            Full Report
-          </Button>
-        </div>
+      <div className="p-4 border-t bg-muted/30">
+        <Button variant="outline" onClick={onBack} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Presets
+        </Button>
       </div>
     </div>
   );
