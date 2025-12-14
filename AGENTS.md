@@ -265,6 +265,48 @@ const programs = await invoke<Program[]>('get_programs');
 await invoke('launch_program', { id: programId });
 ```
 
+## Service System
+
+Modular service automation with 4-step flow: **Presets → Queue → Runner → Results**.
+
+### Architecture
+- **Presets**: Pre-configured service bundles (Diagnostics, General, Complete, Custom)
+- **Queue**: Drag-and-drop reordering, enable/disable, configure options
+- **Runner**: Executes services sequentially with real-time log streaming
+- **Results**: 3 tabs - Findings (detailed), Printout (technical), Customer Print (simplified)
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/types/service.rs` | Rust type definitions |
+| `src-tauri/src/commands/services.rs` | Service runner + implementations |
+| `src/types/service.ts` | TypeScript type definitions |
+| `src/pages/ServicePage.tsx` | 4-view frontend component |
+| `docs/adding-services.md` | Guide for adding new services |
+
+### Adding a New Service
+1. Add `ServiceDefinition` to `get_all_service_definitions()` in `services.rs`
+2. Implement service logic in `run_service()` match arm
+3. Optionally add to presets in `get_all_presets()`
+4. Add icon to `ICON_MAP` in `ServicePage.tsx` if needed
+
+See `docs/adding-services.md` for detailed instructions.
+
+### Tauri Commands
+| Command | Description |
+|---------|-------------|
+| `get_service_definitions` | List all available services |
+| `get_service_presets` | Get preset configurations |
+| `validate_service_requirements` | Check if programs installed |
+| `get_service_run_state` | Get current run state (persists across tabs) |
+| `run_services` | Execute service queue |
+| `cancel_service_run` | Cancel running services |
+| `get_service_report` | Get saved report by ID |
+| `list_service_reports` | List all saved reports |
+
+### Data Storage
+- **Reports**: `data/reports/*.json` - Saved service run reports
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -272,6 +314,7 @@ await invoke('launch_program', { id: programId });
 | `@tauri-apps/api` | Frontend-to-Rust IPC |
 | `@tauri-apps/plugin-dialog` | File picker dialogs |
 | `@tauri-apps/plugin-opener` | Open files/URLs, reveal in explorer |
+| `@dnd-kit/core` | Drag-and-drop for service queue |
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
@@ -282,3 +325,4 @@ await invoke('launch_program', { id: programId });
 | `chrono` | Timestamps (Rust) |
 | `image` | Icon conversion (Rust) |
 | `winapi` | Windows icon extraction (Rust) |
+

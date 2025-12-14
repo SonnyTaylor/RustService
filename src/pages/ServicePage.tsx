@@ -1,21 +1,1161 @@
 /**
  * Service Page Component
- * 
+ *
  * Service automation tab - Queue and run maintenance tasks
- * like BleachBit, SFC, DISM, AdwCleaner, smartctl, etc.
+ * Multi-step flow: Presets → Queue → Runner → Results
+ * Services persist when navigating away from the tab.
  */
 
-import { Wrench } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { useReactToPrint } from 'react-to-print';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Wrench,
+  Stethoscope,
+  ShieldCheck,
+  Settings2,
+  GripVertical,
+  Play,
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Info,
+  Wifi,
+  Printer,
+  FileText,
+  Users,
+  Clock,
+  Zap,
+  ChevronRight,
+} from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+
+import type {
+  ServicePreset,
+  ServiceDefinition,
+  ServiceQueueItem,
+  ServiceReport,
+  ServiceRunState,
+  ServicePhase,
+  FindingSeverity,
+} from '@/types/service';
+import { SEVERITY_INFO } from '@/types/service';
+
+// =============================================================================
+// Icon Mapping
+// =============================================================================
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  stethoscope: Stethoscope,
+  wrench: Wrench,
+  'shield-check': ShieldCheck,
+  'settings-2': Settings2,
+  wifi: Wifi,
+};
+
+function getIcon(iconName: string) {
+  return ICON_MAP[iconName] || Wrench;
+}
+
+// =============================================================================
+// Sortable Queue Item Component
+// =============================================================================
+
+interface SortableQueueItemProps {
+  item: ServiceQueueItem;
+  definition: ServiceDefinition;
+  onToggle: (serviceId: string) => void;
+  onOptionsChange: (serviceId: string, options: Record<string, unknown>) => void;
+}
+
+function SortableQueueItem({
+  item,
+  definition,
+  onToggle,
+  onOptionsChange,
+}: SortableQueueItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.serviceId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 1,
+  };
+
+  const Icon = getIcon(definition.icon);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group flex items-center gap-4 p-4 rounded-xl border-2 bg-card/50 backdrop-blur-sm transition-all duration-200 ${
+        item.enabled
+          ? 'border-border hover:border-primary/30 hover:bg-card/80 hover:shadow-lg'
+          : 'border-muted/50 opacity-50'
+      } ${isDragging ? 'shadow-2xl ring-2 ring-primary/50' : ''}`}
+    >
+      {/* Drag Handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-muted/80 transition-colors touch-none group-hover:bg-muted/50"
+      >
+        <GripVertical className="h-5 w-5 text-muted-foreground" />
+      </button>
+
+      {/* Service Icon */}
+      <div
+        className={`p-3 rounded-xl transition-colors ${
+          item.enabled
+            ? 'bg-gradient-to-br from-primary/20 to-primary/5 text-primary'
+            : 'bg-muted text-muted-foreground'
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+
+      {/* Service Info */}
+      <div className="flex-1 min-w-0">
+        <h4 className="font-semibold truncate">{definition.name}</h4>
+        <p className="text-sm text-muted-foreground truncate">{definition.description}</p>
+        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          <span>~{definition.estimatedDurationSecs}s</span>
+        </div>
+      </div>
+
+      {/* Options (inline for simple options) */}
+      {item.enabled && definition.options.length > 0 && (
+        <div className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2">
+          {definition.options.slice(0, 2).map((opt) => (
+            <div key={opt.id} className="flex items-center gap-2">
+              <Label
+                htmlFor={`${item.serviceId}-${opt.id}`}
+                className="text-xs text-muted-foreground whitespace-nowrap"
+              >
+                {opt.label}:
+              </Label>
+              {opt.optionType === 'number' && (
+                <Input
+                  id={`${item.serviceId}-${opt.id}`}
+                  type="number"
+                  min={opt.min}
+                  max={opt.max}
+                  value={(item.options[opt.id] as number) ?? opt.defaultValue}
+                  onChange={(e) =>
+                    onOptionsChange(item.serviceId, {
+                      ...item.options,
+                      [opt.id]: parseInt(e.target.value) || opt.defaultValue,
+                    })
+                  }
+                  className="h-8 w-16 text-sm"
+                />
+              )}
+              {opt.optionType === 'string' && (
+                <Input
+                  id={`${item.serviceId}-${opt.id}`}
+                  type="text"
+                  value={(item.options[opt.id] as string) ?? opt.defaultValue}
+                  onChange={(e) =>
+                    onOptionsChange(item.serviceId, {
+                      ...item.options,
+                      [opt.id]: e.target.value,
+                    })
+                  }
+                  className="h-8 w-28 text-sm"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Enable Toggle */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{item.enabled ? 'On' : 'Off'}</span>
+        <Switch checked={item.enabled} onCheckedChange={() => onToggle(item.serviceId)} />
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Presets View
+// =============================================================================
+
+interface PresetsViewProps {
+  presets: ServicePreset[];
+  onSelectPreset: (preset: ServicePreset) => void;
+}
+
+function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
+  const colorClasses: Record<string, { gradient: string; border: string; icon: string }> = {
+    blue: {
+      gradient: 'from-blue-500/20 via-blue-500/10 to-transparent',
+      border: 'border-blue-500/20 hover:border-blue-500/40',
+      icon: 'from-blue-500 to-blue-600',
+    },
+    green: {
+      gradient: 'from-green-500/20 via-green-500/10 to-transparent',
+      border: 'border-green-500/20 hover:border-green-500/40',
+      icon: 'from-green-500 to-green-600',
+    },
+    purple: {
+      gradient: 'from-purple-500/20 via-purple-500/10 to-transparent',
+      border: 'border-purple-500/20 hover:border-purple-500/40',
+      icon: 'from-purple-500 to-purple-600',
+    },
+    orange: {
+      gradient: 'from-orange-500/20 via-orange-500/10 to-transparent',
+      border: 'border-orange-500/20 hover:border-orange-500/40',
+      icon: 'from-orange-500 to-orange-600',
+    },
+  };
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
+            <Zap className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold">Service Presets</h2>
+            <p className="text-muted-foreground">
+              Select a preset to get started, or build your own custom configuration.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Separator className="mx-6" />
+
+      {/* 4-Column Preset Grid */}
+      <div className="flex-1 p-6 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 h-full">
+          {presets.map((preset) => {
+            const Icon = getIcon(preset.icon);
+            const colors = colorClasses[preset.color] || colorClasses.blue;
+            const enabledCount = preset.services.filter((s) => s.enabled).length;
+
+            return (
+              <Card
+                key={preset.id}
+                className={`group cursor-pointer transition-all duration-300 bg-gradient-to-br ${colors.gradient} ${colors.border} border-2 hover:scale-[1.02] hover:shadow-xl backdrop-blur-sm flex flex-col`}
+                onClick={() => onSelectPreset(preset)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col items-center text-center gap-3">
+                    <div
+                      className={`p-4 rounded-2xl bg-gradient-to-br ${colors.icon} shadow-lg group-hover:scale-110 transition-transform duration-300`}
+                    >
+                      <Icon className="h-8 w-8 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">{preset.name}</CardTitle>
+                      <CardDescription className="mt-1 text-sm">
+                        {preset.description}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex flex-col justify-end">
+                  <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                    <span className="text-sm text-muted-foreground">
+                      {enabledCount} {enabledCount === 1 ? 'service' : 'services'}
+                    </span>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all" />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Queue View
+// =============================================================================
+
+interface QueueViewProps {
+  queue: ServiceQueueItem[];
+  definitions: ServiceDefinition[];
+  presetName?: string;
+  onBack: () => void;
+  onStart: () => void;
+  onQueueChange: (queue: ServiceQueueItem[]) => void;
+}
+
+function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueChange }: QueueViewProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = queue.findIndex((q) => q.serviceId === active.id);
+      const newIndex = queue.findIndex((q) => q.serviceId === over.id);
+      const newQueue = arrayMove(queue, oldIndex, newIndex).map((item, index) => ({
+        ...item,
+        order: index,
+      }));
+      onQueueChange(newQueue);
+    }
+  };
+
+  const handleToggle = (serviceId: string) => {
+    onQueueChange(
+      queue.map((item) =>
+        item.serviceId === serviceId ? { ...item, enabled: !item.enabled } : item
+      )
+    );
+  };
+
+  const handleOptionsChange = (serviceId: string, options: Record<string, unknown>) => {
+    onQueueChange(
+      queue.map((item) =>
+        item.serviceId === serviceId ? { ...item, options } : item
+      )
+    );
+  };
+
+  const enabledCount = queue.filter((q) => q.enabled).length;
+  const totalDuration = queue
+    .filter((q) => q.enabled)
+    .reduce((acc, q) => acc + (definitionMap.get(q.serviceId)?.estimatedDurationSecs || 0), 0);
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold">Service Queue</h2>
+            <p className="text-muted-foreground">
+              {presetName && <span className="text-primary font-medium">{presetName}</span>}
+              {presetName && ' • '}
+              Drag to reorder, toggle to enable/disable
+            </p>
+          </div>
+          <div className="text-right text-sm text-muted-foreground">
+            <div className="font-medium text-foreground">{enabledCount} services enabled</div>
+            <div>~{totalDuration}s estimated</div>
+          </div>
+        </div>
+      </div>
+
+      <Separator className="mx-6" />
+
+      {/* Queue List */}
+      <ScrollArea className="flex-1 px-6 py-4">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={queue.map((q) => q.serviceId)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-3 pb-4">
+              {queue.map((item) => {
+                const def = definitionMap.get(item.serviceId);
+                if (!def) return null;
+                return (
+                  <SortableQueueItem
+                    key={item.serviceId}
+                    item={item}
+                    definition={def}
+                    onToggle={handleToggle}
+                    onOptionsChange={handleOptionsChange}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </ScrollArea>
+
+      {/* Footer */}
+      <div className="p-6 pt-4 border-t bg-muted/30">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <Button
+            onClick={onStart}
+            disabled={enabledCount === 0}
+            className="flex-1 gap-2 h-12 text-base font-semibold"
+            size="lg"
+          >
+            <Play className="h-5 w-5" />
+            Start Service ({enabledCount} {enabledCount === 1 ? 'task' : 'tasks'})
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Runner View
+// =============================================================================
+
+interface RunnerViewProps {
+  report: ServiceReport | null;
+  definitions: ServiceDefinition[];
+  logs: string[];
+  onCancel: () => void;
+  onBack: () => void;
+}
+
+function RunnerView({ report, definitions, logs, onCancel, onBack }: RunnerViewProps) {
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  const enabledServices = report?.queue.filter((q) => q.enabled) || [];
+  const currentIndex = report?.currentServiceIndex ?? 0;
+  const completedCount = report?.results.length || 0;
+  const progress = enabledServices.length > 0
+    ? (completedCount / enabledServices.length) * 100
+    : 0;
+
+  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+  const currentService = enabledServices[currentIndex];
+  const currentDef = currentService ? definitionMap.get(currentService.serviceId) : null;
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold flex items-center gap-3">
+              <div className="relative">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <div className="absolute inset-0 animate-ping opacity-50">
+                  <Loader2 className="h-6 w-6 text-primary" />
+                </div>
+              </div>
+              Running Services
+            </h2>
+            <p className="text-muted-foreground mt-1">
+              {currentDef ? (
+                <>
+                  <span className="text-primary font-medium">{currentDef.name}</span>
+                  {' • '}
+                </>
+              ) : null}
+              Step {currentIndex + 1} of {enabledServices.length}
+            </p>
+          </div>
+          <Button variant="destructive" onClick={onCancel} className="gap-2">
+            <XCircle className="h-4 w-4" />
+            Cancel
+          </Button>
+        </div>
+
+        {/* Progress */}
+        <div className="mt-4 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Progress</span>
+            <span className="font-medium">{Math.round(progress)}%</span>
+          </div>
+          <Progress value={progress} className="h-3" />
+        </div>
+      </div>
+
+      <Separator className="mx-6" />
+
+      {/* Logs */}
+      <ScrollArea className="flex-1 p-6">
+        <div className="font-mono text-sm space-y-1.5 bg-muted/30 rounded-xl p-4 border">
+          {logs.length === 0 && (
+            <div className="text-muted-foreground animate-pulse">Starting services...</div>
+          )}
+          {logs.map((log, index) => (
+            <div
+              key={index}
+              className="text-muted-foreground flex gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200"
+            >
+              <span className="text-primary/60 select-none">❯</span>
+              <span>{log}</span>
+            </div>
+          ))}
+          <div ref={logsEndRef} />
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// =============================================================================
+// Printable Report Component
+// =============================================================================
+
+interface PrintableReportProps {
+  report: ServiceReport;
+  definitions: ServiceDefinition[];
+  variant: 'detailed' | 'customer';
+}
+
+const PrintableReport = ({ report, definitions, variant }: PrintableReportProps) => {
+  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+  const allFindings = report.results.flatMap((r) =>
+    r.findings.map((f) => ({
+      ...f,
+      serviceId: r.serviceId,
+      serviceName: definitionMap.get(r.serviceId)?.name || r.serviceId,
+    }))
+  );
+
+  const majorFindings = allFindings.filter(
+    (f) => f.severity === 'warning' || f.severity === 'error' || f.severity === 'critical'
+  );
+
+  const totalDuration = report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) : '?';
+  const successCount = report.results.filter((r) => r.success).length;
+  const totalCount = report.results.length;
+
+  if (variant === 'customer') {
+    return (
+      <div className="bg-white text-black p-8 min-h-[800px]" style={{ fontFamily: 'Arial, sans-serif' }}>
+        {/* Header */}
+        <div className="text-center mb-8 pb-6 border-b-2 border-gray-200">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">System Health Report</h1>
+          <p className="text-gray-500">{new Date(report.startedAt).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })}</p>
+        </div>
+
+        {/* Status Badge */}
+        <div className="flex justify-center mb-8">
+          <div className={`px-8 py-4 rounded-xl ${
+            successCount === totalCount ? 'bg-green-50 border-2 border-green-200' : 'bg-yellow-50 border-2 border-yellow-200'
+          }`}>
+            <div className="text-center">
+              <div className="text-5xl mb-2">{successCount === totalCount ? '✓' : '⚠'}</div>
+              <p className="text-xl font-bold text-gray-800">
+                {successCount === totalCount ? 'All Tests Passed' : 'Attention Required'}
+              </p>
+              <p className="text-gray-500 text-sm mt-1">{successCount} of {totalCount} services completed successfully</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Major Findings */}
+        {majorFindings.length > 0 ? (
+          <div className="mb-8">
+            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <span className="text-yellow-500">⚠</span> Items Requiring Attention
+            </h2>
+            <div className="space-y-3">
+              {majorFindings.map((finding, idx) => (
+                <div key={idx} className="p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg">
+                  <p className="font-semibold text-gray-800">{finding.title}</p>
+                  {finding.recommendation && (
+                    <p className="text-gray-600 text-sm mt-1">→ {finding.recommendation}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 mb-8 bg-green-50 rounded-xl">
+            <div className="text-green-500 text-4xl mb-2">✓</div>
+            <p className="text-gray-700 font-medium">No issues requiring immediate attention</p>
+            <p className="text-gray-500 text-sm mt-1">Your system is running smoothly</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-400 text-sm">
+          <p>Report generated by RustService • {new Date().toLocaleTimeString()}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Detailed variant
+  return (
+    <div className="bg-white text-black p-8 min-h-[800px]" style={{ fontFamily: 'Arial, sans-serif' }}>
+      {/* Header */}
+      <div className="text-center mb-6 pb-4 border-b-2 border-gray-200">
+        <h1 className="text-2xl font-bold text-gray-800">Service Report</h1>
+        <p className="text-gray-500 text-sm">{new Date(report.startedAt).toLocaleString()}</p>
+      </div>
+
+      {/* Summary Box */}
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-2xl font-bold text-gray-800">{totalCount}</p>
+            <p className="text-xs text-gray-500 uppercase">Services Run</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-green-600">{successCount}</p>
+            <p className="text-xs text-gray-500 uppercase">Successful</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-800">{totalDuration}s</p>
+            <p className="text-xs text-gray-500 uppercase">Duration</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Service Results */}
+      {report.results.map((result) => {
+        const def = definitionMap.get(result.serviceId);
+        return (
+          <div key={result.serviceId} className="mb-6">
+            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200">
+              <span className={result.success ? 'text-green-500' : 'text-red-500'}>
+                {result.success ? '✓' : '✗'}
+              </span>
+              <h3 className="font-bold text-gray-800">{def?.name || result.serviceId}</h3>
+              <span className="text-gray-400 text-sm ml-auto">
+                {(result.durationMs / 1000).toFixed(1)}s
+              </span>
+            </div>
+            {result.findings.map((finding, idx) => (
+              <div key={idx} className="ml-6 mb-2 text-sm">
+                <p className="text-gray-700">
+                  <span className="font-medium">[{SEVERITY_INFO[finding.severity].label}]</span>{' '}
+                  {finding.title}
+                </p>
+                <p className="text-gray-500 ml-4">{finding.description}</p>
+              </div>
+            ))}
+            {result.error && (
+              <div className="ml-6 text-red-600 text-sm">Error: {result.error}</div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Footer */}
+      <div className="mt-8 pt-4 border-t border-gray-200 text-center text-gray-400 text-sm">
+        <p>RustService Report • {report.id}</p>
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// Results View
+// =============================================================================
+
+interface ResultsViewProps {
+  report: ServiceReport;
+  definitions: ServiceDefinition[];
+  onNewService: () => void;
+  onBack: () => void;
+}
+
+function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewProps) {
+  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+  const printDetailedRef = useRef<HTMLDivElement>(null);
+  const printCustomerRef = useRef<HTMLDivElement>(null);
+
+  const handlePrintDetailed = useReactToPrint({
+    contentRef: printDetailedRef,
+    documentTitle: `Service Report - ${new Date(report.startedAt).toLocaleDateString()}`,
+  });
+
+  const handlePrintCustomer = useReactToPrint({
+    contentRef: printCustomerRef,
+    documentTitle: `System Health Report - ${new Date(report.startedAt).toLocaleDateString()}`,
+  });
+
+  const severityIcons: Record<FindingSeverity, React.ComponentType<{ className?: string }>> = {
+    info: Info,
+    success: CheckCircle2,
+    warning: AlertTriangle,
+    error: XCircle,
+    critical: XCircle,
+  };
+
+  const severityColors: Record<FindingSeverity, string> = {
+    info: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+    success: 'text-green-500 bg-green-500/10 border-green-500/20',
+    warning: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20',
+    error: 'text-red-500 bg-red-500/10 border-red-500/20',
+    critical: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
+  };
+
+  const allFindings = report.results.flatMap((r) =>
+    r.findings.map((f) => ({
+      ...f,
+      serviceId: r.serviceId,
+      serviceName: definitionMap.get(r.serviceId)?.name || r.serviceId,
+    }))
+  );
+
+  const majorFindings = allFindings.filter(
+    (f) => f.severity === 'warning' || f.severity === 'error' || f.severity === 'critical'
+  );
+
+  const totalDuration = report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) : '?';
+  const successCount = report.results.filter((r) => r.success).length;
+  const totalCount = report.results.length;
+
+  // Findings tab content
+  const FindingsContent = () => (
+    <div className="space-y-4">
+      {/* Summary Card */}
+      <Card className="bg-gradient-to-br from-card to-muted/30 border-2">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-4 gap-4 text-center">
+            <div>
+              <p className="text-3xl font-bold">{totalCount}</p>
+              <p className="text-sm text-muted-foreground">Services</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-green-500">{successCount}</p>
+              <p className="text-sm text-muted-foreground">Passed</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-yellow-500">{majorFindings.length}</p>
+              <p className="text-sm text-muted-foreground">Attention</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold">{totalDuration}s</p>
+              <p className="text-sm text-muted-foreground">Duration</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Findings by Service */}
+      {report.results.map((result) => {
+        const def = definitionMap.get(result.serviceId);
+        const Icon = def ? getIcon(def.icon) : Wrench;
+
+        return (
+          <Card key={result.serviceId} className="overflow-hidden">
+            <CardHeader className="pb-3 bg-muted/30">
+              <CardTitle className="text-base flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${result.success ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                  <Icon className={`h-4 w-4 ${result.success ? 'text-green-500' : 'text-red-500'}`} />
+                </div>
+                {def?.name || result.serviceId}
+                <span
+                  className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
+                    result.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                  }`}
+                >
+                  {result.success ? 'PASS' : 'FAIL'}
+                </span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  {(result.durationMs / 1000).toFixed(1)}s
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-2">
+              {result.findings.map((finding, idx) => {
+                const SeverityIcon = severityIcons[finding.severity];
+                const colorClass = severityColors[finding.severity];
+                return (
+                  <div key={idx} className={`p-3 rounded-lg border ${colorClass}`}>
+                    <div className="flex items-start gap-2">
+                      <SeverityIcon className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">{finding.title}</p>
+                        <p className="text-sm opacity-80">{finding.description}</p>
+                        {finding.recommendation && (
+                          <p className="text-sm mt-1.5 opacity-70 flex items-center gap-1">
+                            <ChevronRight className="h-3 w-3" />
+                            {finding.recommendation}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {result.findings.length === 0 && (
+                <p className="text-sm text-muted-foreground italic py-2">No findings</p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="p-6 pb-4">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold flex items-center gap-3">
+              {report.status === 'completed' ? (
+                <div className="p-1.5 rounded-full bg-green-500/10">
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                </div>
+              ) : (
+                <div className="p-1.5 rounded-full bg-red-500/10">
+                  <XCircle className="h-6 w-6 text-red-500" />
+                </div>
+              )}
+              Service Complete
+            </h2>
+            <p className="text-muted-foreground">
+              {successCount}/{totalCount} services completed in {totalDuration}s
+            </p>
+          </div>
+          <Button onClick={onNewService} className="gap-2">
+            <Wrench className="h-4 w-4" />
+            New Service
+          </Button>
+        </div>
+      </div>
+
+      <Separator className="mx-6" />
+
+      {/* Tabs */}
+      <Tabs defaultValue="findings" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="mx-6 mt-4 w-fit">
+          <TabsTrigger value="findings" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Findings
+          </TabsTrigger>
+          <TabsTrigger value="printout" className="gap-2">
+            <Printer className="h-4 w-4" />
+            Printout
+          </TabsTrigger>
+          <TabsTrigger value="customer" className="gap-2">
+            <Users className="h-4 w-4" />
+            Customer Print
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="flex-1 min-h-0">
+          <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">
+            <ScrollArea className="flex-1 p-6">
+              <FindingsContent />
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="printout" className="h-full mt-0 data-[state=active]:flex flex-col">
+            <div className="p-6 pb-3 flex items-center justify-between">
+              <p className="text-muted-foreground text-sm">
+                Technical report with all details. Print or save as PDF.
+              </p>
+              <Button onClick={() => handlePrintDetailed()} className="gap-2">
+                <Printer className="h-4 w-4" />
+                Print Report
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 px-6 pb-6">
+              <div className="rounded-xl overflow-hidden border shadow-lg">
+                <div ref={printDetailedRef}>
+                  <PrintableReport report={report} definitions={definitions} variant="detailed" />
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="customer" className="h-full mt-0 data-[state=active]:flex flex-col">
+            <div className="p-6 pb-3 flex items-center justify-between">
+              <p className="text-muted-foreground text-sm">
+                Simplified report for customers. Easy to understand with key findings only.
+              </p>
+              <Button onClick={() => handlePrintCustomer()} className="gap-2">
+                <Printer className="h-4 w-4" />
+                Print for Customer
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 px-6 pb-6">
+              <div className="rounded-xl overflow-hidden border shadow-lg">
+                <div ref={printCustomerRef}>
+                  <PrintableReport report={report} definitions={definitions} variant="customer" />
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      {/* Bottom Action Bar */}
+      <div className="p-6 pt-4 border-t bg-muted/30">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Presets
+          </Button>
+          <div className="flex-1" />
+          <Button variant="outline" onClick={() => handlePrintCustomer()} className="gap-2">
+            <Users className="h-4 w-4" />
+            Customer Print
+          </Button>
+          <Button onClick={() => handlePrintDetailed()} className="gap-2">
+            <Printer className="h-4 w-4" />
+            Full Report
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Service Page Component
+// =============================================================================
 
 export function ServicePage() {
+  const [phase, setPhase] = useState<ServicePhase>('presets');
+  const [presets, setPresets] = useState<ServicePreset[]>([]);
+  const [definitions, setDefinitions] = useState<ServiceDefinition[]>([]);
+  const [queue, setQueue] = useState<ServiceQueueItem[]>([]);
+  const [report, setReport] = useState<ServiceReport | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedPresetName, setSelectedPresetName] = useState<string>();
+
+  // Load initial data and check for running service
+  const loadData = useCallback(async () => {
+    try {
+      const [presetsData, defsData, stateData] = await Promise.all([
+        invoke<ServicePreset[]>('get_service_presets'),
+        invoke<ServiceDefinition[]>('get_service_definitions'),
+        invoke<ServiceRunState>('get_service_run_state'),
+      ]);
+
+      setPresets(presetsData);
+      setDefinitions(defsData);
+
+      // Restore state if service was running
+      if (stateData.isRunning && stateData.currentReport) {
+        setReport(stateData.currentReport);
+        setQueue(stateData.currentReport.queue);
+        setPhase('running');
+      } else if (stateData.currentReport && stateData.currentReport.status !== 'running') {
+        setReport(stateData.currentReport);
+        setQueue(stateData.currentReport.queue);
+        setPhase('results');
+      }
+    } catch (error) {
+      console.error('Failed to load service data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Listen for service events
+  useEffect(() => {
+    const unsubscribers: (() => void)[] = [];
+
+    const setupListeners = async () => {
+      // Log events
+      const unsubLog = await listen<{ serviceId: string; log: string }>('service-log', (event) => {
+        setLogs((prev) => [...prev, event.payload.log]);
+      });
+      unsubscribers.push(unsubLog);
+
+      // Progress events
+      const unsubProgress = await listen<{ currentIndex: number; totalCount: number }>(
+        'service-progress',
+        (event) => {
+          setReport((prev) =>
+            prev ? { ...prev, currentServiceIndex: event.payload.currentIndex } : null
+          );
+        }
+      );
+      unsubscribers.push(unsubProgress);
+
+      // Completion event
+      const unsubComplete = await listen<ServiceReport>('service-completed', (event) => {
+        setReport(event.payload);
+        setPhase('results');
+      });
+      unsubscribers.push(unsubComplete);
+
+      // State change events
+      const unsubState = await listen<ServiceRunState>('service-state-changed', (event) => {
+        if (!event.payload.isRunning && event.payload.currentReport) {
+          setReport(event.payload.currentReport);
+          if (event.payload.currentReport.status !== 'running') {
+            setPhase('results');
+          }
+        }
+      });
+      unsubscribers.push(unsubState);
+    };
+
+    setupListeners();
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, []);
+
+  // Handlers
+  const handleSelectPreset = (preset: ServicePreset) => {
+    const queueItems: ServiceQueueItem[] = preset.services.map((s, index) => ({
+      serviceId: s.serviceId,
+      enabled: s.enabled,
+      order: index,
+      options: s.options as Record<string, unknown>,
+    }));
+    setQueue(queueItems);
+    setSelectedPresetName(preset.name);
+    setPhase('queue');
+  };
+
+  const handleBack = () => {
+    if (phase === 'queue') {
+      setPhase('presets');
+    } else if (phase === 'running') {
+      // Don't go back during running - user might lose progress
+      // Could show a confirmation dialog here
+    } else if (phase === 'results') {
+      setPhase('presets');
+    }
+  };
+
+  const handleStart = async () => {
+    try {
+      setLogs([]);
+      setPhase('running');
+      const result = await invoke<ServiceReport>('run_services', { queue });
+      setReport(result);
+      setPhase('results');
+    } catch (error) {
+      console.error('Service run failed:', error);
+      setPhase('queue');
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      await invoke('cancel_service_run');
+      setPhase('queue');
+    } catch (error) {
+      console.error('Failed to cancel:', error);
+    }
+  };
+
+  const handleNewService = () => {
+    setQueue([]);
+    setReport(null);
+    setLogs([]);
+    setSelectedPresetName(undefined);
+    setPhase('presets');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="text-muted-foreground">Loading services...</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-      <Wrench className="h-16 w-16" />
-      <h2 className="text-2xl font-semibold text-foreground">Service Automation</h2>
-      <p className="text-center max-w-md">
-        Queue and run maintenance tasks with minimal clicks. 
-        Cleanup, security scanning, and system maintenance tools.
-      </p>
+    <div className="h-full overflow-hidden">
+      {phase === 'presets' && (
+        <PresetsView presets={presets} onSelectPreset={handleSelectPreset} />
+      )}
+      {phase === 'queue' && (
+        <QueueView
+          queue={queue}
+          definitions={definitions}
+          presetName={selectedPresetName}
+          onBack={handleBack}
+          onStart={handleStart}
+          onQueueChange={setQueue}
+        />
+      )}
+      {phase === 'running' && (
+        <RunnerView
+          report={report}
+          definitions={definitions}
+          logs={logs}
+          onCancel={handleCancel}
+          onBack={handleBack}
+        />
+      )}
+      {phase === 'results' && report && (
+        <ResultsView
+          report={report}
+          definitions={definitions}
+          onNewService={handleNewService}
+          onBack={handleBack}
+        />
+      )}
     </div>
   );
 }
