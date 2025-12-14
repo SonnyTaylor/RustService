@@ -50,17 +50,158 @@ fn save_programs_config(config: &ProgramConfig) -> Result<(), String> {
 }
 
 // =============================================================================
-// Icon Extraction
+// Icon Extraction (Windows-specific)
 // =============================================================================
 
-/// Extract icon from an executable and save as ICO file
+#[cfg(windows)]
 fn extract_icon_from_exe(exe_path: &str, output_path: &PathBuf) -> Result<(), String> {
-    let ico_data =
-        exeico::get_exe_ico(exe_path).map_err(|e| format!("Failed to extract icon: {}", e))?;
+    use std::mem;
+    use std::ptr;
+    use widestring::U16CString;
+    use winapi::shared::minwindef::DWORD;
+    use winapi::um::shellapi::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use winapi::um::wingdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, RGBQUAD,
+    };
+    use winapi::um::winuser::{DestroyIcon, GetIconInfo, ICONINFO};
 
-    fs::write(output_path, ico_data).map_err(|e| format!("Failed to write icon file: {}", e))?;
+    unsafe {
+        // Initialize SHFILEINFO struct
+        let mut shfi: SHFILEINFOW = mem::zeroed();
 
-    Ok(())
+        // Convert path to wide string
+        let wide_path =
+            U16CString::from_str(exe_path).map_err(|e| format!("Failed to convert path: {}", e))?;
+
+        // Get icon from shell
+        let result = SHGetFileInfoW(
+            wide_path.as_ptr(),
+            0,
+            &mut shfi,
+            mem::size_of::<SHFILEINFOW>() as DWORD,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+
+        if result == 0 || shfi.hIcon.is_null() {
+            return Err("No icon found in file".to_string());
+        }
+
+        // Get icon info to access bitmap
+        let mut icon_info: ICONINFO = mem::zeroed();
+        if GetIconInfo(shfi.hIcon, &mut icon_info) == 0 {
+            DestroyIcon(shfi.hIcon);
+            return Err("Failed to get icon info".to_string());
+        }
+
+        // Get actual bitmap dimensions
+        let mut bitmap: BITMAP = mem::zeroed();
+        if GetObjectW(
+            icon_info.hbmColor as _,
+            mem::size_of::<BITMAP>() as i32,
+            &mut bitmap as *mut _ as *mut _,
+        ) == 0
+        {
+            DestroyIcon(shfi.hIcon);
+            if !icon_info.hbmColor.is_null() {
+                DeleteObject(icon_info.hbmColor as _);
+            }
+            if !icon_info.hbmMask.is_null() {
+                DeleteObject(icon_info.hbmMask as _);
+            }
+            return Err("Failed to get bitmap info".to_string());
+        }
+
+        let width = bitmap.bmWidth;
+        let height = bitmap.bmHeight;
+
+        // Create compatible DC
+        let hdc = CreateCompatibleDC(ptr::null_mut());
+        if hdc.is_null() {
+            DestroyIcon(shfi.hIcon);
+            if !icon_info.hbmColor.is_null() {
+                DeleteObject(icon_info.hbmColor as _);
+            }
+            if !icon_info.hbmMask.is_null() {
+                DeleteObject(icon_info.hbmMask as _);
+            }
+            return Err("Failed to create DC".to_string());
+        }
+
+        // Setup bitmap info header with actual dimensions
+        let bmp_info_header = BITMAPINFOHEADER {
+            biSize: mem::size_of::<BITMAPINFOHEADER>() as DWORD,
+            biWidth: width,
+            biHeight: -height, // Negative for top-down DIB
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB as DWORD,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        };
+
+        let mut bitmap_info = BITMAPINFO {
+            bmiHeader: bmp_info_header,
+            bmiColors: [RGBQUAD {
+                rgbBlue: 0,
+                rgbGreen: 0,
+                rgbRed: 0,
+                rgbReserved: 0,
+            }; 1],
+        };
+
+        // Allocate buffer for pixel data
+        let buffer_size = (width * height * 4) as usize;
+        let mut buffer: Vec<u8> = vec![0; buffer_size];
+
+        // Get the bits
+        let lines = GetDIBits(
+            hdc,
+            icon_info.hbmColor,
+            0,
+            height as u32,
+            buffer.as_mut_ptr() as *mut _,
+            &mut bitmap_info,
+            DIB_RGB_COLORS,
+        );
+
+        // Cleanup Windows resources
+        DeleteDC(hdc);
+        if !icon_info.hbmColor.is_null() {
+            DeleteObject(icon_info.hbmColor as _);
+        }
+        if !icon_info.hbmMask.is_null() {
+            DeleteObject(icon_info.hbmMask as _);
+        }
+        DestroyIcon(shfi.hIcon);
+
+        if lines == 0 {
+            return Err("Failed to get bitmap bits".to_string());
+        }
+
+        // Convert BGRA to RGBA
+        for i in 0..(width * height) as usize {
+            let idx = i * 4;
+            buffer.swap(idx, idx + 2); // Swap B and R
+        }
+
+        // Create image and save as PNG
+        let img = image::RgbaImage::from_raw(width as u32, height as u32, buffer)
+            .ok_or("Failed to create image from pixels")?;
+
+        img.save(output_path)
+            .map_err(|e| format!("Failed to save icon: {}", e))?;
+
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn extract_icon_from_exe(_exe_path: &str, _output_path: &PathBuf) -> Result<(), String> {
+    Err("Icon extraction is only supported on Windows".to_string())
 }
 
 // =============================================================================
@@ -181,11 +322,11 @@ pub fn extract_program_icon(exe_path: String) -> Result<String, String> {
             .map_err(|e| format!("Failed to create icons directory: {}", e))?;
     }
 
-    // Generate unique filename (.ico format)
-    let icon_filename = format!("{}.ico", uuid::Uuid::new_v4());
+    // Generate unique filename (.png format)
+    let icon_filename = format!("{}.png", uuid::Uuid::new_v4());
     let output_path = icons_dir.join(&icon_filename);
 
-    // Extract icon using exeico
+    // Extract icon using Windows Shell API
     extract_icon_from_exe(&exe_path, &output_path)?;
 
     // Return relative path from data directory
@@ -208,4 +349,37 @@ pub fn reveal_program(app: tauri::AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to reveal program: {}", e))?;
 
     Ok(())
+}
+
+/// Get program icon as base64 data URL
+#[tauri::command]
+pub fn get_program_icon(icon_path: String) -> Result<Option<String>, String> {
+    if icon_path.is_empty() {
+        return Ok(None);
+    }
+
+    let data_dir = super::data_dir::get_data_dir_path();
+    let full_path = data_dir.join(&icon_path);
+
+    if !full_path.exists() {
+        return Ok(None);
+    }
+
+    let data = fs::read(&full_path).map_err(|e| format!("Failed to read icon: {}", e))?;
+
+    use base64::Engine;
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+
+    // Determine MIME type from extension
+    let mime = if icon_path.ends_with(".png") {
+        "image/png"
+    } else if icon_path.ends_with(".ico") {
+        "image/x-icon"
+    } else if icon_path.ends_with(".jpg") || icon_path.ends_with(".jpeg") {
+        "image/jpeg"
+    } else {
+        "image/png"
+    };
+
+    Ok(Some(format!("data:{};base64,{}", mime, base64_data)))
 }

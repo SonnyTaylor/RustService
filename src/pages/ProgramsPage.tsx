@@ -7,7 +7,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import {
   AppWindow,
@@ -178,9 +177,9 @@ function ProgramDialog({ open, onOpenChange, program, onSave }: ProgramDialogPro
     async function loadIconPreview() {
       if (iconPath) {
         try {
-          const dataDir = await invoke<string>('get_data_dir');
-          // Use convertFileSrc for secure local file access
-          setIconPreview(convertFileSrc(`${dataDir}/${iconPath}`.replace(/\\/g, '/')));
+          // Use backend command for secure local file access
+          const url = await invoke<string | null>('get_program_icon', { iconPath });
+          setIconPreview(url);
         } catch {
           setIconPreview(null);
         }
@@ -234,7 +233,8 @@ function ProgramDialog({ open, onOpenChange, program, onSave }: ProgramDialogPro
       
       if (selected) {
         setIconPath(selected);
-        setIconPreview(convertFileSrc(selected.replace(/\\/g, '/')));
+        // Custom icons will preview after save - just show placeholder
+        setIconPreview(null);
       }
     } catch (e) {
       console.error('Failed to open file dialog:', e);
@@ -343,7 +343,7 @@ function ProgramDialog({ open, onOpenChange, program, onSave }: ProgramDialogPro
                   <img 
                     src={iconPreview} 
                     alt="Icon preview" 
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover"
                     onError={() => setIconPreview(null)}
                   />
                 ) : (
@@ -410,34 +410,42 @@ interface ProgramCardProps {
 
 function ProgramCard({ 
   program, 
-  dataDir,
   onLaunch, 
   onEdit, 
   onDelete, 
   onReveal,
-}: ProgramCardProps) {
-  const iconUrl = program.iconPath 
-    ? convertFileSrc(`${dataDir}/${program.iconPath}`.replace(/\\/g, '/'))
-    : null;
+}: Omit<ProgramCardProps, 'dataDir'>) {
+  const [iconUrl, setIconUrl] = useState<string | null>(null);
+
+  // Load icon via backend command
+  useEffect(() => {
+    if (program.iconPath) {
+      invoke<string | null>('get_program_icon', { iconPath: program.iconPath })
+        .then(url => setIconUrl(url))
+        .catch(() => setIconUrl(null));
+    } else {
+      setIconUrl(null);
+    }
+  }, [program.iconPath]);
 
   return (
     <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50">
-      <CardContent className="p-3 py-0">
+      <CardContent className="p-3 py-2">
         <div className="flex items-start gap-3">
           {/* Icon */}
-          <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
             {iconUrl ? (
               <img 
                 src={iconUrl} 
                 alt={program.name}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                   e.currentTarget.parentElement?.classList.add('no-icon');
                 }}
               />
             ) : (
-              <AppWindow className="h-6 w-6 text-muted-foreground" />
+              <AppWindow className="h-5 w-5 text-muted-foreground" />
             )}
           </div>
 
@@ -555,23 +563,18 @@ function EmptyState({ onAddClick }: { onAddClick: () => void }) {
 
 export function ProgramsPage() {
   const [programs, setPrograms] = useState<Program[]>([]);
-  const [dataDir, setDataDir] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<ProgramSortOption>('name-asc');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 
-  // Load programs and data directory
+  // Load programs
   useEffect(() => {
     async function loadData() {
       try {
-        const [programsList, dir] = await Promise.all([
-          invoke<Program[]>('get_programs'),
-          invoke<string>('get_data_dir'),
-        ]);
+        const programsList = await invoke<Program[]>('get_programs');
         setPrograms(programsList);
-        setDataDir(dir);
       } catch (e) {
         console.error('Failed to load programs:', e);
       } finally {
@@ -734,7 +737,6 @@ export function ProgramsPage() {
               <ProgramCard
                 key={program.id}
                 program={program}
-                dataDir={dataDir}
                 onLaunch={handleLaunchProgram}
                 onEdit={handleEditProgram}
                 onDelete={handleDeleteProgram}
