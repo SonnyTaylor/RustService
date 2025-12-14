@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import {
   AppWindow,
@@ -178,8 +179,8 @@ function ProgramDialog({ open, onOpenChange, program, onSave }: ProgramDialogPro
       if (iconPath) {
         try {
           const dataDir = await invoke<string>('get_data_dir');
-          // Use file protocol to load local image
-          setIconPreview(`file:///${dataDir.replace(/\\/g, '/')}/${iconPath}`);
+          // Use convertFileSrc for secure local file access
+          setIconPreview(convertFileSrc(`${dataDir}/${iconPath}`.replace(/\\/g, '/')));
         } catch {
           setIconPreview(null);
         }
@@ -233,7 +234,7 @@ function ProgramDialog({ open, onOpenChange, program, onSave }: ProgramDialogPro
       
       if (selected) {
         setIconPath(selected);
-        setIconPreview(`file:///${selected.replace(/\\/g, '/')}`);
+        setIconPreview(convertFileSrc(selected.replace(/\\/g, '/')));
       }
     } catch (e) {
       console.error('Failed to open file dialog:', e);
@@ -416,12 +417,12 @@ function ProgramCard({
   onReveal,
 }: ProgramCardProps) {
   const iconUrl = program.iconPath 
-    ? `file:///${dataDir.replace(/\\/g, '/')}/${program.iconPath}`
+    ? convertFileSrc(`${dataDir}/${program.iconPath}`.replace(/\\/g, '/'))
     : null;
 
   return (
     <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50">
-      <CardContent className="p-4">
+      <CardContent className="p-3 py-0">
         <div className="flex items-start gap-3">
           {/* Icon */}
           <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -492,7 +493,7 @@ function ProgramCard({
             </TooltipProvider>
 
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+              <DropdownMenuTrigger>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
@@ -684,7 +685,7 @@ export function ProgramsPage() {
           </Badge>
         </div>
 
-        <div className="flex-1 max-w-sm">
+        <div className="flex-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -696,24 +697,26 @@ export function ProgramsPage() {
           </div>
         </div>
 
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as ProgramSortOption)}>
-          <SelectTrigger className="w-40">
-            <ArrowUpDown className="h-4 w-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PROGRAM_SORT_OPTIONS.map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as ProgramSortOption)}>
+            <SelectTrigger className="w-40">
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROGRAM_SORT_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Button onClick={handleAddProgram}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Program
-        </Button>
+          <Button onClick={handleAddProgram}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Program
+          </Button>
+        </div>
       </div>
 
       {/* Content */}

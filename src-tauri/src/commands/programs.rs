@@ -50,161 +50,17 @@ fn save_programs_config(config: &ProgramConfig) -> Result<(), String> {
 }
 
 // =============================================================================
-// Icon Extraction (Windows-specific)
+// Icon Extraction
 // =============================================================================
 
-#[cfg(windows)]
-mod icon_extraction {
-    use super::*;
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-    use std::ptr;
-    use winapi::shared::windef::HICON;
-    use winapi::um::shellapi::ExtractIconExW;
-    use winapi::um::wingdi::{
-        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject, BITMAPINFO,
-        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-    };
-    use winapi::um::winuser::{DestroyIcon, GetIconInfo, ICONINFO};
+/// Extract icon from an executable and save as ICO file
+fn extract_icon_from_exe(exe_path: &str, output_path: &PathBuf) -> Result<(), String> {
+    let ico_data =
+        exeico::get_exe_ico(exe_path).map_err(|e| format!("Failed to extract icon: {}", e))?;
 
-    /// Convert a Rust string to a wide string for Windows API
-    fn to_wide_string(s: &str) -> Vec<u16> {
-        OsStr::new(s)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    }
+    fs::write(output_path, ico_data).map_err(|e| format!("Failed to write icon file: {}", e))?;
 
-    /// Extract icon from an executable and save as PNG
-    pub fn extract_icon_from_exe(exe_path: &str, output_path: &PathBuf) -> Result<(), String> {
-        unsafe {
-            let wide_path = to_wide_string(exe_path);
-            let mut large_icon: HICON = ptr::null_mut();
-
-            // Extract the first large icon
-            let count = ExtractIconExW(wide_path.as_ptr(), 0, &mut large_icon, ptr::null_mut(), 1);
-
-            if count == 0 || large_icon.is_null() {
-                return Err("No icon found in executable".to_string());
-            }
-
-            // Get icon info
-            let mut icon_info: ICONINFO = std::mem::zeroed();
-            if GetIconInfo(large_icon, &mut icon_info) == 0 {
-                DestroyIcon(large_icon);
-                return Err("Failed to get icon info".to_string());
-            }
-
-            // Get bitmap dimensions
-            let hbm_color = icon_info.hbmColor;
-            if hbm_color.is_null() {
-                DestroyIcon(large_icon);
-                if !icon_info.hbmMask.is_null() {
-                    DeleteObject(icon_info.hbmMask as _);
-                }
-                return Err("Icon has no color bitmap".to_string());
-            }
-
-            // Create device context
-            let hdc = CreateCompatibleDC(ptr::null_mut());
-            if hdc.is_null() {
-                DestroyIcon(large_icon);
-                DeleteObject(hbm_color as _);
-                if !icon_info.hbmMask.is_null() {
-                    DeleteObject(icon_info.hbmMask as _);
-                }
-                return Err("Failed to create DC".to_string());
-            }
-
-            // Get bitmap info
-            let mut bmi: BITMAPINFO = std::mem::zeroed();
-            bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-
-            // First call to get dimensions
-            if GetDIBits(
-                hdc,
-                hbm_color,
-                0,
-                0,
-                ptr::null_mut(),
-                &mut bmi,
-                DIB_RGB_COLORS,
-            ) == 0
-            {
-                DeleteDC(hdc);
-                DestroyIcon(large_icon);
-                DeleteObject(hbm_color as _);
-                if !icon_info.hbmMask.is_null() {
-                    DeleteObject(icon_info.hbmMask as _);
-                }
-                return Err("Failed to get bitmap dimensions".to_string());
-            }
-
-            let width = bmi.bmiHeader.biWidth as u32;
-            let height = bmi.bmiHeader.biHeight.unsigned_abs();
-
-            // Setup for getting actual bits
-            bmi.bmiHeader.biCompression = BI_RGB;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biHeight = -(height as i32); // Top-down
-
-            let mut pixels: Vec<u8> = vec![0; (width * height * 4) as usize];
-
-            let old_obj = SelectObject(hdc, hbm_color as _);
-
-            if GetDIBits(
-                hdc,
-                hbm_color,
-                0,
-                height,
-                pixels.as_mut_ptr() as _,
-                &mut bmi,
-                DIB_RGB_COLORS,
-            ) == 0
-            {
-                SelectObject(hdc, old_obj);
-                DeleteDC(hdc);
-                DestroyIcon(large_icon);
-                DeleteObject(hbm_color as _);
-                if !icon_info.hbmMask.is_null() {
-                    DeleteObject(icon_info.hbmMask as _);
-                }
-                return Err("Failed to get bitmap bits".to_string());
-            }
-
-            // Clean up Windows resources
-            SelectObject(hdc, old_obj);
-            DeleteDC(hdc);
-            DestroyIcon(large_icon);
-            DeleteObject(hbm_color as _);
-            if !icon_info.hbmMask.is_null() {
-                DeleteObject(icon_info.hbmMask as _);
-            }
-
-            // Convert BGRA to RGBA
-            for chunk in pixels.chunks_mut(4) {
-                chunk.swap(0, 2); // Swap B and R
-            }
-
-            // Create image and save as PNG
-            let img = image::RgbaImage::from_raw(width, height, pixels)
-                .ok_or("Failed to create image from pixels")?;
-
-            img.save(output_path)
-                .map_err(|e| format!("Failed to save icon: {}", e))?;
-
-            Ok(())
-        }
-    }
-}
-
-#[cfg(not(windows))]
-mod icon_extraction {
-    use super::*;
-
-    pub fn extract_icon_from_exe(_exe_path: &str, _output_path: &PathBuf) -> Result<(), String> {
-        Err("Icon extraction is only supported on Windows".to_string())
-    }
+    Ok(())
 }
 
 // =============================================================================
@@ -325,12 +181,12 @@ pub fn extract_program_icon(exe_path: String) -> Result<String, String> {
             .map_err(|e| format!("Failed to create icons directory: {}", e))?;
     }
 
-    // Generate unique filename
-    let icon_filename = format!("{}.png", uuid::Uuid::new_v4());
+    // Generate unique filename (.ico format)
+    let icon_filename = format!("{}.ico", uuid::Uuid::new_v4());
     let output_path = icons_dir.join(&icon_filename);
 
-    // Extract icon
-    icon_extraction::extract_icon_from_exe(&exe_path, &output_path)?;
+    // Extract icon using exeico
+    extract_icon_from_exe(&exe_path, &output_path)?;
 
     // Return relative path from data directory
     Ok(format!("programs/icons/{}", icon_filename))
