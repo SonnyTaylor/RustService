@@ -19,7 +19,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
  * Available color schemes (CSS class names applied to html element)
  * Add new schemes here and in globals.css with .theme-{name} class
  */
-export type ColorScheme = 'default' | 'techbay';
+export type ColorScheme = 'default' | 'techbay' | 'retro-terminal' | 'amber-minimal' | 'amethyst-haze' | 'catppuccin' | 'supabase' | 'nature' | 'cyberpunk' | 'claude';
 
 /**
  * Combined theme (for backwards compatibility)
@@ -70,6 +70,86 @@ export const COLOR_SCHEMES: ColorSchemeInfo[] = [
       primary: '#ce5d5b',
       accent: '#d77c7a',
       background: '#ffffff',
+    },
+  },
+  {
+    id: 'retro-terminal',
+    name: 'Retro Terminal',
+    description: 'Classic green terminal aesthetic',
+    preview: {
+      primary: '#007000',
+      accent: '#00a000',
+      background: '#e0e0e0',
+    },
+  },
+  {
+    id: 'amber-minimal',
+    name: 'Amber Minimal',
+    description: 'Warm amber accent theme',
+    preview: {
+      primary: '#f59e0b',
+      accent: '#d97706',
+      background: '#ffffff',
+    },
+  },
+  {
+    id: 'amethyst-haze',
+    name: 'Amethyst Haze',
+    description: 'Soft purple tones',
+    preview: {
+      primary: '#8a79ab',
+      accent: '#e6a5b8',
+      background: '#f8f7fa',
+    },
+  },
+  {
+    id: 'catppuccin',
+    name: 'Catppuccin',
+    description: 'Pastel color palette',
+    preview: {
+      primary: '#8839ef',
+      accent: '#04a5e5',
+      background: '#eff1f5',
+    },
+  },
+  {
+    id: 'supabase',
+    name: 'Supabase',
+    description: 'Green developer theme',
+    preview: {
+      primary: '#72e3ad',
+      accent: '#3b82f6',
+      background: '#fcfcfc',
+    },
+  },
+  {
+    id: 'nature',
+    name: 'Nature',
+    description: 'Earthy green tones',
+    preview: {
+      primary: '#2e7d32',
+      accent: '#c8e6c9',
+      background: '#f8f5f0',
+    },
+  },
+  {
+    id: 'cyberpunk',
+    name: 'Cyberpunk',
+    description: 'Neon pink and cyan',
+    preview: {
+      primary: '#ff00c8',
+      accent: '#00ffcc',
+      background: '#f8f9fa',
+    },
+  },
+  {
+    id: 'claude',
+    name: 'Claude',
+    description: 'Warm terracotta theme',
+    preview: {
+      primary: '#c96442',
+      accent: '#e9e6dc',
+      background: '#faf9f5',
     },
   },
 ];

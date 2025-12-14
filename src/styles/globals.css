@@ -155,6 +155,614 @@
 }
 
 /* =============================================================================
+   Retro Terminal Theme
+   Apply with: .theme-retro-terminal on <html>
+   ============================================================================= */
+
+.theme-retro-terminal {
+  --background: #e0e0e0;
+  --foreground: #00a000;
+  --card: #d0d0d0;
+  --card-foreground: #00a000;
+  --popover: #d0d0d0;
+  --popover-foreground: #00a000;
+  --primary: #007000;
+  --primary-foreground: #ffffff;
+  --secondary: #b0b0b0;
+  --secondary-foreground: #00a000;
+  --muted: #c0c0c0;
+  --muted-foreground: #008000;
+  --accent: #c0c0c0;
+  --accent-foreground: #00a000;
+  --destructive: #ff6060;
+  --destructive-foreground: #ffffff;
+  --border: #00a000;
+  --input: #d0d0d0;
+  --ring: #00a000;
+  --chart-1: #00a000;
+  --chart-2: #00c000;
+  --chart-3: #008000;
+  --chart-4: #006000;
+  --chart-5: #004000;
+  --sidebar: #c0c0c0;
+  --sidebar-foreground: #00a000;
+  --sidebar-primary: #007000;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #c0c0c0;
+  --sidebar-accent-foreground: #00a000;
+  --sidebar-border: #00a000;
+  --sidebar-ring: #00a000;
+  --radius: 0rem;
+}
+
+.theme-retro-terminal.dark {
+  --background: #000000;
+  --foreground: #22ff22;
+  --card: #101010;
+  --card-foreground: #22ff22;
+  --popover: #101010;
+  --popover-foreground: #22ff22;
+  --primary: #008000;
+  --primary-foreground: #f0f0f0;
+  --secondary: #202020;
+  --secondary-foreground: #22ff22;
+  --muted: #151515;
+  --muted-foreground: #00a000;
+  --accent: #151515;
+  --accent-foreground: #22ff22;
+  --destructive: #ff0000;
+  --destructive-foreground: #f0f0f0;
+  --border: #22ff22;
+  --input: #101010;
+  --ring: #22ff22;
+  --chart-1: #22ff22;
+  --chart-2: #00ff00;
+  --chart-3: #00e000;
+  --chart-4: #00c000;
+  --chart-5: #00a000;
+  --sidebar: #050505;
+  --sidebar-foreground: #22ff22;
+  --sidebar-primary: #008000;
+  --sidebar-primary-foreground: #f0f0f0;
+  --sidebar-accent: #151515;
+  --sidebar-accent-foreground: #22ff22;
+  --sidebar-border: #22ff22;
+  --sidebar-ring: #22ff22;
+}
+
+/* =============================================================================
+   Amber Minimal Theme
+   Apply with: .theme-amber-minimal on <html>
+   ============================================================================= */
+
+.theme-amber-minimal {
+  --background: #ffffff;
+  --foreground: #262626;
+  --card: #ffffff;
+  --card-foreground: #262626;
+  --popover: #ffffff;
+  --popover-foreground: #262626;
+  --primary: #f59e0b;
+  --primary-foreground: #000000;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #4b5563;
+  --muted: #f9fafb;
+  --muted-foreground: #6b7280;
+  --accent: #fffbeb;
+  --accent-foreground: #92400e;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #f59e0b;
+  --chart-1: #f59e0b;
+  --chart-2: #d97706;
+  --chart-3: #b45309;
+  --chart-4: #92400e;
+  --chart-5: #78350f;
+  --sidebar: #f9fafb;
+  --sidebar-foreground: #262626;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #fffbeb;
+  --sidebar-accent-foreground: #92400e;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #f59e0b;
+  --radius: 0.375rem;
+}
+
+.theme-amber-minimal.dark {
+  --background: #171717;
+  --foreground: #e5e5e5;
+  --card: #262626;
+  --card-foreground: #e5e5e5;
+  --popover: #262626;
+  --popover-foreground: #e5e5e5;
+  --primary: #f59e0b;
+  --primary-foreground: #000000;
+  --secondary: #262626;
+  --secondary-foreground: #e5e5e5;
+  --muted: #1f1f1f;
+  --muted-foreground: #a3a3a3;
+  --accent: #92400e;
+  --accent-foreground: #fde68a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #404040;
+  --input: #404040;
+  --ring: #f59e0b;
+  --chart-1: #fbbf24;
+  --chart-2: #d97706;
+  --chart-3: #92400e;
+  --chart-4: #b45309;
+  --chart-5: #92400e;
+  --sidebar: #0f0f0f;
+  --sidebar-foreground: #e5e5e5;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #92400e;
+  --sidebar-accent-foreground: #fde68a;
+  --sidebar-border: #404040;
+  --sidebar-ring: #f59e0b;
+}
+
+/* =============================================================================
+   Amethyst Haze Theme
+   Apply with: .theme-amethyst-haze on <html>
+   ============================================================================= */
+
+.theme-amethyst-haze {
+  --background: #f8f7fa;
+  --foreground: #3d3c4f;
+  --card: #ffffff;
+  --card-foreground: #3d3c4f;
+  --popover: #ffffff;
+  --popover-foreground: #3d3c4f;
+  --primary: #8a79ab;
+  --primary-foreground: #f8f7fa;
+  --secondary: #dfd9ec;
+  --secondary-foreground: #3d3c4f;
+  --muted: #dcd9e3;
+  --muted-foreground: #6b6880;
+  --accent: #e6a5b8;
+  --accent-foreground: #4b2e36;
+  --destructive: #d95c5c;
+  --destructive-foreground: #f8f7fa;
+  --border: #cec9d9;
+  --input: #eae7f0;
+  --ring: #8a79ab;
+  --chart-1: #8a79ab;
+  --chart-2: #e6a5b8;
+  --chart-3: #77b8a1;
+  --chart-4: #f0c88d;
+  --chart-5: #a0bbe3;
+  --sidebar: #f1eff5;
+  --sidebar-foreground: #3d3c4f;
+  --sidebar-primary: #8a79ab;
+  --sidebar-primary-foreground: #f8f7fa;
+  --sidebar-accent: #e6a5b8;
+  --sidebar-accent-foreground: #4b2e36;
+  --sidebar-border: #d7d2e0;
+  --sidebar-ring: #8a79ab;
+  --radius: 0.5rem;
+}
+
+.theme-amethyst-haze.dark {
+  --background: #1a1823;
+  --foreground: #e0ddef;
+  --card: #232030;
+  --card-foreground: #e0ddef;
+  --popover: #232030;
+  --popover-foreground: #e0ddef;
+  --primary: #a995c9;
+  --primary-foreground: #1a1823;
+  --secondary: #5a5370;
+  --secondary-foreground: #e0ddef;
+  --muted: #242031;
+  --muted-foreground: #a09aad;
+  --accent: #372e3f;
+  --accent-foreground: #f2b8c6;
+  --destructive: #e57373;
+  --destructive-foreground: #1a1823;
+  --border: #302c40;
+  --input: #2a273a;
+  --ring: #a995c9;
+  --chart-1: #a995c9;
+  --chart-2: #f2b8c6;
+  --chart-3: #77b8a1;
+  --chart-4: #f0c88d;
+  --chart-5: #a0bbe3;
+  --sidebar: #16141e;
+  --sidebar-foreground: #e0ddef;
+  --sidebar-primary: #a995c9;
+  --sidebar-primary-foreground: #1a1823;
+  --sidebar-accent: #372e3f;
+  --sidebar-accent-foreground: #f2b8c6;
+  --sidebar-border: #2a273a;
+  --sidebar-ring: #a995c9;
+}
+
+/* =============================================================================
+   Catppuccin Theme
+   Apply with: .theme-catppuccin on <html>
+   ============================================================================= */
+
+.theme-catppuccin {
+  --background: #eff1f5;
+  --foreground: #4c4f69;
+  --card: #ffffff;
+  --card-foreground: #4c4f69;
+  --popover: #ccd0da;
+  --popover-foreground: #4c4f69;
+  --primary: #8839ef;
+  --primary-foreground: #ffffff;
+  --secondary: #ccd0da;
+  --secondary-foreground: #4c4f69;
+  --muted: #dce0e8;
+  --muted-foreground: #6c6f85;
+  --accent: #04a5e5;
+  --accent-foreground: #ffffff;
+  --destructive: #d20f39;
+  --destructive-foreground: #ffffff;
+  --border: #bcc0cc;
+  --input: #ccd0da;
+  --ring: #8839ef;
+  --chart-1: #8839ef;
+  --chart-2: #04a5e5;
+  --chart-3: #40a02b;
+  --chart-4: #fe640b;
+  --chart-5: #dc8a78;
+  --sidebar: #e6e9ef;
+  --sidebar-foreground: #4c4f69;
+  --sidebar-primary: #8839ef;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #04a5e5;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #bcc0cc;
+  --sidebar-ring: #8839ef;
+  --radius: 0.35rem;
+}
+
+.theme-catppuccin.dark {
+  --background: #181825;
+  --foreground: #cdd6f4;
+  --card: #1e1e2e;
+  --card-foreground: #cdd6f4;
+  --popover: #45475a;
+  --popover-foreground: #cdd6f4;
+  --primary: #cba6f7;
+  --primary-foreground: #1e1e2e;
+  --secondary: #585b70;
+  --secondary-foreground: #cdd6f4;
+  --muted: #292c3c;
+  --muted-foreground: #a6adc8;
+  --accent: #89dceb;
+  --accent-foreground: #1e1e2e;
+  --destructive: #f38ba8;
+  --destructive-foreground: #1e1e2e;
+  --border: #313244;
+  --input: #313244;
+  --ring: #cba6f7;
+  --chart-1: #cba6f7;
+  --chart-2: #89dceb;
+  --chart-3: #a6e3a1;
+  --chart-4: #fab387;
+  --chart-5: #f5e0dc;
+  --sidebar: #11111b;
+  --sidebar-foreground: #cdd6f4;
+  --sidebar-primary: #cba6f7;
+  --sidebar-primary-foreground: #1e1e2e;
+  --sidebar-accent: #89dceb;
+  --sidebar-accent-foreground: #1e1e2e;
+  --sidebar-border: #45475a;
+  --sidebar-ring: #cba6f7;
+}
+
+/* =============================================================================
+   Supabase Theme
+   Apply with: .theme-supabase on <html>
+   ============================================================================= */
+
+.theme-supabase {
+  --background: #fcfcfc;
+  --foreground: #171717;
+  --card: #fcfcfc;
+  --card-foreground: #171717;
+  --popover: #fcfcfc;
+  --popover-foreground: #525252;
+  --primary: #72e3ad;
+  --primary-foreground: #1e2723;
+  --secondary: #fdfdfd;
+  --secondary-foreground: #171717;
+  --muted: #ededed;
+  --muted-foreground: #202020;
+  --accent: #ededed;
+  --accent-foreground: #202020;
+  --destructive: #ca3214;
+  --destructive-foreground: #fffcfc;
+  --border: #dfdfdf;
+  --input: #f6f6f6;
+  --ring: #72e3ad;
+  --chart-1: #72e3ad;
+  --chart-2: #3b82f6;
+  --chart-3: #8b5cf6;
+  --chart-4: #f59e0b;
+  --chart-5: #10b981;
+  --sidebar: #fcfcfc;
+  --sidebar-foreground: #707070;
+  --sidebar-primary: #72e3ad;
+  --sidebar-primary-foreground: #1e2723;
+  --sidebar-accent: #ededed;
+  --sidebar-accent-foreground: #202020;
+  --sidebar-border: #dfdfdf;
+  --sidebar-ring: #72e3ad;
+  --radius: 0.5rem;
+}
+
+.theme-supabase.dark {
+  --background: #121212;
+  --foreground: #e2e8f0;
+  --card: #171717;
+  --card-foreground: #e2e8f0;
+  --popover: #242424;
+  --popover-foreground: #a9a9a9;
+  --primary: #006239;
+  --primary-foreground: #dde8e3;
+  --secondary: #242424;
+  --secondary-foreground: #fafafa;
+  --muted: #1f1f1f;
+  --muted-foreground: #a2a2a2;
+  --accent: #313131;
+  --accent-foreground: #fafafa;
+  --destructive: #541c15;
+  --destructive-foreground: #ede9e8;
+  --border: #292929;
+  --input: #242424;
+  --ring: #4ade80;
+  --chart-1: #4ade80;
+  --chart-2: #60a5fa;
+  --chart-3: #a78bfa;
+  --chart-4: #fbbf24;
+  --chart-5: #2dd4bf;
+  --sidebar: #121212;
+  --sidebar-foreground: #898989;
+  --sidebar-primary: #006239;
+  --sidebar-primary-foreground: #dde8e3;
+  --sidebar-accent: #313131;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #292929;
+  --sidebar-ring: #4ade80;
+}
+
+/* =============================================================================
+   Nature Theme
+   Apply with: .theme-nature on <html>
+   ============================================================================= */
+
+.theme-nature {
+  --background: #f8f5f0;
+  --foreground: #3e2723;
+  --card: #f8f5f0;
+  --card-foreground: #3e2723;
+  --popover: #f8f5f0;
+  --popover-foreground: #3e2723;
+  --primary: #2e7d32;
+  --primary-foreground: #ffffff;
+  --secondary: #e8f5e9;
+  --secondary-foreground: #1b5e20;
+  --muted: #f0e9e0;
+  --muted-foreground: #6d4c41;
+  --accent: #c8e6c9;
+  --accent-foreground: #1b5e20;
+  --destructive: #c62828;
+  --destructive-foreground: #ffffff;
+  --border: #e0d6c9;
+  --input: #e0d6c9;
+  --ring: #2e7d32;
+  --chart-1: #4caf50;
+  --chart-2: #388e3c;
+  --chart-3: #2e7d32;
+  --chart-4: #1b5e20;
+  --chart-5: #0a1f0c;
+  --sidebar: #f0e9e0;
+  --sidebar-foreground: #3e2723;
+  --sidebar-primary: #2e7d32;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #c8e6c9;
+  --sidebar-accent-foreground: #1b5e20;
+  --sidebar-border: #e0d6c9;
+  --sidebar-ring: #2e7d32;
+  --radius: 0.5rem;
+}
+
+.theme-nature.dark {
+  --background: #1c2a1f;
+  --foreground: #f0ebe5;
+  --card: #2d3a2e;
+  --card-foreground: #f0ebe5;
+  --popover: #2d3a2e;
+  --popover-foreground: #f0ebe5;
+  --primary: #4caf50;
+  --primary-foreground: #0a1f0c;
+  --secondary: #3e4a3d;
+  --secondary-foreground: #d7e0d6;
+  --muted: #252f26;
+  --muted-foreground: #d7cfc4;
+  --accent: #388e3c;
+  --accent-foreground: #f0ebe5;
+  --destructive: #c62828;
+  --destructive-foreground: #f0ebe5;
+  --border: #3e4a3d;
+  --input: #3e4a3d;
+  --ring: #4caf50;
+  --chart-1: #81c784;
+  --chart-2: #66bb6a;
+  --chart-3: #4caf50;
+  --chart-4: #43a047;
+  --chart-5: #388e3c;
+  --sidebar: #1c2a1f;
+  --sidebar-foreground: #f0ebe5;
+  --sidebar-primary: #4caf50;
+  --sidebar-primary-foreground: #0a1f0c;
+  --sidebar-accent: #388e3c;
+  --sidebar-accent-foreground: #f0ebe5;
+  --sidebar-border: #3e4a3d;
+  --sidebar-ring: #4caf50;
+}
+
+/* =============================================================================
+   Cyberpunk Theme
+   Apply with: .theme-cyberpunk on <html>
+   ============================================================================= */
+
+.theme-cyberpunk {
+  --background: #f8f9fa;
+  --foreground: #0c0c1d;
+  --card: #ffffff;
+  --card-foreground: #0c0c1d;
+  --popover: #ffffff;
+  --popover-foreground: #0c0c1d;
+  --primary: #ff00c8;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0ff;
+  --secondary-foreground: #0c0c1d;
+  --muted: #f0f0ff;
+  --muted-foreground: #0c0c1d;
+  --accent: #00ffcc;
+  --accent-foreground: #0c0c1d;
+  --destructive: #ff3d00;
+  --destructive-foreground: #ffffff;
+  --border: #dfe6e9;
+  --input: #dfe6e9;
+  --ring: #ff00c8;
+  --chart-1: #ff00c8;
+  --chart-2: #9000ff;
+  --chart-3: #00e5ff;
+  --chart-4: #00ffcc;
+  --chart-5: #ffe600;
+  --sidebar: #f0f0ff;
+  --sidebar-foreground: #0c0c1d;
+  --sidebar-primary: #ff00c8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #00ffcc;
+  --sidebar-accent-foreground: #0c0c1d;
+  --sidebar-border: #dfe6e9;
+  --sidebar-ring: #ff00c8;
+  --radius: 0.5rem;
+}
+
+.theme-cyberpunk.dark {
+  --background: #0c0c1d;
+  --foreground: #eceff4;
+  --card: #1e1e3f;
+  --card-foreground: #eceff4;
+  --popover: #1e1e3f;
+  --popover-foreground: #eceff4;
+  --primary: #ff00c8;
+  --primary-foreground: #ffffff;
+  --secondary: #1e1e3f;
+  --secondary-foreground: #eceff4;
+  --muted: #151530;
+  --muted-foreground: #8085a6;
+  --accent: #00ffcc;
+  --accent-foreground: #0c0c1d;
+  --destructive: #ff3d00;
+  --destructive-foreground: #ffffff;
+  --border: #2e2e5e;
+  --input: #2e2e5e;
+  --ring: #ff00c8;
+  --chart-1: #ff00c8;
+  --chart-2: #9000ff;
+  --chart-3: #00e5ff;
+  --chart-4: #00ffcc;
+  --chart-5: #ffe600;
+  --sidebar: #0c0c1d;
+  --sidebar-foreground: #eceff4;
+  --sidebar-primary: #ff00c8;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #00ffcc;
+  --sidebar-accent-foreground: #0c0c1d;
+  --sidebar-border: #2e2e5e;
+  --sidebar-ring: #ff00c8;
+}
+
+/* =============================================================================
+   Claude Theme
+   Apply with: .theme-claude on <html>
+   ============================================================================= */
+
+.theme-claude {
+  --background: #faf9f5;
+  --foreground: #3d3929;
+  --card: #faf9f5;
+  --card-foreground: #141413;
+  --popover: #ffffff;
+  --popover-foreground: #28261b;
+  --primary: #c96442;
+  --primary-foreground: #ffffff;
+  --secondary: #e9e6dc;
+  --secondary-foreground: #535146;
+  --muted: #ede9de;
+  --muted-foreground: #83827d;
+  --accent: #e9e6dc;
+  --accent-foreground: #28261b;
+  --destructive: #141413;
+  --destructive-foreground: #ffffff;
+  --border: #dad9d4;
+  --input: #b4b2a7;
+  --ring: #c96442;
+  --chart-1: #b05730;
+  --chart-2: #9c87f5;
+  --chart-3: #ded8c4;
+  --chart-4: #dbd3f0;
+  --chart-5: #b4552d;
+  --sidebar: #f5f4ee;
+  --sidebar-foreground: #3d3d3a;
+  --sidebar-primary: #c96442;
+  --sidebar-primary-foreground: #fbfbfb;
+  --sidebar-accent: #e9e6dc;
+  --sidebar-accent-foreground: #343434;
+  --sidebar-border: #ebebeb;
+  --sidebar-ring: #b5b5b5;
+  --radius: 0.5rem;
+}
+
+.theme-claude.dark {
+  --background: #262624;
+  --foreground: #c3c0b6;
+  --card: #262624;
+  --card-foreground: #faf9f5;
+  --popover: #30302e;
+  --popover-foreground: #e5e5e2;
+  --primary: #d97757;
+  --primary-foreground: #ffffff;
+  --secondary: #faf9f5;
+  --secondary-foreground: #30302e;
+  --muted: #1b1b19;
+  --muted-foreground: #b7b5a9;
+  --accent: #1a1915;
+  --accent-foreground: #f5f4ee;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #3e3e38;
+  --input: #52514a;
+  --ring: #d97757;
+  --chart-1: #b05730;
+  --chart-2: #9c87f5;
+  --chart-3: #1a1915;
+  --chart-4: #2f2b48;
+  --chart-5: #b4552d;
+  --sidebar: #1f1e1d;
+  --sidebar-foreground: #c3c0b6;
+  --sidebar-primary: #343434;
+  --sidebar-primary-foreground: #fbfbfb;
+  --sidebar-accent: #0f0f0e;
+  --sidebar-accent-foreground: #c3c0b6;
+  --sidebar-border: #ebebeb;
+  --sidebar-ring: #b5b5b5;
+}
+
+/* =============================================================================
    Tailwind Theme Bindings
    ============================================================================= */
 
