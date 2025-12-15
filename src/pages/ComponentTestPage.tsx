@@ -204,13 +204,13 @@ function CameraTestTab() {
           </div>
 
           {/* Video Preview */}
-          <div className="relative bg-muted rounded-lg overflow-hidden aspect-video flex items-center justify-center">
+          <div className="relative bg-muted rounded-lg overflow-hidden flex items-center justify-center w-full h-[min(56.25vw,42vh)]">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover ${!isActive ? 'hidden' : ''} ${isMirrored ? 'scale-x-[-1]' : ''}`}
+              className={`w-full h-full object-contain ${!isActive ? 'hidden' : ''} ${isMirrored ? 'scale-x-[-1]' : ''}`}
             />
             {!isActive && (
               <div className="text-muted-foreground text-center">
@@ -230,7 +230,7 @@ function CameraTestTab() {
               <img 
                 src={screenshot} 
                 alt="Screenshot" 
-                className="rounded-lg max-h-48 object-contain"
+                className="rounded-lg max-h-32 object-contain"
               />
             </div>
           )}
