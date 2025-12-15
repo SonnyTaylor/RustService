@@ -63,7 +63,10 @@ pub fn run() {
             commands::get_service_report,
             commands::list_service_reports,
             commands::delete_report,
-            commands::clear_all_reports
+            commands::clear_all_reports,
+            // Business logo commands
+            commands::save_business_logo,
+            commands::get_business_logo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

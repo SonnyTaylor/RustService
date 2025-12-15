@@ -181,3 +181,74 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
     save_settings_internal(&settings)?;
     Ok(settings)
 }
+
+/// Get the business logo directory path
+fn get_business_dir() -> std::path::PathBuf {
+    get_data_dir_path().join("business")
+}
+
+/// Save business logo by copying to data directory
+/// Returns the relative path to the saved logo
+#[tauri::command]
+pub fn save_business_logo(source_path: String) -> Result<String, String> {
+    let source = std::path::Path::new(&source_path);
+
+    if !source.exists() {
+        return Err("Source file does not exist".to_string());
+    }
+
+    // Ensure business directory exists
+    let business_dir = get_business_dir();
+    if !business_dir.exists() {
+        fs::create_dir_all(&business_dir)
+            .map_err(|e| format!("Failed to create business directory: {}", e))?;
+    }
+
+    // Get original extension or default to png
+    let extension = source.extension().and_then(|e| e.to_str()).unwrap_or("png");
+
+    // Generate unique filename to avoid conflicts
+    let filename = format!("logo_{}.{}", uuid::Uuid::new_v4(), extension);
+    let dest_path = business_dir.join(&filename);
+
+    // Copy file
+    fs::copy(&source, &dest_path).map_err(|e| format!("Failed to copy logo file: {}", e))?;
+
+    // Return relative path from data directory
+    Ok(format!("business/{}", filename))
+}
+
+/// Get business logo as base64 data URL
+#[tauri::command]
+pub fn get_business_logo(logo_path: String) -> Result<Option<String>, String> {
+    if logo_path.is_empty() {
+        return Ok(None);
+    }
+
+    let data_dir = get_data_dir_path();
+    let full_path = data_dir.join(&logo_path);
+
+    if !full_path.exists() {
+        return Ok(None);
+    }
+
+    let data = fs::read(&full_path).map_err(|e| format!("Failed to read logo: {}", e))?;
+
+    use base64::Engine;
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+
+    // Determine MIME type from extension
+    let mime = if logo_path.ends_with(".png") {
+        "image/png"
+    } else if logo_path.ends_with(".ico") {
+        "image/x-icon"
+    } else if logo_path.ends_with(".jpg") || logo_path.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if logo_path.ends_with(".bmp") {
+        "image/bmp"
+    } else {
+        "image/png"
+    };
+
+    Ok(Some(format!("data:{};base64,{}", mime, base64_data)))
+}

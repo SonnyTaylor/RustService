@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import * as dialog from '@tauri-apps/plugin-dialog';
 import {
   Settings,
   Palette,
@@ -28,6 +29,8 @@ import {
   X,
   ImageIcon,
   User,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -588,10 +591,11 @@ function BusinessPanel() {
   const [localPhone, setLocalPhone] = useState('');
   const [localEmail, setLocalEmail] = useState('');
   const [localWebsite, setLocalWebsite] = useState('');
-  const [localLogoPath, setLocalLogoPath] = useState('');
   const [localTfn, setLocalTfn] = useState('');
   const [localAbn, setLocalAbn] = useState('');
   const [initialized, setInitialized] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const business = settings.business ?? DEFAULT_BUSINESS;
 
@@ -603,10 +607,13 @@ function BusinessPanel() {
       setLocalPhone(business.phone);
       setLocalEmail(business.email);
       setLocalWebsite(business.website);
-      setLocalLogoPath(business.logoPath ?? '');
       setLocalTfn(business.tfn);
       setLocalAbn(business.abn);
       setInitialized(true);
+      // Load logo preview on initialization
+      if (business.logoPath) {
+        loadLogoPreview(business.logoPath);
+      }
     }
   }, [business, isLoading, initialized]);
 
@@ -618,9 +625,12 @@ function BusinessPanel() {
       setLocalPhone(business.phone);
       setLocalEmail(business.email);
       setLocalWebsite(business.website);
-      setLocalLogoPath(business.logoPath ?? '');
       setLocalTfn(business.tfn);
       setLocalAbn(business.abn);
+      // Load logo preview
+      if (business.logoPath) {
+        loadLogoPreview(business.logoPath);
+      }
     }
   }, [business.enabled]);
 
@@ -629,6 +639,54 @@ function BusinessPanel() {
   };
 
   // Save on blur instead of on every keystroke
+  // Load logo preview from backend
+  const loadLogoPreview = async (logoPath: string) => {
+    if (logoPath) {
+      try {
+        const url = await invoke<string | null>('get_business_logo', { logoPath });
+        setLogoPreview(url);
+      } catch {
+        setLogoPreview(null);
+      }
+    } else {
+      setLogoPreview(null);
+    }
+  };
+
+  // Browse and upload business logo
+  const handleBrowseLogo = async () => {
+    try {
+      const selected = await dialog.open({
+        multiple: false,
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico', 'bmp'] }],
+      });
+
+      if (selected) {
+        setIsUploadingLogo(true);
+        try {
+          // Save the logo to data directory and get relative path
+          const savedPath = await invoke<string>('save_business_logo', {
+            sourcePath: selected,
+          });
+          await updateSetting('business.logoPath', savedPath);
+          await loadLogoPreview(savedPath);
+        } catch (e) {
+          console.error('Failed to save logo:', e);
+        } finally {
+          setIsUploadingLogo(false);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to open file dialog:', e);
+    }
+  };
+
+  // Clear the logo
+  const handleClearLogo = async () => {
+    setLogoPreview(null);
+    await updateSetting('business.logoPath', '');
+  };
+
   const handleFieldBlur = async (field: keyof BusinessSettings, value: string) => {
     const currentValue = field === 'logoPath' ? (business.logoPath ?? '') : (business[field] as string);
     if (value !== currentValue) {
@@ -774,16 +832,57 @@ function BusinessPanel() {
                     disabled={isLoading}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="business-logo">Logo Path (optional)</Label>
-                  <Input
-                    id="business-logo"
-                    placeholder="business-logo.png"
-                    value={localLogoPath}
-                    onChange={(e) => setLocalLogoPath(e.target.value)}
-                    onBlur={() => handleFieldBlur('logoPath', localLogoPath)}
-                    disabled={isLoading}
-                  />
+              </div>
+
+              {/* Business Logo - Full Width */}
+              <div className="space-y-2">
+                <Label>Business Logo (optional)</Label>
+                <div className="flex items-center gap-4">
+                  {/* Logo Preview */}
+                  <div className="w-20 h-20 rounded-lg border-2 border-dashed bg-muted/50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {isUploadingLogo ? (
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    ) : logoPreview ? (
+                      <img
+                        src={logoPreview}
+                        alt="Business logo preview"
+                        className="w-full h-full object-contain"
+                        onError={() => setLogoPreview(null)}
+                      />
+                    ) : (
+                      <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
+                    )}
+                  </div>
+
+                  {/* Upload/Change Button */}
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBrowseLogo}
+                      disabled={isLoading || isUploadingLogo}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {logoPreview ? 'Change Logo' : 'Upload Logo'}
+                    </Button>
+                    {logoPreview && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearLogo}
+                        disabled={isLoading}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Remove Logo
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Supports PNG, JPG, ICO, BMP
+                    </p>
+                  </div>
                 </div>
               </div>
 

@@ -6,8 +6,9 @@
  * Includes findings view, technician printout, and customer printout tabs.
  */
 
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useReactToPrint } from 'react-to-print';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Wrench,
   ArrowLeft,
@@ -64,7 +65,19 @@ interface PrintableReportProps {
 }
 
 const PrintableReport = ({ report, definitions, variant, businessSettings }: PrintableReportProps) => {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+  // Load business logo
+  useEffect(() => {
+    if (businessSettings?.logoPath) {
+      invoke<string | null>('get_business_logo', { logoPath: businessSettings.logoPath })
+        .then(url => setLogoUrl(url))
+        .catch(() => setLogoUrl(null));
+    } else {
+      setLogoUrl(null);
+    }
+  }, [businessSettings?.logoPath]);
 
   const totalDuration = report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) : '?';
   const successCount = report.results.filter((r) => r.success).length;
@@ -99,10 +112,21 @@ const PrintableReport = ({ report, definitions, variant, businessSettings }: Pri
         {/* Header with Business Branding */}
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-start gap-4">
-            {/* Business Logo Placeholder */}
+            {/* Business Logo */}
             {hasBusiness && (
-              <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold shrink-0">
-                {businessName.charAt(0).toUpperCase()}
+              <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0 overflow-hidden">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={businessName}
+                    className="w-full h-full object-contain"
+                    onError={() => setLogoUrl(null)}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
+                    {businessName.charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
             )}
             <div>
