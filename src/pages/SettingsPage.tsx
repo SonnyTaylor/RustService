@@ -1125,7 +1125,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex min-h-0 overflow-hidden">
       {/* Sidebar */}
       <SettingsSidebar
         activeCategory={activeCategory}
@@ -1133,7 +1133,7 @@ export function SettingsPage() {
       />
 
       {/* Content Panel */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-8">
           {renderPanel()}
         </div>

@@ -1229,8 +1229,8 @@ const TEST_TABS = [
 
 export function ComponentTestPage() {
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <ScrollArea className="flex-1 h-full">
+  <div className="h-full flex flex-col overflow-hidden min-h-0">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6 space-y-6">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-2">

@@ -93,7 +93,7 @@ function App() {
             <TabsContent
               key={id}
               value={id}
-              className="flex-1 m-0 overflow-hidden"
+              className="flex-1 m-0 overflow-hidden min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
             >
               <Component />
             </TabsContent>

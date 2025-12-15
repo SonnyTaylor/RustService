@@ -182,7 +182,7 @@ function ReportCard({ report, onView, onDelete }: ReportCardProps) {
 
   return (
     <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50">
-      <CardContent className="p-4">
+      <CardContent className="p-4 py-0">
         <div className="flex items-start gap-4">
           {/* Status Icon */}
           <div className={`p-3 rounded-xl border ${statusInfo.bgColor}`}>
@@ -414,7 +414,7 @@ export function ReportsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden min-h-0">
       {/* Header */}
       <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -498,7 +498,7 @@ export function ReportsPage() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1 h-full">
+      <ScrollArea className="flex-1 min-h-0">
         {reports.length === 0 ? (
           <EmptyState />
         ) : filteredReports.length === 0 ? (

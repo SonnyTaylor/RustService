@@ -539,7 +539,7 @@ function ProgramCard({
 
   return (
     <Card className="group hover:shadow-md transition-all duration-200 hover:border-primary/50 w-full">
-      <CardContent className="p-3 py-2">
+      <CardContent className="p-3 py-0">
         <div className="flex items-start gap-3">
           {/* Icon */}
           <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -797,7 +797,7 @@ export function ProgramsPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden min-h-0">
       {/* Header */}
       <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -854,7 +854,7 @@ export function ProgramsPage() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1 h-full">
+      <ScrollArea className="flex-1 min-h-0">
         {programs.length === 0 ? (
           <EmptyState onAddClick={handleAddProgram} />
         ) : filteredPrograms.length === 0 ? (

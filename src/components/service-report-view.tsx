@@ -575,7 +575,7 @@ export function ServiceReportView({
 
         <div className="flex-1 min-h-0">
           <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">
-            <ScrollArea className="flex-1 p-6">
+              <ScrollArea className="flex-1 min-h-0 p-6">
               <FindingsContent />
             </ScrollArea>
           </TabsContent>

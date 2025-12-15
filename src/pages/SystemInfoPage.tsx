@@ -176,8 +176,8 @@ export function SystemInfoPage() {
   if (!systemInfo) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <ScrollArea className="flex-1 h-full">
+    <div className="h-full flex flex-col overflow-hidden min-h-0">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6 space-y-6">
       {/* Header with refresh button */}
       <div className="flex items-center justify-between">

@@ -311,7 +311,7 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
       <Separator className="mx-6" />
 
       {/* 4-Column Preset Grid */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {presets.map((preset) => {
@@ -475,7 +475,7 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
       <Separator className="mx-6" />
 
       {/* Queue List */}
-      <ScrollArea className="flex-1 px-6 py-4">
+      <ScrollArea className="flex-1 min-h-0 px-6 py-4">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -604,7 +604,7 @@ function RunnerView({ report, definitions, logs, onCancel, onBack }: RunnerViewP
       <Separator className="mx-6" />
 
       {/* Logs */}
-      <ScrollArea className="flex-1 p-6">
+      <ScrollArea className="flex-1 min-h-0 p-6">
         <div className="font-mono text-sm space-y-1.5 bg-muted/30 rounded-xl p-4 border">
           {logs.length === 0 && (
             <div className="text-muted-foreground animate-pulse">Starting services...</div>
@@ -842,7 +842,7 @@ export function ServicePage() {
   }
 
   return (
-    <div className="h-full overflow-hidden">
+    <div className="h-full overflow-hidden min-h-0 flex flex-col">
       {phase === 'presets' && (
         <PresetsView presets={presets} onSelectPreset={handleSelectPreset} />
       )}

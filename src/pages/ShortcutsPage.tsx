@@ -286,7 +286,7 @@ export function ShortcutsPage() {
   const filteredCount = filteredCategories.reduce((acc, cat) => acc + cat.shortcuts.length, 0);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden min-h-0">
       {/* Header */}
       <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -317,7 +317,7 @@ export function ShortcutsPage() {
       </div>
 
       {/* Shortcuts grid */}
-      <ScrollArea className="flex-1 h-full">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6 space-y-6">
           {filteredCategories.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
