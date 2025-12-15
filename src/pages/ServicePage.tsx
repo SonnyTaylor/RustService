@@ -1096,9 +1096,15 @@ export function ServicePage() {
     const unsubscribers: (() => void)[] = [];
 
     const setupListeners = async () => {
-      // Log events
+      // Log events - deduplicate consecutive identical logs
       const unsubLog = await listen<{ serviceId: string; log: string }>('service-log', (event) => {
-        setLogs((prev) => [...prev, event.payload.log]);
+        setLogs((prev) => {
+          // Avoid duplicate consecutive logs (can happen with StrictMode)
+          if (prev.length > 0 && prev[prev.length - 1] === event.payload.log) {
+            return prev;
+          }
+          return [...prev, event.payload.log];
+        });
       });
       unsubscribers.push(unsubLog);
 

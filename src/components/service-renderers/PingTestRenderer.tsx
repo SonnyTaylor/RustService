@@ -83,8 +83,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   return (
     <div className="space-y-4">
       {/* Network Status Overview */}
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3 bg-gradient-to-r from-blue-500/10 to-cyan-500/10">
+      <Card className="overflow-hidden pt-0">
+        <CardHeader className="py-4 bg-gradient-to-r from-blue-500/10 to-cyan-500/10">
           <CardTitle className="text-base flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-500/20">
               <Wifi className="h-5 w-5 text-blue-500" />
@@ -99,7 +99,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="p-4">
           <div className="grid grid-cols-2 gap-4">
             {/* Latency Card */}
             {latencyData && (
