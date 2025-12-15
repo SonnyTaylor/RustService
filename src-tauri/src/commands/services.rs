@@ -267,3 +267,38 @@ pub fn list_service_reports() -> Result<Vec<ServiceReport>, String> {
 
     Ok(reports)
 }
+
+/// Delete a saved report by ID
+#[tauri::command]
+pub fn delete_report(report_id: String) -> Result<(), String> {
+    let file_path = get_reports_dir().join(format!("{}.json", report_id));
+
+    if !file_path.exists() {
+        return Err(format!("Report not found: {}", report_id));
+    }
+
+    fs::remove_file(&file_path).map_err(|e| format!("Failed to delete report: {}", e))
+}
+
+/// Delete all saved reports
+#[tauri::command]
+pub fn clear_all_reports() -> Result<u32, String> {
+    let reports_dir = get_reports_dir();
+    if !reports_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut deleted_count = 0u32;
+    let entries =
+        fs::read_dir(&reports_dir).map_err(|e| format!("Failed to read reports dir: {}", e))?;
+
+    for entry in entries.flatten() {
+        if entry.path().extension().map_or(false, |ext| ext == "json") {
+            if fs::remove_file(entry.path()).is_ok() {
+                deleted_count += 1;
+            }
+        }
+    }
+
+    Ok(deleted_count)
+}

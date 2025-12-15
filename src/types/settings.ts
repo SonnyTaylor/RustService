@@ -176,6 +176,18 @@ export interface DataSettings {
   logLevel: LogLevel;
 }
 
+/**
+ * Report-related settings
+ */
+export interface ReportsSettings {
+  /** Whether to automatically save reports when services complete */
+  autoSaveReports: boolean;
+  /** Number of days to retain reports (0 = keep forever) */
+  reportRetentionDays: number;
+  /** Whether to include detailed logs in saved reports */
+  includeLogsInReport: boolean;
+}
+
 // =============================================================================
 // Main Settings Interface
 // =============================================================================
@@ -197,6 +209,8 @@ export interface AppSettings {
   appearance: AppearanceSettings;
   /** Data and storage settings */
   data: DataSettings;
+  /** Report-related settings */
+  reports: ReportsSettings;
 }
 
 // =============================================================================
@@ -219,12 +233,22 @@ export const DEFAULT_DATA: DataSettings = {
 };
 
 /**
+ * Default reports settings
+ */
+export const DEFAULT_REPORTS: ReportsSettings = {
+  autoSaveReports: true,
+  reportRetentionDays: 0,
+  includeLogsInReport: true,
+};
+
+/**
  * Default application settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: '0.4.0',
+  version: '0.5.0',
   appearance: DEFAULT_APPEARANCE,
   data: DEFAULT_DATA,
+  reports: DEFAULT_REPORTS,
 };
 
 // =============================================================================
@@ -237,7 +261,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export type SettingKey =
   | 'appearance.theme'
   | 'appearance.colorScheme'
-  | 'data.logLevel';
+  | 'data.logLevel'
+  | 'reports.autoSaveReports'
+  | 'reports.reportRetentionDays'
+  | 'reports.includeLogsInReport';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -246,9 +273,12 @@ export type SettingValueType<K extends SettingKey> =
   K extends 'appearance.theme' ? ThemeMode :
   K extends 'appearance.colorScheme' ? ColorScheme :
   K extends 'data.logLevel' ? LogLevel :
+  K extends 'reports.autoSaveReports' ? boolean :
+  K extends 'reports.reportRetentionDays' ? number :
+  K extends 'reports.includeLogsInReport' ? boolean :
   never;
 
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'about';

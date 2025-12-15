@@ -120,6 +120,18 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.data.log_level = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid logLevel value: {}", e))?;
         }
+        ["reports", "autoSaveReports"] => {
+            settings.reports.auto_save_reports = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid autoSaveReports value: {}", e))?;
+        }
+        ["reports", "reportRetentionDays"] => {
+            settings.reports.report_retention_days = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid reportRetentionDays value: {}", e))?;
+        }
+        ["reports", "includeLogsInReport"] => {
+            settings.reports.include_logs_in_report = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid includeLogsInReport value: {}", e))?;
+        }
         _ => {
             return Err(format!("Unknown setting key: {}", key));
         }

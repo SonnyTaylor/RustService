@@ -48,6 +48,39 @@ impl Default for DataSettings {
     }
 }
 
+/// Report-related settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportsSettings {
+    /// Whether to automatically save reports when services complete
+    #[serde(default = "default_auto_save")]
+    pub auto_save_reports: bool,
+    /// Number of days to retain reports (0 = keep forever)
+    #[serde(default)]
+    pub report_retention_days: u32,
+    /// Whether to include detailed logs in saved reports
+    #[serde(default = "default_include_logs")]
+    pub include_logs_in_report: bool,
+}
+
+fn default_auto_save() -> bool {
+    true
+}
+
+fn default_include_logs() -> bool {
+    true
+}
+
+impl Default for ReportsSettings {
+    fn default() -> Self {
+        Self {
+            auto_save_reports: true,
+            report_retention_days: 0,
+            include_logs_in_report: true,
+        }
+    }
+}
+
 /// Main application settings schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +93,9 @@ pub struct AppSettings {
     /// Data and storage settings
     #[serde(default)]
     pub data: DataSettings,
+    /// Report settings
+    #[serde(default)]
+    pub reports: ReportsSettings,
 }
 
 impl Default for AppSettings {
@@ -68,6 +104,7 @@ impl Default for AppSettings {
             version: String::from(SETTINGS_VERSION),
             appearance: AppearanceSettings::default(),
             data: DataSettings::default(),
+            reports: ReportsSettings::default(),
         }
     }
 }
