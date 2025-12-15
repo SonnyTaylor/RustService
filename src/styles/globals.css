@@ -155,79 +155,81 @@
 }
 
 /* =============================================================================
-   Retro Terminal Theme
-   Apply with: .theme-retro-terminal on <html>
+   AutoService Theme (homage to original AutoService)
+   Apply with: .theme-autoservice on <html>
    ============================================================================= */
 
-.theme-retro-terminal {
-  --background: #e0e0e0;
-  --foreground: #00a000;
-  --card: #d0d0d0;
-  --card-foreground: #00a000;
-  --popover: #d0d0d0;
-  --popover-foreground: #00a000;
-  --primary: #007000;
+.theme-autoservice {
+  color-scheme: dark;
+  --background: #0f1115;
+  --foreground: #e6eaf2;
+  --card: #1f2430;
+  --card-foreground: #e6eaf2;
+  --popover: #1f2430;
+  --popover-foreground: #e6eaf2;
+  --primary: #4f8cff;
   --primary-foreground: #ffffff;
-  --secondary: #b0b0b0;
-  --secondary-foreground: #00a000;
-  --muted: #c0c0c0;
-  --muted-foreground: #008000;
-  --accent: #c0c0c0;
-  --accent-foreground: #00a000;
-  --destructive: #ff6060;
+  --secondary: #202636;
+  --secondary-foreground: #e6eaf2;
+  --muted: #171a21;
+  --muted-foreground: #a3adbf;
+  --accent: #263043;
+  --accent-foreground: #e6eaf2;
+  --destructive: #c94442;
   --destructive-foreground: #ffffff;
-  --border: #00a000;
-  --input: #d0d0d0;
-  --ring: #00a000;
-  --chart-1: #00a000;
-  --chart-2: #00c000;
-  --chart-3: #008000;
-  --chart-4: #006000;
-  --chart-5: #004000;
-  --sidebar: #c0c0c0;
-  --sidebar-foreground: #00a000;
-  --sidebar-primary: #007000;
+  --border: #2e384f;
+  --input: #1b2130;
+  --ring: #335d9b;
+  --chart-1: #4f8cff;
+  --chart-2: #3d6fd1;
+  --chart-3: #a3adbf;
+  --chart-4: #263043;
+  --chart-5: #171a21;
+  --sidebar: #171a21;
+  --sidebar-foreground: #e6eaf2;
+  --sidebar-primary: #4f8cff;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #c0c0c0;
-  --sidebar-accent-foreground: #00a000;
-  --sidebar-border: #00a000;
-  --sidebar-ring: #00a000;
-  --radius: 0rem;
+  --sidebar-accent: #202636;
+  --sidebar-accent-foreground: #e6eaf2;
+  --sidebar-border: #2e384f;
+  --sidebar-ring: #335d9b;
+  --radius: 0.625rem;
 }
 
-.theme-retro-terminal.dark {
-  --background: #000000;
-  --foreground: #22ff22;
-  --card: #101010;
-  --card-foreground: #22ff22;
-  --popover: #101010;
-  --popover-foreground: #22ff22;
-  --primary: #008000;
-  --primary-foreground: #f0f0f0;
-  --secondary: #202020;
-  --secondary-foreground: #22ff22;
-  --muted: #151515;
-  --muted-foreground: #00a000;
-  --accent: #151515;
-  --accent-foreground: #22ff22;
-  --destructive: #ff0000;
-  --destructive-foreground: #f0f0f0;
-  --border: #22ff22;
-  --input: #101010;
-  --ring: #22ff22;
-  --chart-1: #22ff22;
-  --chart-2: #00ff00;
-  --chart-3: #00e000;
-  --chart-4: #00c000;
-  --chart-5: #00a000;
-  --sidebar: #050505;
-  --sidebar-foreground: #22ff22;
-  --sidebar-primary: #008000;
-  --sidebar-primary-foreground: #f0f0f0;
-  --sidebar-accent: #151515;
-  --sidebar-accent-foreground: #22ff22;
-  --sidebar-border: #22ff22;
-  --sidebar-ring: #22ff22;
+.theme-autoservice.dark {
+  color-scheme: dark;
+  --background: #0f1115;
+  --foreground: #e6eaf2;
+  --card: #1f2430;
+  --card-foreground: #e6eaf2;
+  --popover: #1f2430;
+  --popover-foreground: #e6eaf2;
+  --primary: #4f8cff;
+  --primary-foreground: #ffffff;
+  --secondary: #202636;
+  --secondary-foreground: #e6eaf2;
+  --muted: #171a21;
+  --muted-foreground: #a3adbf;
+  --accent: #263043;
+  --accent-foreground: #e6eaf2;
+  --destructive: #c94442;
+  --destructive-foreground: #ffffff;
+  --border: #2e384f;
+  --input: #1b2130;
+  --ring: #335d9b;
+  --chart-1: #4f8cff;
+  --chart-2: #3d6fd1;
+  --chart-3: #a3adbf;
+  --chart-4: #263043;
+  --chart-5: #171a21;
+  --sidebar: #171a21;
+  --sidebar-foreground: #e6eaf2;
+  --sidebar-primary: #4f8cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #202636;
+  --sidebar-accent-foreground: #e6eaf2;
+  --sidebar-border: #2e384f;
+  --sidebar-ring: #335d9b;
 }
 
 /* =============================================================================
@@ -809,7 +811,9 @@
   * {
     @apply border-border outline-ring/50;
   }
-  html, body, #root {
+  html,
+  body,
+  #root {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
@@ -882,6 +886,73 @@
 .titlebar-button-close:hover {
   background-color: #c94442;
   color: white;
+}
+
+/* =============================================================================
+   AutoService chrome tweaks
+   (Scoped overrides to better match the original AutoService UI)
+   ============================================================================= */
+
+.theme-autoservice .titlebar {
+  height: 34px;
+  background: linear-gradient(90deg, #141923, #1b2230);
+  padding: 0 6px 0 10px;
+  gap: 8px;
+}
+
+.theme-autoservice .titlebar-drag-region {
+  padding-left: 0;
+}
+
+.theme-autoservice .titlebar-title {
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--muted-foreground);
+}
+
+.theme-autoservice .titlebar-controls {
+  padding-right: 0;
+  gap: 0;
+}
+
+.theme-autoservice .titlebar-button {
+  width: 38px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+
+.theme-autoservice .titlebar-button:hover {
+  background-color: #243048;
+  color: var(--foreground);
+}
+
+.theme-autoservice .titlebar-button-close:hover {
+  background-color: #5b2b2b;
+  color: #ffdddd;
+}
+
+.theme-autoservice [role='tablist'] {
+  background: #171a21;
+  border-bottom: 1px solid var(--border);
+}
+
+.theme-autoservice [role='tab'] {
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.theme-autoservice [role='tab']:hover {
+  color: var(--foreground);
+  background: #1f2430;
+}
+
+.theme-autoservice [role='tab'][data-state='active'] {
+  color: var(--foreground);
+  background: #21304a;
+  border-color: #2b416b;
+  box-shadow: none;
 }
 
 /* Touch/pen input support for Windows */

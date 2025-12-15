@@ -19,7 +19,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
  * Available color schemes (CSS class names applied to html element)
  * Add new schemes here and in globals.css with .theme-{name} class
  */
-export type ColorScheme = 'default' | 'techbay' | 'retro-terminal' | 'amber-minimal' | 'amethyst-haze' | 'catppuccin' | 'supabase' | 'nature' | 'cyberpunk' | 'claude';
+export type ColorScheme = 'default' | 'techbay' | 'autoservice' | 'amber-minimal' | 'amethyst-haze' | 'catppuccin' | 'supabase' | 'nature' | 'cyberpunk' | 'claude';
 
 /**
  * Combined theme (for backwards compatibility)
@@ -73,13 +73,13 @@ export const COLOR_SCHEMES: ColorSchemeInfo[] = [
     },
   },
   {
-    id: 'retro-terminal',
-    name: 'Retro Terminal',
-    description: 'Classic green terminal aesthetic',
+    id: 'autoservice',
+    name: 'AutoService',
+    description: 'Original AutoService-inspired dark UI',
     preview: {
-      primary: '#007000',
-      accent: '#00a000',
-      background: '#e0e0e0',
+      primary: '#4f8cff',
+      accent: '#1f2430',
+      background: '#0f1115',
     },
   },
   {

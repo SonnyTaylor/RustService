@@ -10,6 +10,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { COLOR_SCHEMES } from '@/types/settings';
 import type { ThemeMode, ColorScheme, AppSettings } from '@/types/settings';
 
 interface ThemeProviderContextType {
@@ -88,12 +89,17 @@ export function ThemeProvider({
         const savedTheme = settings?.appearance?.theme || 
           (settings as unknown as { theme?: ThemeMode })?.theme;
         const savedScheme = settings?.appearance?.colorScheme;
+
+        const isValidScheme = (scheme: unknown): scheme is ColorScheme =>
+          typeof scheme === 'string' && COLOR_SCHEMES.some(s => s.id === scheme);
         
         if (savedTheme) {
           setThemeModeState(savedTheme as ThemeMode);
         }
-        if (savedScheme) {
-          setColorSchemeState(savedScheme as ColorScheme);
+        if (savedScheme && isValidScheme(savedScheme)) {
+          setColorSchemeState(savedScheme);
+        } else if (savedScheme) {
+          setColorSchemeState('default');
         }
       } catch (error) {
         console.warn('Failed to load theme settings:', error);
