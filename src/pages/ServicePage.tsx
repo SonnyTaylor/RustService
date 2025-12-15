@@ -225,54 +225,78 @@ interface PresetsViewProps {
   onSelectPreset: (preset: ServicePreset) => void;
 }
 
+// Preset gradient colors for visual distinction
+const PRESET_GRADIENTS: Record<string, { from: string; to: string; accent: string; bullet: string }> = {
+  diagnostics: { from: 'from-blue-500/20', to: 'to-cyan-500/10', accent: 'text-blue-500', bullet: 'bg-blue-500' },
+  general: { from: 'from-emerald-500/20', to: 'to-green-500/10', accent: 'text-emerald-500', bullet: 'bg-emerald-500' },
+  complete: { from: 'from-violet-500/20', to: 'to-purple-500/10', accent: 'text-violet-500', bullet: 'bg-violet-500' },
+  custom: { from: 'from-amber-500/20', to: 'to-orange-500/10', accent: 'text-amber-500', bullet: 'bg-amber-500' },
+};
+
 function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
-  // Detailed descriptions for each preset
-  const presetDetails: Record<string, string[]> = {
-    diagnostics: [
-      'SMART Disk Report',
-      'Disk Space Analysis',
-      'Windows Satisfaction Report',
-      'Battery Health',
-      'Network Tests (Ping & Speed)',
-    ],
-    general: [
-      'Adware & Malware Removal (ADWCleaner)',
-      'Virus Scanning (KVRT)',
-      'Registry & Junk Cleanup (BleachBit)',
-      'Drive Cleanup (DriveCleanup)',
-      'Browser Notifications Disable',
-      'Startup Programs Disable',
-      'System Diagnostics (SMART, Disk Space, Battery, Disk Performance)',
-      'Network Tests',
-    ],
-    complete: [
-      'All General Service tasks',
-      'System File Check (SFC Scan)',
-      'Windows Image Repair (DISM)',
-      'Disk Check (ChkDsk)',
-      'Windows Update Check',
-      'Extended Network Testing (10 min iPerf)',
-    ],
-    custom: [
-      'Pick and choose from all services',
-      'Configure options per service',
-      'Reorder execution queue',
-      'Save as custom preset',
-    ],
+  // Detailed descriptions for each preset with task counts
+  const presetDetails: Record<string, { tasks: string[]; badge: string; description: string }> = {
+    diagnostics: {
+      description: 'Quick system health check',
+      badge: '5 tasks',
+      tasks: [
+        'SMART Disk Report',
+        'Disk Space Analysis',
+        'Windows Satisfaction Report',
+        'Battery Health',
+        'Network Tests (Ping & Speed)',
+      ],
+    },
+    general: {
+      description: 'Standard maintenance service',
+      badge: '8 tasks',
+      tasks: [
+        'Adware & Malware Removal (ADWCleaner)',
+        'Virus Scanning (KVRT)',
+        'Registry & Junk Cleanup (BleachBit)',
+        'Drive Cleanup (DriveCleanup)',
+        'Browser Notifications Disable',
+        'Startup Programs Disable',
+        'System Diagnostics',
+        'Network Tests',
+      ],
+    },
+    complete: {
+      description: 'Full system maintenance & repair',
+      badge: '12+ tasks',
+      tasks: [
+        'All General Service tasks',
+        'System File Check (SFC Scan)',
+        'Windows Image Repair (DISM)',
+        'Disk Check (ChkDsk)',
+        'Windows Update Check',
+        'Extended Network Testing (10 min iPerf)',
+      ],
+    },
+    custom: {
+      description: 'Build your own service queue',
+      badge: 'Flexible',
+      tasks: [
+        'Pick and choose from all services',
+        'Configure options per service',
+        'Reorder execution queue',
+        'Save as custom preset',
+      ],
+    },
   };
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-6 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-muted">
-            <Wrench className="h-5 w-5 text-foreground" />
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10">
+            <Wrench className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold">Service Presets</h2>
-            <p className="text-sm text-muted-foreground">
-              Select a preset or configure custom services
+            <h2 className="text-2xl font-bold">Service Presets</h2>
+            <p className="text-muted-foreground">
+              Choose a preset to get started, or create a custom service queue
             </p>
           </div>
         </div>
@@ -283,38 +307,74 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
       {/* 4-Column Preset Grid */}
       <ScrollArea className="flex-1">
         <div className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {presets.map((preset) => {
               const Icon = getIcon(preset.icon);
-              const details = presetDetails[preset.id] || [];
+              const details = presetDetails[preset.id] || { tasks: [], badge: '', description: '' };
+              const gradient = PRESET_GRADIENTS[preset.id] || PRESET_GRADIENTS.custom;
 
               return (
                 <Card
                   key={preset.id}
-                  className="group cursor-pointer transition-all duration-150 hover:bg-muted/50 border hover:border-foreground/20 flex flex-col"
+                  className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 border-2 hover:border-primary/30 flex flex-col bg-card/50 backdrop-blur-sm overflow-hidden !py-0 !gap-0"
                   onClick={() => onSelectPreset(preset)}
                 >
-                  <CardHeader className="pb-2 pt-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-md bg-muted group-hover:bg-background transition-colors shrink-0">
-                        <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  {/* Gradient Header */}
+                  <div className={`bg-gradient-to-br ${gradient.from} ${gradient.to} p-5`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-xl bg-background/80 shadow-sm backdrop-blur-sm ${gradient.accent} transition-transform group-hover:scale-110 duration-200`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base font-semibold group-hover:text-primary transition-colors">
+                            {preset.name}
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {details.description}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-sm font-medium">{preset.name}</CardTitle>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform shrink-0" />
+                      <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0 mt-1" />
                     </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-4 flex-1">
-                    <ul className="space-y-1">
-                      {details.map((item, idx) => (
-                        <li key={idx} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                          <span className="text-muted-foreground/60 mt-1">•</span>
+                    
+                    {/* Badge */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-background/60 backdrop-blur-sm ${gradient.accent}`}>
+                        {details.badge}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Task List */}
+                  <div className="px-5 py-4 flex-1">
+                    <ul className="space-y-2">
+                      {details.tasks.slice(0, 6).map((item, idx) => (
+                        <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2 group-hover:text-foreground/80 transition-colors">
+                          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${gradient.bullet}`} />
                           <span className="leading-tight">{item}</span>
                         </li>
                       ))}
+                      {details.tasks.length > 6 && (
+                        <li className="text-xs text-muted-foreground italic pl-3.5">
+                          +{details.tasks.length - 6} more tasks...
+                        </li>
+                      )}
                     </ul>
-                  </CardContent>
+                  </div>
+                  
+                  {/* Footer CTA */}
+                  <div className="px-5 py-3.5 border-t bg-muted/30 group-hover:bg-primary/5 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">
+                        Click to configure
+                      </span>
+                      <div className="flex items-center gap-1 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                        Start
+                        <ChevronRight className="h-3 w-3" />
+                      </div>
+                    </div>
+                  </div>
                 </Card>
               );
             })}
