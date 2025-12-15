@@ -5,7 +5,7 @@
  * Features a modern, spacious layout with cards that fill the available space.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Settings,
@@ -581,15 +581,59 @@ function BusinessPanel() {
   const [newTechnician, setNewTechnician] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
+  
+  // Local state for form fields - prevents race conditions when typing
+  const [localName, setLocalName] = useState('');
+  const [localAddress, setLocalAddress] = useState('');
+  const [localPhone, setLocalPhone] = useState('');
+  const [localEmail, setLocalEmail] = useState('');
+  const [localWebsite, setLocalWebsite] = useState('');
+  const [localLogoPath, setLocalLogoPath] = useState('');
+  const [localTfn, setLocalTfn] = useState('');
+  const [localAbn, setLocalAbn] = useState('');
+  const [initialized, setInitialized] = useState(false);
 
   const business = settings.business ?? DEFAULT_BUSINESS;
+
+  // Initialize local state from settings when they load
+  useEffect(() => {
+    if (!isLoading && !initialized) {
+      setLocalName(business.name);
+      setLocalAddress(business.address);
+      setLocalPhone(business.phone);
+      setLocalEmail(business.email);
+      setLocalWebsite(business.website);
+      setLocalLogoPath(business.logoPath ?? '');
+      setLocalTfn(business.tfn);
+      setLocalAbn(business.abn);
+      setInitialized(true);
+    }
+  }, [business, isLoading, initialized]);
+
+  // Reset initialized when business mode is toggled to re-sync
+  useEffect(() => {
+    if (business.enabled) {
+      setLocalName(business.name);
+      setLocalAddress(business.address);
+      setLocalPhone(business.phone);
+      setLocalEmail(business.email);
+      setLocalWebsite(business.website);
+      setLocalLogoPath(business.logoPath ?? '');
+      setLocalTfn(business.tfn);
+      setLocalAbn(business.abn);
+    }
+  }, [business.enabled]);
 
   const handleToggleEnabled = async (checked: boolean) => {
     await updateSetting('business.enabled', checked);
   };
 
-  const handleFieldChange = async (field: keyof BusinessSettings, value: string) => {
-    await updateSetting(`business.${field}` as 'business.name', value);
+  // Save on blur instead of on every keystroke
+  const handleFieldBlur = async (field: keyof BusinessSettings, value: string) => {
+    const currentValue = field === 'logoPath' ? (business.logoPath ?? '') : (business[field] as string);
+    if (value !== currentValue) {
+      await updateSetting(`business.${field}` as 'business.name', value);
+    }
   };
 
   const handleAddTechnician = async () => {
@@ -680,8 +724,9 @@ function BusinessPanel() {
                   <Input
                     id="business-name"
                     placeholder="Techbay Computer Specialists"
-                    value={business.name}
-                    onChange={(e) => handleFieldChange('name', e.target.value)}
+                    value={localName}
+                    onChange={(e) => setLocalName(e.target.value)}
+                    onBlur={() => handleFieldBlur('name', localName)}
                     disabled={isLoading}
                   />
                 </div>
@@ -690,8 +735,9 @@ function BusinessPanel() {
                   <Input
                     id="business-address"
                     placeholder="336 Highett Rd, Highett VIC 3190"
-                    value={business.address}
-                    onChange={(e) => handleFieldChange('address', e.target.value)}
+                    value={localAddress}
+                    onChange={(e) => setLocalAddress(e.target.value)}
+                    onBlur={() => handleFieldBlur('address', localAddress)}
                     disabled={isLoading}
                   />
                 </div>
@@ -700,8 +746,9 @@ function BusinessPanel() {
                   <Input
                     id="business-phone"
                     placeholder="03 9554 4321"
-                    value={business.phone}
-                    onChange={(e) => handleFieldChange('phone', e.target.value)}
+                    value={localPhone}
+                    onChange={(e) => setLocalPhone(e.target.value)}
+                    onBlur={() => handleFieldBlur('phone', localPhone)}
                     disabled={isLoading}
                   />
                 </div>
@@ -710,8 +757,9 @@ function BusinessPanel() {
                   <Input
                     id="business-email"
                     placeholder="admin@techbay.net.au"
-                    value={business.email}
-                    onChange={(e) => handleFieldChange('email', e.target.value)}
+                    value={localEmail}
+                    onChange={(e) => setLocalEmail(e.target.value)}
+                    onBlur={() => handleFieldBlur('email', localEmail)}
                     disabled={isLoading}
                   />
                 </div>
@@ -720,8 +768,9 @@ function BusinessPanel() {
                   <Input
                     id="business-website"
                     placeholder="https://www.techbay.net.au"
-                    value={business.website}
-                    onChange={(e) => handleFieldChange('website', e.target.value)}
+                    value={localWebsite}
+                    onChange={(e) => setLocalWebsite(e.target.value)}
+                    onBlur={() => handleFieldBlur('website', localWebsite)}
                     disabled={isLoading}
                   />
                 </div>
@@ -730,8 +779,9 @@ function BusinessPanel() {
                   <Input
                     id="business-logo"
                     placeholder="business-logo.png"
-                    value={business.logoPath ?? ''}
-                    onChange={(e) => handleFieldChange('logoPath', e.target.value)}
+                    value={localLogoPath}
+                    onChange={(e) => setLocalLogoPath(e.target.value)}
+                    onBlur={() => handleFieldBlur('logoPath', localLogoPath)}
                     disabled={isLoading}
                   />
                 </div>
@@ -745,8 +795,9 @@ function BusinessPanel() {
                   <Input
                     id="business-tfn"
                     placeholder="123 456 789"
-                    value={business.tfn}
-                    onChange={(e) => handleFieldChange('tfn', e.target.value)}
+                    value={localTfn}
+                    onChange={(e) => setLocalTfn(e.target.value)}
+                    onBlur={() => handleFieldBlur('tfn', localTfn)}
                     disabled={isLoading}
                   />
                 </div>
@@ -755,8 +806,9 @@ function BusinessPanel() {
                   <Input
                     id="business-abn"
                     placeholder="12 345 678 910"
-                    value={business.abn}
-                    onChange={(e) => handleFieldChange('abn', e.target.value)}
+                    value={localAbn}
+                    onChange={(e) => setLocalAbn(e.target.value)}
+                    onBlur={() => handleFieldBlur('abn', localAbn)}
                     disabled={isLoading}
                   />
                 </div>
