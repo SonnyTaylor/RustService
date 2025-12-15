@@ -399,7 +399,7 @@ function DataPanel() {
 
       {/* Storage Info Card - Full Width */}
       <Card className="bg-muted/20">
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="flex items-start gap-4">
             <div className="p-3 rounded-lg bg-primary/10">
               <FolderOpen className="h-6 w-6 text-primary" />
