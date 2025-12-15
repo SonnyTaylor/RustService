@@ -1229,37 +1229,41 @@ const TEST_TABS = [
 
 export function ComponentTestPage() {
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <CheckCircle2 className="h-6 w-6" />
-          Component Testing
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Test hardware components - camera, audio, keyboard, mouse, network, and display
-        </p>
-      </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      <ScrollArea className="flex-1 h-full">
+        <div className="p-6 space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <CheckCircle2 className="h-6 w-6" />
+              Component Testing
+            </h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              Test hardware components - camera, audio, keyboard, mouse, network, and display
+            </p>
+          </div>
 
-      <Tabs defaultValue="camera" className="w-full">
-        <TabsList className="grid w-full grid-cols-7 h-auto">
-          {TEST_TABS.map(({ id, label, icon: Icon }) => (
-            <TabsTrigger
-              key={id}
-              value={id}
-              className="flex flex-col items-center gap-1 py-2 text-xs"
-            >
-              <Icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+          <Tabs defaultValue="camera" className="w-full">
+            <TabsList className="grid w-full grid-cols-7 h-auto">
+              {TEST_TABS.map(({ id, label, icon: Icon }) => (
+                <TabsTrigger
+                  key={id}
+                  value={id}
+                  className="flex flex-col items-center gap-1 py-2 text-xs"
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-        {TEST_TABS.map(({ id, component: Component }) => (
-          <TabsContent key={id} value={id} className="mt-4">
-            <Component />
-          </TabsContent>
-        ))}
-      </Tabs>
+            {TEST_TABS.map(({ id, component: Component }) => (
+              <TabsContent key={id} value={id} className="mt-4">
+                <Component />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      </ScrollArea>
     </div>
   );
 }

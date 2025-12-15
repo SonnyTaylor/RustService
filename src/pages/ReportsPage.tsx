@@ -498,7 +498,7 @@ export function ReportsPage() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-full">
         {reports.length === 0 ? (
           <EmptyState />
         ) : filteredReports.length === 0 ? (

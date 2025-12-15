@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 import { 
   SystemInfo, 
@@ -175,7 +176,9 @@ export function SystemInfoPage() {
   if (!systemInfo) return null;
 
   return (
-    <div className="p-6 space-y-6 overflow-auto">
+    <div className="h-full flex flex-col overflow-hidden">
+      <ScrollArea className="flex-1 h-full">
+        <div className="p-6 space-y-6">
       {/* Header with refresh button */}
       <div className="flex items-center justify-between">
         <div>
@@ -622,10 +625,12 @@ export function SystemInfoPage() {
       </div>
 
       {/* Footer with timestamp */}
-      <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
-        <Clock className="h-3 w-3" />
-        Last updated: {new Date().toLocaleTimeString()}
-      </div>
+          <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
+            <Clock className="h-3 w-3" />
+            Last updated: {new Date().toLocaleTimeString()}
+          </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }
