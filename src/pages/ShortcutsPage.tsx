@@ -266,32 +266,32 @@ export function ShortcutsPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Header with search */}
-      <div className="p-6 pb-4 border-b">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Zap className="h-6 w-6 text-yellow-500" />
-              Shortcuts
-            </h2>
-            <p className="text-muted-foreground text-sm mt-1">
-              Quick access to Windows utilities and system tools
-            </p>
-          </div>
-          <Badge variant="secondary" className="text-xs">
-            {filteredCount} / {totalShortcuts} tools
+      {/* Header */}
+      <div className="p-4 border-b flex items-center gap-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Zap className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Shortcuts</h2>
+          <Badge variant="secondary" className="ml-1">
+            {filteredCount}
           </Badge>
         </div>
 
-        {/* Search bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search shortcuts... (e.g., disk, network, registry)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search shortcuts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant="secondary" className="text-xs">
+            {filteredCount} / {totalShortcuts}
+          </Badge>
         </div>
       </div>
 
