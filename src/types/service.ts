@@ -169,6 +169,10 @@ export interface ServiceReport {
   results: ServiceResult[];
   /** Index of currently running service (for progress) */
   currentServiceIndex?: number;
+  /** Technician who performed the service (business mode) */
+  technicianName?: string;
+  /** Customer name (business mode) */
+  customerName?: string;
 }
 
 // =============================================================================

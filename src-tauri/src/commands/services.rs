@@ -98,6 +98,8 @@ pub fn get_service_run_state() -> ServiceRunState {
 pub async fn run_services(
     app: AppHandle,
     queue: Vec<ServiceQueueItem>,
+    technician_name: Option<String>,
+    customer_name: Option<String>,
 ) -> Result<ServiceReport, String> {
     // Check if already running
     {
@@ -128,6 +130,8 @@ pub async fn run_services(
         queue: queue.clone(),
         results: Vec::new(),
         current_service_index: Some(0),
+        technician_name,
+        customer_name,
     };
 
     // Update global state

@@ -22,6 +22,12 @@ import {
   Heart,
   FileText,
   Trash2,
+  Building2,
+  Plus,
+  Pencil,
+  X,
+  ImageIcon,
+  User,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -42,8 +48,8 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useSettings } from '@/components/settings-context';
 import { useTheme } from '@/components/theme-provider';
-import type { SettingsCategory, ThemeMode, LogLevel } from '@/types/settings';
-import { COLOR_SCHEMES } from '@/types/settings';
+import type { SettingsCategory, ThemeMode, LogLevel, BusinessSettings } from '@/types/settings';
+import { COLOR_SCHEMES, DEFAULT_BUSINESS } from '@/types/settings';
 
 // =============================================================================
 // Types
@@ -82,6 +88,13 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     description: 'Report settings',
     icon: FileText,
     iconColor: 'text-blue-500',
+  },
+  {
+    id: 'business',
+    label: 'Business',
+    description: 'Branding & technicians',
+    icon: Building2,
+    iconColor: 'text-orange-500',
   },
   {
     id: 'about',
@@ -563,6 +576,288 @@ function ReportsPanel() {
   );
 }
 
+function BusinessPanel() {
+  const { settings, updateSetting, isLoading } = useSettings();
+  const [newTechnician, setNewTechnician] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  const business = settings.business ?? DEFAULT_BUSINESS;
+
+  const handleToggleEnabled = async (checked: boolean) => {
+    await updateSetting('business.enabled', checked);
+  };
+
+  const handleFieldChange = async (field: keyof BusinessSettings, value: string) => {
+    await updateSetting(`business.${field}` as 'business.name', value);
+  };
+
+  const handleAddTechnician = async () => {
+    if (!newTechnician.trim()) return;
+    const updated = [...business.technicians, newTechnician.trim()];
+    await updateSetting('business.technicians', updated);
+    setNewTechnician('');
+  };
+
+  const handleRemoveTechnician = async (index: number) => {
+    const updated = business.technicians.filter((_, i) => i !== index);
+    await updateSetting('business.technicians', updated);
+  };
+
+  const handleStartEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingName(business.technicians[index]);
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingIndex === null || !editingName.trim()) return;
+    const updated = [...business.technicians];
+    updated[editingIndex] = editingName.trim();
+    await updateSetting('business.technicians', updated);
+    setEditingIndex(null);
+    setEditingName('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setEditingName('');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-2xl font-semibold mb-1">Business Mode</h3>
+        <p className="text-muted-foreground">
+          Configure business branding and technician information for customer reports
+        </p>
+      </div>
+
+      {/* Enable Business Mode */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-orange-500" />
+            Business Mode
+          </CardTitle>
+          <CardDescription>
+            Enable business branding on reports and service receipts
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+            <div>
+              <Label htmlFor="business-enabled" className="text-sm font-medium">Enable Business Mode</Label>
+              <p className="text-xs text-muted-foreground">Show business details on prints and reports</p>
+            </div>
+            <Switch
+              id="business-enabled"
+              checked={business.enabled}
+              onCheckedChange={handleToggleEnabled}
+              disabled={isLoading}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Business Details - Only show if enabled */}
+      {business.enabled && (
+        <>
+          {/* Business Info */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ImageIcon className="h-5 w-5 text-blue-500" />
+                Business Details
+              </CardTitle>
+              <CardDescription>
+                Your business information displayed on customer reports
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="business-name">Business Name</Label>
+                  <Input
+                    id="business-name"
+                    placeholder="Techbay Computer Specialists"
+                    value={business.name}
+                    onChange={(e) => handleFieldChange('name', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-address">Address</Label>
+                  <Input
+                    id="business-address"
+                    placeholder="336 Highett Rd, Highett VIC 3190"
+                    value={business.address}
+                    onChange={(e) => handleFieldChange('address', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-phone">Phone</Label>
+                  <Input
+                    id="business-phone"
+                    placeholder="03 9554 4321"
+                    value={business.phone}
+                    onChange={(e) => handleFieldChange('phone', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-email">Email</Label>
+                  <Input
+                    id="business-email"
+                    placeholder="admin@techbay.net.au"
+                    value={business.email}
+                    onChange={(e) => handleFieldChange('email', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-website">Website</Label>
+                  <Input
+                    id="business-website"
+                    placeholder="https://www.techbay.net.au"
+                    value={business.website}
+                    onChange={(e) => handleFieldChange('website', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-logo">Logo Path (optional)</Label>
+                  <Input
+                    id="business-logo"
+                    placeholder="business-logo.png"
+                    value={business.logoPath ?? ''}
+                    onChange={(e) => handleFieldChange('logoPath', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              <Separator className="my-4" />
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="business-tfn">TFN (Tax File Number)</Label>
+                  <Input
+                    id="business-tfn"
+                    placeholder="123 456 789"
+                    value={business.tfn}
+                    onChange={(e) => handleFieldChange('tfn', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="business-abn">ABN (Australian Business Number)</Label>
+                  <Input
+                    id="business-abn"
+                    placeholder="12 345 678 910"
+                    value={business.abn}
+                    onChange={(e) => handleFieldChange('abn', e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Technicians */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-5 w-5 text-green-500" />
+                Technicians
+              </CardTitle>
+              <CardDescription>
+                Manage technicians who can be assigned to services
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Technician List */}
+              {business.technicians.length > 0 ? (
+                <div className="space-y-2">
+                  {business.technicians.map((tech, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 group"
+                    >
+                      {editingIndex === index ? (
+                        <>
+                          <Input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            className="flex-1"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEdit();
+                              if (e.key === 'Escape') handleCancelEdit();
+                            }}
+                          />
+                          <Button size="sm" onClick={handleSaveEdit} disabled={isLoading}>
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="flex-1 font-medium">{tech}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleStartEdit(index)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                            onClick={() => handleRemoveTechnician(index)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  No technicians added yet. Add your first technician below.
+                </p>
+              )}
+
+              {/* Add Technician */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter technician name..."
+                  value={newTechnician}
+                  onChange={(e) => setNewTechnician(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddTechnician();
+                  }}
+                  disabled={isLoading}
+                />
+                <Button onClick={handleAddTechnician} disabled={isLoading || !newTechnician.trim()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AboutPanel() {
   return (
     <div className="space-y-6">
@@ -669,6 +964,8 @@ export function SettingsPage() {
         return <DataPanel />;
       case 'reports':
         return <ReportsPanel />;
+      case 'business':
+        return <BusinessPanel />;
       case 'about':
         return <AboutPanel />;
       default:

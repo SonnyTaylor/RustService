@@ -218,6 +218,12 @@ pub struct ServiceReport {
     pub results: Vec<ServiceResult>,
     /// Index of currently running service (for progress)
     pub current_service_index: Option<usize>,
+    /// Technician who performed the service (business mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technician_name: Option<String>,
+    /// Customer name (business mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customer_name: Option<String>,
 }
 
 // =============================================================================

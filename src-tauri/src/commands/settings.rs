@@ -132,6 +132,47 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.reports.include_logs_in_report = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid includeLogsInReport value: {}", e))?;
         }
+        // Business settings
+        ["business", "enabled"] => {
+            settings.business.enabled = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.enabled value: {}", e))?;
+        }
+        ["business", "name"] => {
+            settings.business.name = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.name value: {}", e))?;
+        }
+        ["business", "logoPath"] => {
+            settings.business.logo_path = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.logoPath value: {}", e))?;
+        }
+        ["business", "address"] => {
+            settings.business.address = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.address value: {}", e))?;
+        }
+        ["business", "phone"] => {
+            settings.business.phone = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.phone value: {}", e))?;
+        }
+        ["business", "email"] => {
+            settings.business.email = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.email value: {}", e))?;
+        }
+        ["business", "website"] => {
+            settings.business.website = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.website value: {}", e))?;
+        }
+        ["business", "tfn"] => {
+            settings.business.tfn = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.tfn value: {}", e))?;
+        }
+        ["business", "abn"] => {
+            settings.business.abn = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.abn value: {}", e))?;
+        }
+        ["business", "technicians"] => {
+            settings.business.technicians = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid business.technicians value: {}", e))?;
+        }
         _ => {
             return Err(format!("Unknown setting key: {}", key));
         }

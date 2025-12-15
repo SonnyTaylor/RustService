@@ -21,6 +21,7 @@ import {
   Trash2,
   Eye,
   Filter,
+  User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -49,12 +50,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import type { ServiceReport, ServiceRunStatus, ServiceDefinition } from '@/types/service';
 import { ServiceReportView } from '@/components/service-report-view';
+import { useSettings } from '@/components/settings-context';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-type ReportSortOption = 'newest' | 'oldest' | 'duration-desc' | 'duration-asc';
+type ReportSortOption = 'newest' | 'oldest' | 'duration-desc' | 'duration-asc' | 'technician';
 type ReportFilterStatus = 'all' | 'completed' | 'failed' | 'cancelled';
 
 const SORT_OPTIONS: { value: ReportSortOption; label: string }[] = [
@@ -62,6 +64,7 @@ const SORT_OPTIONS: { value: ReportSortOption; label: string }[] = [
   { value: 'oldest', label: 'Oldest First' },
   { value: 'duration-desc', label: 'Longest Duration' },
   { value: 'duration-asc', label: 'Shortest Duration' },
+  { value: 'technician', label: 'Technician' },
 ];
 
 // =============================================================================
@@ -152,6 +155,10 @@ function sortReports(reports: ServiceReport[], sortBy: ReportSortOption): Servic
       return sorted.sort((a, b) => 
         (a.totalDurationMs || 0) - (b.totalDurationMs || 0)
       );
+    case 'technician':
+      return sorted.sort((a, b) => 
+        (a.technicianName || '').localeCompare(b.technicianName || '')
+      );
     default:
       return sorted;
   }
@@ -206,6 +213,13 @@ function ReportCard({ report, onView, onDelete }: ReportCardProps) {
               <span className="flex items-center gap-1">
                 Duration: {formatDuration(report.totalDurationMs)}
               </span>
+              {(report.technicianName || report.customerName) && (
+                <span className="flex items-center gap-1 text-primary">
+                  <User className="h-3.5 w-3.5" />
+                  {report.technicianName ? report.technicianName : 'Unknown Tech'}
+                  {report.customerName ? ` • ${report.customerName}` : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -261,15 +275,17 @@ function EmptyState() {
 // =============================================================================
 
 export function ReportsPage() {
+  const { settings } = useSettings();
   const [reports, setReports] = useState<ServiceReport[]>([]);
   const [definitions, setDefinitions] = useState<ServiceDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<ReportSortOption>('newest');
   const [filterStatus, setFilterStatus] = useState<ReportFilterStatus>('all');
+  const [filterTechnician, setFilterTechnician] = useState<string>('all');
   const [selectedReport, setSelectedReport] = useState<ServiceReport | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Load reports and definitions
   useEffect(() => {
@@ -299,18 +315,25 @@ export function ReportsPage() {
       result = result.filter(r => r.status === filterStatus);
     }
 
+    // Filter by technician
+    if (filterTechnician !== 'all') {
+      result = result.filter(r => r.technicianName === filterTechnician);
+    }
+
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(r => 
         r.id.toLowerCase().includes(query) ||
         formatDate(r.startedAt).toLowerCase().includes(query) ||
-        r.status.toLowerCase().includes(query)
+        r.status.toLowerCase().includes(query) ||
+        (r.technicianName || '').toLowerCase().includes(query) ||
+        (r.customerName || '').toLowerCase().includes(query)
       );
     }
 
     return sortReports(result, sortBy);
-  }, [reports, searchQuery, sortBy, filterStatus]);
+  }, [reports, searchQuery, sortBy, filterStatus, filterTechnician]);
 
   // Handlers
   const handleViewReport = (report: ServiceReport) => {
@@ -415,6 +438,25 @@ export function ReportsPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Technician Filter */}
+          {settings.business?.enabled && (settings.business.technicians?.length ?? 0) > 0 && (
+            <Select value={filterTechnician} onValueChange={setFilterTechnician}>
+              <SelectTrigger className="w-40">
+                <User className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="All Techs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Technicians</SelectItem>
+                {settings.business!.technicians.map((tech) => (
+                  <SelectItem key={tech} value={tech}>
+                    {tech}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Sort Dropdown */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as ReportSortOption)}>
             <SelectTrigger className="w-44">
               <ArrowUpDown className="h-4 w-4 mr-2" />

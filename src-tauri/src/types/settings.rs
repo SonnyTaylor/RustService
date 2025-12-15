@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Current settings schema version for migration support
-pub const SETTINGS_VERSION: &str = "0.4.0";
+pub const SETTINGS_VERSION: &str = "0.6.0";
 
 /// Appearance-related settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +81,42 @@ impl Default for ReportsSettings {
     }
 }
 
+/// Business branding and technician settings
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BusinessSettings {
+    /// Whether business mode is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    /// Business name
+    #[serde(default)]
+    pub name: String,
+    /// Business logo path (relative to data dir)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_path: Option<String>,
+    /// Street address
+    #[serde(default)]
+    pub address: String,
+    /// Phone number
+    #[serde(default)]
+    pub phone: String,
+    /// Email address
+    #[serde(default)]
+    pub email: String,
+    /// Website URL
+    #[serde(default)]
+    pub website: String,
+    /// Tax File Number (Australian)
+    #[serde(default)]
+    pub tfn: String,
+    /// Australian Business Number
+    #[serde(default)]
+    pub abn: String,
+    /// List of technician names
+    #[serde(default)]
+    pub technicians: Vec<String>,
+}
+
 /// Main application settings schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,6 +132,9 @@ pub struct AppSettings {
     /// Report settings
     #[serde(default)]
     pub reports: ReportsSettings,
+    /// Business branding and technician settings
+    #[serde(default)]
+    pub business: BusinessSettings,
 }
 
 impl Default for AppSettings {
@@ -105,6 +144,7 @@ impl Default for AppSettings {
             appearance: AppearanceSettings::default(),
             data: DataSettings::default(),
             reports: ReportsSettings::default(),
+            business: BusinessSettings::default(),
         }
     }
 }

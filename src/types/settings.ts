@@ -188,6 +188,32 @@ export interface ReportsSettings {
   includeLogsInReport: boolean;
 }
 
+/**
+ * Business branding and technician settings
+ */
+export interface BusinessSettings {
+  /** Whether business mode is enabled */
+  enabled: boolean;
+  /** Business name */
+  name: string;
+  /** Business logo path (relative to data dir) */
+  logoPath?: string;
+  /** Street address */
+  address: string;
+  /** Phone number */
+  phone: string;
+  /** Email address */
+  email: string;
+  /** Website URL */
+  website: string;
+  /** Tax File Number (Australian) */
+  tfn: string;
+  /** Australian Business Number */
+  abn: string;
+  /** List of technician names */
+  technicians: string[];
+}
+
 // =============================================================================
 // Main Settings Interface
 // =============================================================================
@@ -211,6 +237,8 @@ export interface AppSettings {
   data: DataSettings;
   /** Report-related settings */
   reports: ReportsSettings;
+  /** Business branding and technician settings */
+  business: BusinessSettings;
 }
 
 // =============================================================================
@@ -242,13 +270,30 @@ export const DEFAULT_REPORTS: ReportsSettings = {
 };
 
 /**
+ * Default business settings (disabled by default)
+ */
+export const DEFAULT_BUSINESS: BusinessSettings = {
+  enabled: false,
+  name: '',
+  logoPath: undefined,
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  tfn: '',
+  abn: '',
+  technicians: [],
+};
+
+/**
  * Default application settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: '0.5.0',
+  version: '0.6.0',
   appearance: DEFAULT_APPEARANCE,
   data: DEFAULT_DATA,
   reports: DEFAULT_REPORTS,
+  business: DEFAULT_BUSINESS,
 };
 
 // =============================================================================
@@ -264,7 +309,17 @@ export type SettingKey =
   | 'data.logLevel'
   | 'reports.autoSaveReports'
   | 'reports.reportRetentionDays'
-  | 'reports.includeLogsInReport';
+  | 'reports.includeLogsInReport'
+  | 'business.enabled'
+  | 'business.name'
+  | 'business.logoPath'
+  | 'business.address'
+  | 'business.phone'
+  | 'business.email'
+  | 'business.website'
+  | 'business.tfn'
+  | 'business.abn'
+  | 'business.technicians';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -276,9 +331,19 @@ export type SettingValueType<K extends SettingKey> =
   K extends 'reports.autoSaveReports' ? boolean :
   K extends 'reports.reportRetentionDays' ? number :
   K extends 'reports.includeLogsInReport' ? boolean :
+  K extends 'business.enabled' ? boolean :
+  K extends 'business.name' ? string :
+  K extends 'business.logoPath' ? string | undefined :
+  K extends 'business.address' ? string :
+  K extends 'business.phone' ? string :
+  K extends 'business.email' ? string :
+  K extends 'business.website' ? string :
+  K extends 'business.tfn' ? string :
+  K extends 'business.abn' ? string :
+  K extends 'business.technicians' ? string[] :
   never;
 
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'about';

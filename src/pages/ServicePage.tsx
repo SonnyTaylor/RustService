@@ -49,6 +49,22 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useSettings } from '@/components/settings-context';
 
 import type {
   ServicePreset,
@@ -638,6 +654,7 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
 // =============================================================================
 
 export function ServicePage() {
+  const { settings } = useSettings();
   const [phase, setPhase] = useState<ServicePhase>('presets');
   const [presets, setPresets] = useState<ServicePreset[]>([]);
   const [definitions, setDefinitions] = useState<ServiceDefinition[]>([]);
@@ -646,6 +663,11 @@ export function ServicePage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPresetName, setSelectedPresetName] = useState<string>();
+  
+  // Business mode dialog state
+  const [showStartDialog, setShowStartDialog] = useState(false);
+  const [selectedTechnician, setSelectedTechnician] = useState<string>('');
+  const [customerName, setCustomerName] = useState<string>('');
 
   // Load initial data and check for running service
   const loadData = useCallback(async () => {
@@ -759,16 +781,38 @@ export function ServicePage() {
   };
 
   const handleStart = async () => {
+    // If business mode is enabled, show dialog first
+    if (settings.business?.enabled) {
+      setShowStartDialog(true);
+      return;
+    }
+    // Otherwise start directly
+    await startServiceRun();
+  };
+
+  const startServiceRun = async (technicianName?: string, custName?: string) => {
     try {
+      setShowStartDialog(false);
       setLogs([]);
       setPhase('running');
-      const result = await invoke<ServiceReport>('run_services', { queue });
+      const result = await invoke<ServiceReport>('run_services', { 
+        queue,
+        technicianName: technicianName || null,
+        customerName: custName || null,
+      });
       setReport(result);
       setPhase('results');
     } catch (error) {
       console.error('Service run failed:', error);
       setPhase('queue');
     }
+  };
+
+  const handleStartWithBusinessInfo = async () => {
+    await startServiceRun(selectedTechnician || undefined, customerName || undefined);
+    // Reset dialog state
+    setSelectedTechnician('');
+    setCustomerName('');
   };
 
   const handleCancel = async () => {
@@ -829,6 +873,52 @@ export function ServicePage() {
           onBack={handleBack}
         />
       )}
+
+      {/* Business Mode Start Dialog */}
+      <Dialog open={showStartDialog} onOpenChange={setShowStartDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start Service</DialogTitle>
+            <DialogDescription>
+              Enter service details for the customer report
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="technician">Technician</Label>
+              <Select value={selectedTechnician} onValueChange={setSelectedTechnician}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select technician..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {settings.business?.technicians?.map((tech) => (
+                    <SelectItem key={tech} value={tech}>
+                      {tech}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-name">Customer Name</Label>
+              <Input
+                id="customer-name"
+                placeholder="Enter customer name..."
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStartDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleStartWithBusinessInfo}>
+              Start Service
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
