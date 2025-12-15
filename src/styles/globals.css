@@ -888,3 +888,38 @@
 *[data-tauri-drag-region] {
   app-region: drag;
 }
+
+/* =============================================================================
+   Print Styles
+   ============================================================================= */
+
+@media print {
+  /* Reset page margins */
+  @page {
+    margin: 0.5in;
+    size: A4;
+  }
+
+  /* Hide UI elements when printing */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only the printable content */
+  [data-print-content],
+  [data-print-content] * {
+    visibility: visible;
+  }
+
+  /* Position print content at top-left, full width */
+  [data-print-content] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}

@@ -993,8 +993,8 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="printout" className="h-full mt-0 data-[state=active]:flex flex-col">
-            <div className="p-6 pb-3 flex items-center justify-between">
+          <TabsContent value="printout" className="h-full mt-0 data-[state=active]:flex flex-col overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
               <p className="text-muted-foreground text-sm">
                 Technical report with all details. Print or save as PDF.
               </p>
@@ -1003,17 +1003,21 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
                 Print Report
               </Button>
             </div>
-            <ScrollArea className="flex-1 px-6 pb-6">
-              <div className="rounded-xl overflow-hidden border shadow-lg">
-                <div ref={printDetailedRef}>
+            <div className="flex-1 overflow-auto bg-[repeating-linear-gradient(45deg,var(--muted)_0,var(--muted)_1px,transparent_0,transparent_50%)] bg-[length:10px_10px] bg-muted/30">
+              <div className="flex justify-center p-8 min-h-full">
+                <div 
+                  ref={printDetailedRef}
+                  data-print-content
+                  className="bg-white shadow-[0_4px_60px_rgba(0,0,0,0.3)] w-[550px] flex-shrink-0"
+                >
                   <PrintableReport report={report} definitions={definitions} variant="detailed" />
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
 
-          <TabsContent value="customer" className="h-full mt-0 data-[state=active]:flex flex-col">
-            <div className="p-6 pb-3 flex items-center justify-between">
+          <TabsContent value="customer" className="h-full mt-0 data-[state=active]:flex flex-col overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
               <p className="text-muted-foreground text-sm">
                 Simplified report for customers. Easy to understand with key findings only.
               </p>
@@ -1022,13 +1026,17 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
                 Print for Customer
               </Button>
             </div>
-            <ScrollArea className="flex-1 px-6 pb-6">
-              <div className="rounded-xl overflow-hidden border shadow-lg">
-                <div ref={printCustomerRef}>
+            <div className="flex-1 overflow-auto bg-[repeating-linear-gradient(45deg,var(--muted)_0,var(--muted)_1px,transparent_0,transparent_50%)] bg-[length:10px_10px] bg-muted/30">
+              <div className="flex justify-center p-8 min-h-full">
+                <div 
+                  ref={printCustomerRef}
+                  data-print-content
+                  className="bg-white shadow-[0_4px_60px_rgba(0,0,0,0.3)] w-[550px] flex-shrink-0"
+                >
                   <PrintableReport report={report} definitions={definitions} variant="customer" />
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
         </div>
       </Tabs>
