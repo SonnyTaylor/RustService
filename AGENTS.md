@@ -307,14 +307,69 @@ See `docs/adding-services.md` for detailed instructions.
 ### Data Storage
 - **Reports**: `data/reports/*.json` - Saved service run reports
 
+## Animation System
+
+Framer Motion integration with a user-togglable setting for smooth UI animations.
+
+### Architecture
+- **Setting**: `appearance.enableAnimations` (boolean, default: true)
+- **Context**: `AnimationProvider` wraps the app and respects the setting
+- **Presets**: Reusable animation configs in `animation-context.tsx`
+
+### Using Animations
+
+```tsx
+import { useAnimation, motion, AnimatedList, AnimatedItem } from '@/components/animation-context';
+
+function MyComponent() {
+  const { animationsEnabled, fadeInUp } = useAnimation();
+  
+  // Use preset motion props
+  return (
+    <motion.div {...fadeInUp}>
+      <Card>Content</Card>
+    </motion.div>
+  );
+}
+
+// Or use convenience components for staggered lists
+function MyList() {
+  return (
+    <AnimatedList className="grid gap-4">
+      {items.map(item => (
+        <AnimatedItem key={item.id}>
+          <Card>{item.name}</Card>
+        </AnimatedItem>
+      ))}
+    </AnimatedList>
+  );
+}
+```
+
+### Available Presets
+| Preset | Description |
+|--------|-------------|
+| `fadeIn` | Fade from transparent |
+| `fadeInUp` | Fade + slide up |
+| `fadeInScale` | Fade + scale up |
+| `slideInLeft/Right` | Slide from side |
+| `staggerContainer` | Container for staggered children |
+| `staggerItem` | Child item for stagger |
+| `hoverScale` | Scale on hover |
+| `hoverLift` | Lift on hover |
+
+### Adding the Setting Toggle
+The toggle is in Settings → Appearance → Animations. When disabled, all `motion.div` elements render as plain `div` elements with no transitions.
+
 ## Dependencies to Know
 
 | Package | Purpose |
-|---------|---------|
+|---------|-------------|
 | `@tauri-apps/api` | Frontend-to-Rust IPC |
 | `@tauri-apps/plugin-dialog` | File picker dialogs |
 | `@tauri-apps/plugin-opener` | Open files/URLs, reveal in explorer |
 | `@dnd-kit/core` | Drag-and-drop for service queue |
+| `framer-motion` | Animations and transitions |
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |

@@ -31,6 +31,8 @@ import {
   User,
   Upload,
   Loader2,
+  Zap,
+  Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -159,6 +161,36 @@ function SettingsSidebar({ activeCategory, onCategoryChange }: SettingsSidebarPr
 // =============================================================================
 // Panel Components
 // =============================================================================
+
+/**
+ * Animation toggle component for appearance panel
+ */
+function AnimationToggle() {
+  const { settings, updateSetting, isLoading } = useSettings();
+  const animationsEnabled = settings.appearance?.enableAnimations ?? true;
+
+  const handleToggle = async (checked: boolean) => {
+    await updateSetting('appearance.enableAnimations', checked);
+  };
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+      <div className="flex items-center gap-3">
+        <Sparkles className={`h-5 w-5 ${animationsEnabled ? 'text-yellow-500' : 'text-muted-foreground'}`} />
+        <div>
+          <Label htmlFor="enable-animations" className="text-sm font-medium">Enable animations</Label>
+          <p className="text-xs text-muted-foreground">Smooth transitions and motion effects throughout the app</p>
+        </div>
+      </div>
+      <Switch
+        id="enable-animations"
+        checked={animationsEnabled}
+        onCheckedChange={handleToggle}
+        disabled={isLoading}
+      />
+    </div>
+  );
+}
 
 function AppearancePanel() {
   const { themeMode, colorScheme, setThemeMode, setColorScheme } = useTheme();
@@ -312,6 +344,20 @@ function AppearancePanel() {
               </button>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Animations Toggle */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Zap className="h-5 w-5 text-yellow-500" />
+            Animations
+          </CardTitle>
+          <CardDescription>Control motion and transition effects</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AnimationToggle />
         </CardContent>
       </Card>
     </div>

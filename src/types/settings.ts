@@ -166,6 +166,8 @@ export interface AppearanceSettings {
   theme: ThemeMode;
   /** Color scheme (applied as CSS class) */
   colorScheme: ColorScheme;
+  /** Whether animations are enabled */
+  enableAnimations: boolean;
 }
 
 /**
@@ -251,6 +253,7 @@ export interface AppSettings {
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: 'system',
   colorScheme: 'default',
+  enableAnimations: true,
 };
 
 /**
@@ -306,6 +309,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export type SettingKey =
   | 'appearance.theme'
   | 'appearance.colorScheme'
+  | 'appearance.enableAnimations'
   | 'data.logLevel'
   | 'reports.autoSaveReports'
   | 'reports.reportRetentionDays'
@@ -327,6 +331,7 @@ export type SettingKey =
 export type SettingValueType<K extends SettingKey> =
   K extends 'appearance.theme' ? ThemeMode :
   K extends 'appearance.colorScheme' ? ColorScheme :
+  K extends 'appearance.enableAnimations' ? boolean :
   K extends 'data.logLevel' ? LogLevel :
   K extends 'reports.autoSaveReports' ? boolean :
   K extends 'reports.reportRetentionDays' ? number :

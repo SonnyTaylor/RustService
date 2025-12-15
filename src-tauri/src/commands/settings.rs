@@ -116,6 +116,10 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.appearance.color_scheme = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid colorScheme value: {}", e))?;
         }
+        ["appearance", "enableAnimations"] => {
+            settings.appearance.enable_animations = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid enableAnimations value: {}", e))?;
+        }
         ["data", "logLevel"] => {
             settings.data.log_level = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid logLevel value: {}", e))?;

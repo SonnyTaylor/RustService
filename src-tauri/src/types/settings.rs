@@ -17,10 +17,17 @@ pub struct AppearanceSettings {
     /// Color scheme: "default", "techbay", etc. (CSS class applied to html)
     #[serde(default = "default_color_scheme")]
     pub color_scheme: String,
+    /// Whether animations are enabled
+    #[serde(default = "default_animations_enabled")]
+    pub enable_animations: bool,
 }
 
 fn default_color_scheme() -> String {
     String::from("default")
+}
+
+fn default_animations_enabled() -> bool {
+    true
 }
 
 impl Default for AppearanceSettings {
@@ -28,6 +35,7 @@ impl Default for AppearanceSettings {
         Self {
             theme: String::from("system"),
             color_scheme: String::from("default"),
+            enable_animations: true,
         }
     }
 }

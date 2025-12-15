@@ -5,7 +5,7 @@
  * Tab-based navigation with 8 main sections.
  */
 
-import { useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Wrench,
@@ -21,6 +21,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ThemeProvider } from '@/components/theme-provider';
 import { SettingsProvider } from '@/components/settings-context';
+import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVariants } from '@/components/animation-context';
 import { Titlebar } from '@/components/titlebar';
 import {
   ServicePage,
@@ -50,6 +51,86 @@ const TABS = [
 ] as const;
 
 /**
+ * Animated tab content wrapper
+ */
+function AnimatedTabContent({ id, children }: { id: string; children: ReactNode }) {
+  const { animationsEnabled } = useAnimation();
+
+  if (!animationsEnabled) {
+    return <>{children}</>;
+  }
+
+  return (
+    <motion.div
+      key={id}
+      variants={tabContentVariants}
+      initial="hidden"
+      animate="show"
+      exit="exit"
+      className="flex-1 flex flex-col min-h-0"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
+ * App content with animations
+ */
+function AppContent() {
+  const [activeTab, setActiveTab] = useState('service');
+  const { animationsEnabled } = useAnimation();
+
+  return (
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      {/* Custom Titlebar */}
+      <Titlebar />
+
+      {/* Main Content with Tabs */}
+      <Tabs 
+        value={activeTab} 
+        onValueChange={setActiveTab}
+        className="flex-1 flex flex-col min-h-0"
+      >
+        {/* Tab Navigation */}
+        <TabsList className="w-full justify-start rounded-none border-b bg-muted/50 px-2 h-auto py-1 flex-shrink-0">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <TabsTrigger
+              key={id}
+              value={id}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md transition-all duration-150"
+            >
+              <Icon className="h-4 w-4" />
+              <span className="hidden sm:inline">{label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Tab Content with Animation */}
+        <div className="flex-1 overflow-hidden min-h-0 relative">
+          <AnimatePresence mode="wait" initial={false}>
+            {TABS.map(({ id, component: Component }) => (
+              activeTab === id && (
+                <TabsContent
+                  key={id}
+                  value={id}
+                  forceMount
+                  className="absolute inset-0 data-[state=active]:flex data-[state=active]:flex-col m-0"
+                >
+                  <AnimatedTabContent id={animationsEnabled ? id : 'static'}>
+                    <Component />
+                  </AnimatedTabContent>
+                </TabsContent>
+              )
+            ))}
+          </AnimatePresence>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
+
+/**
  * Main application component with tab-based navigation
  */
 function App() {
@@ -68,41 +149,13 @@ function App() {
   return (
     <ThemeProvider defaultTheme="system">
       <SettingsProvider>
-        <div className="h-screen flex flex-col bg-background overflow-hidden">
-        {/* Custom Titlebar */}
-        <Titlebar />
-
-        {/* Main Content with Tabs */}
-        <Tabs defaultValue="service" className="flex-1 flex flex-col min-h-0">
-          {/* Tab Navigation */}
-          <TabsList className="w-full justify-start rounded-none border-b bg-muted/50 px-2 h-auto py-1 flex-shrink-0">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <TabsTrigger
-                key={id}
-                value={id}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md"
-              >
-                <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {/* Tab Content */}
-          {TABS.map(({ id, component: Component }) => (
-            <TabsContent
-              key={id}
-              value={id}
-              className="flex-1 m-0 overflow-hidden min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
-            >
-              <Component />
-            </TabsContent>
-          ))}
-        </Tabs>
-        </div>
+        <AnimationProvider>
+          <AppContent />
+        </AnimationProvider>
       </SettingsProvider>
     </ThemeProvider>
   );
 }
 
 export default App;
+
