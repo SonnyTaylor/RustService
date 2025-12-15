@@ -9,72 +9,141 @@ Services are modular diagnostic/maintenance tasks that can be:
 - Individually enabled/disabled by users
 - Configured with custom options
 - Run in sequence with live log output
+- Have custom results renderers (for findings view and customer print)
+
+## Architecture
+
+The service system uses a modular architecture:
+
+```
+src-tauri/src/services/     # Backend: One file per service
+├── mod.rs                  # Service trait & registry
+├── ping_test.rs            # Ping test service
+└── [new_service].rs        # Your new service
+
+src/components/service-renderers/   # Frontend: Custom renderers
+├── index.ts                        # Renderer registry
+├── PingTestRenderer.tsx            # Ping test renderer
+└── [NewService]Renderer.tsx        # Your new renderer
+```
+
+---
 
 ## Steps to Add a New Service
 
-### 1. Define the Service in Rust
+### 1. Create the Service File (Backend)
 
-Edit `src-tauri/src/commands/services.rs`:
+Create a new file in `src-tauri/src/services/`:
 
 ```rust
-// In get_all_service_definitions(), add a new ServiceDefinition:
-ServiceDefinition {
-    id: "my-service".to_string(),
-    name: "My Service".to_string(),
-    description: "What this service does".to_string(),
-    category: "diagnostics".to_string(), // or "cleanup", "security", etc.
-    estimated_duration_secs: 30,
-    required_programs: vec![], // Add program IDs if external tools needed
-    options: vec![
-        // Add configurable options
-        ServiceOptionSchema {
-            id: "option_name".to_string(),
-            label: "Option Label".to_string(),
-            option_type: "number".to_string(), // or "string", "boolean", "select"
-            default_value: json!(10),
-            min: Some(1.0),
-            max: Some(100.0),
-            options: None,
-            description: Some("Help text".to_string()),
-        },
-    ],
-    icon: "icon-name".to_string(), // lucide icon name
+// src-tauri/src/services/my_service.rs
+
+use std::time::Instant;
+use chrono::Utc;
+use serde_json::json;
+use tauri::{AppHandle, Emitter};
+
+use crate::services::Service;
+use crate::types::{
+    FindingSeverity, ServiceDefinition, ServiceFinding, ServiceOptionSchema, ServiceResult,
+};
+
+pub struct MyService;
+
+impl Service for MyService {
+    fn definition(&self) -> ServiceDefinition {
+        ServiceDefinition {
+            id: "my-service".to_string(),
+            name: "My Service".to_string(),
+            description: "What this service does".to_string(),
+            category: "diagnostics".to_string(), // or "cleanup", "security", etc.
+            estimated_duration_secs: 30,
+            required_programs: vec![], // Add program IDs if external tools needed
+            options: vec![
+                ServiceOptionSchema {
+                    id: "option_name".to_string(),
+                    label: "Option Label".to_string(),
+                    option_type: "number".to_string(), // or "string", "boolean", "select"
+                    default_value: json!(10),
+                    min: Some(1.0),
+                    max: Some(100.0),
+                    options: None,
+                    description: Some("Help text".to_string()),
+                },
+            ],
+            icon: "icon-name".to_string(), // lucide icon name
+        }
+    }
+
+    fn run(&self, options: &serde_json::Value, app: &AppHandle) -> ServiceResult {
+        let start = Instant::now();
+        let mut logs: Vec<String> = Vec::new();
+        let mut findings: Vec<ServiceFinding> = Vec::new();
+        let service_id = "my-service";
+
+        // Emit log helper
+        let emit_log = |log: &str, logs: &mut Vec<String>, app: &AppHandle| {
+            logs.push(log.to_string());
+            let _ = app.emit(
+                "service-log",
+                json!({
+                    "serviceId": service_id,
+                    "log": log,
+                    "timestamp": Utc::now().to_rfc3339()
+                }),
+            );
+        };
+
+        emit_log("Starting my service...", &mut logs, app);
+
+        // Do the work here...
+
+        // Add findings with optional data for custom renderer
+        findings.push(ServiceFinding {
+            severity: FindingSeverity::Success,
+            title: "Result Title".to_string(),
+            description: "Detailed description".to_string(),
+            recommendation: None,
+            data: Some(json!({
+                "type": "my_finding_type",  // Used by custom renderer
+                "value": 42
+            })),
+        });
+
+        emit_log("Service complete", &mut logs, app);
+
+        ServiceResult {
+            service_id: service_id.to_string(),
+            success: true,
+            error: None,
+            duration_ms: start.elapsed().as_millis() as u64,
+            findings,
+            logs,
+        }
+    }
 }
 ```
 
-### 2. Implement the Service Logic
+### 2. Register the Service
 
-In the `run_service()` function, add a match arm:
+Edit `src-tauri/src/services/mod.rs`:
 
 ```rust
-"my-service" => {
-    // Get options
-    let option_value = options
-        .get("option_name")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10);
+mod my_service;  // Add module declaration
 
-    emit_log("Starting my service...", &mut logs, app);
-
-    // Do the work
+// In SERVICE_REGISTRY LazyLock:
+static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock::new(|| {
+    let services: Vec<Box<dyn Service>> = vec![
+        Box::new(ping_test::PingTestService),
+        Box::new(my_service::MyService),  // Add your service
+    ];
     // ...
-
-    // Add findings
-    findings.push(ServiceFinding {
-        severity: FindingSeverity::Success, // or Info, Warning, Error, Critical
-        title: "Result Title".to_string(),
-        description: "Detailed description".to_string(),
-        recommendation: None, // or Some("Action to take".to_string())
-        data: None, // or Some(json!({...}))
-    });
-
-    emit_log("Service complete", &mut logs, app);
-}
+});
 ```
 
 ### 3. Add to Presets (Optional)
 
-If your service should be included in presets, add it to `get_all_presets()`:
+In `src-tauri/src/services/mod.rs`, update `get_all_presets()`:
 
 ```rust
 ServicePreset {
@@ -88,13 +157,12 @@ ServicePreset {
             options: json!({"option_name": 10}),
         },
     ],
-    // ...
 }
 ```
 
-### 4. Add Icon to Frontend
+### 4. Add Icon to Frontend (if new)
 
-If using a new icon, add it to `ICON_MAP` in `ServicePage.tsx`:
+Edit `src/pages/ServicePage.tsx`:
 
 ```tsx
 import { MyIcon } from 'lucide-react';
@@ -105,13 +173,65 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 ```
 
-### 5. Test
+---
 
-1. Run `pnpm tauri dev`
-2. Navigate to Service tab
-3. Select a preset that includes your service
-4. Verify it appears in the queue
-5. Run the service and check logs/findings
+## Adding a Custom Results Renderer (Optional)
+
+For enhanced results display, create a custom renderer:
+
+### 1. Create the Renderer
+
+```tsx
+// src/components/service-renderers/MyServiceRenderer.tsx
+
+import type { ServiceRendererProps } from './index';
+
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
+  // Extract custom data from findings
+  const finding = result.findings.find(
+    (f) => (f.data as any)?.type === 'my_finding_type'
+  );
+  const data = finding?.data as { value: number } | undefined;
+
+  return (
+    <div className="p-4 rounded-lg bg-muted/50 border">
+      <h3>{definition.name}</h3>
+      {data && <p className="text-2xl font-bold">{data.value}</p>}
+    </div>
+  );
+}
+
+function CustomerRenderer({ result }: ServiceRendererProps) {
+  // Simplified view for customer print
+  return (
+    <div className="p-4 border border-gray-200 rounded-lg bg-white">
+      <p className="font-bold">{result.success ? '✓ Passed' : '✗ Failed'}</p>
+    </div>
+  );
+}
+
+export function MyServiceRenderer(props: ServiceRendererProps) {
+  if (props.variant === 'customer') {
+    return <CustomerRenderer {...props} />;
+  }
+  return <FindingsRenderer {...props} />;
+}
+```
+
+### 2. Register the Renderer
+
+Edit `src/components/service-renderers/index.ts`:
+
+```typescript
+import { MyServiceRenderer } from './MyServiceRenderer';
+
+export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
+  'ping-test': PingTestRenderer,
+  'my-service': MyServiceRenderer,  // Add your renderer
+};
+```
+
+---
 
 ## Service Categories
 
@@ -140,67 +260,15 @@ If your service requires an external program:
 2. Users must add the program via the Programs page
 3. The system validates requirements before allowing the service to run
 
-Example for a service using `bleachbit`:
-
 ```rust
 required_programs: vec!["bleachbit".to_string()],
 ```
 
-## Example: Disk Space Service
+## Testing
 
-```rust
-ServiceDefinition {
-    id: "disk-space".to_string(),
-    name: "Disk Space Report".to_string(),
-    description: "Analyzes disk usage and free space".to_string(),
-    category: "diagnostics".to_string(),
-    estimated_duration_secs: 5,
-    required_programs: vec![],
-    options: vec![],
-    icon: "hard-drive".to_string(),
-}
-
-// In run_service():
-"disk-space" => {
-    emit_log("Analyzing disk space...", &mut logs, app);
-    
-    // Use sysinfo crate to get disk info
-    let mut sys = sysinfo::System::new();
-    let disks = sysinfo::Disks::new_with_refreshed_list();
-    
-    for disk in disks.list() {
-        let total = disk.total_space();
-        let free = disk.available_space();
-        let used_percent = ((total - free) as f64 / total as f64 * 100.0) as u32;
-        
-        let severity = if used_percent > 90 {
-            FindingSeverity::Critical
-        } else if used_percent > 75 {
-            FindingSeverity::Warning
-        } else {
-            FindingSeverity::Success
-        };
-        
-        findings.push(ServiceFinding {
-            severity,
-            title: format!("Drive {}: {}% used", disk.mount_point().display(), used_percent),
-            description: format!(
-                "{:.1} GB free of {:.1} GB",
-                free as f64 / 1_073_741_824.0,
-                total as f64 / 1_073_741_824.0
-            ),
-            recommendation: if used_percent > 75 {
-                Some("Consider freeing up disk space".to_string())
-            } else {
-                None
-            },
-            data: Some(json!({
-                "drive": disk.mount_point().to_string_lossy(),
-                "total": total,
-                "free": free,
-                "usedPercent": used_percent
-            })),
-        });
-    }
-}
-```
+1. Run `pnpm tauri dev`
+2. Navigate to Service tab
+3. Select a preset that includes your service
+4. Verify it appears in the queue
+5. Run the service and check logs/findings
+6. If you added a custom renderer, verify it displays correctly

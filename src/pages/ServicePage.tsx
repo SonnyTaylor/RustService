@@ -68,6 +68,7 @@ import type {
   FindingSeverity,
 } from '@/types/service';
 import { SEVERITY_INFO } from '@/types/service';
+import { getServiceRenderer } from '@/components/service-renderers';
 
 // =============================================================================
 // Icon Mapping
@@ -641,7 +642,21 @@ const PrintableReport = ({ report, definitions, variant }: PrintableReportProps)
             </h2>
             <div className="space-y-3">
               {items.map(({ result, definition }) => {
-                // Get main finding for this service
+                const CustomRenderer = getServiceRenderer(result.serviceId);
+
+                // Use custom customer renderer if available
+                if (CustomRenderer && definition) {
+                  return (
+                    <CustomRenderer
+                      key={result.serviceId}
+                      result={result}
+                      definition={definition}
+                      variant="customer"
+                    />
+                  );
+                }
+
+                // Fallback to generic renderer
                 const mainFinding = result.findings[0];
                 const Icon = definition ? getIcon(definition.icon) : Wrench;
                 
@@ -848,9 +863,24 @@ function ResultsView({ report, definitions, onNewService, onBack }: ResultsViewP
         </CardContent>
       </Card>
 
-      {/* Findings by Service */}
+      {/* Findings by Service - Use custom renderer if available */}
       {report.results.map((result) => {
         const def = definitionMap.get(result.serviceId);
+        const CustomRenderer = getServiceRenderer(result.serviceId);
+
+        // Use custom renderer if available
+        if (CustomRenderer && def) {
+          return (
+            <CustomRenderer
+              key={result.serviceId}
+              result={result}
+              definition={def}
+              variant="findings"
+            />
+          );
+        }
+
+        // Fallback to generic renderer
         const Icon = def ? getIcon(def.icon) : Wrench;
 
         return (

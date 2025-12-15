@@ -10,6 +10,7 @@
 //! - `commands` - Tauri command handlers exposed to the frontend
 
 mod commands;
+mod services;
 mod types;
 
 // Re-export types for use by commands
