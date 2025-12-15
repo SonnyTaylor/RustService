@@ -1,11 +1,16 @@
 //! System information collection command
 
+use std::cmp::Ordering;
+use std::sync::{Mutex, OnceLock};
+
 use sysinfo::{Components, Disks, Motherboard, Networks, System, Users};
 
 use crate::types::{
-    BatteryInfo, ComponentInfo, CpuInfo, DiskInfo, GpuInfo, LoadAvgInfo, MemoryInfo,
-    MotherboardInfo, NetworkInfo, OsInfo, SystemInfo, UserInfo,
+    BatteryInfo, ComponentInfo, CpuCoreInfo, CpuInfo, DiskInfo, GpuInfo, LoadAvgInfo, MemoryInfo,
+    MotherboardInfo, NetworkInfo, OsInfo, ProcessInfo, SystemInfo, UserInfo,
 };
+
+static SYS: OnceLock<Mutex<System>> = OnceLock::new();
 
 /// Collects comprehensive system information
 ///
@@ -13,8 +18,13 @@ use crate::types::{
 /// load average, network, and user information.
 #[tauri::command]
 pub fn get_system_info() -> Result<SystemInfo, String> {
-    // Create system instance and refresh relevant data
-    let mut sys = System::new_all();
+    // Reuse the same System instance between calls so CPU and process usage
+    // can be computed from deltas (sysinfo requires at least two refreshes).
+    let sys_mutex = SYS.get_or_init(|| Mutex::new(System::new_all()));
+    let mut sys = sys_mutex
+        .lock()
+        .map_err(|_| "Failed to lock system info collector".to_string())?;
+
     sys.refresh_all();
 
     // Collect OS info
@@ -30,6 +40,14 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
     let cpu = {
         let cpus = sys.cpus();
         let first_cpu = cpus.first();
+        let cores: Vec<CpuCoreInfo> = cpus
+            .iter()
+            .map(|c| CpuCoreInfo {
+                name: c.name().to_string(),
+                cpu_usage: c.cpu_usage(),
+                frequency_mhz: c.frequency(),
+            })
+            .collect();
 
         CpuInfo {
             brand: first_cpu.map(|c| c.brand().to_string()).unwrap_or_default(),
@@ -40,6 +58,7 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
             logical_cpus: cpus.len(),
             frequency_mhz: first_cpu.map(|c| c.frequency()).unwrap_or(0),
             global_usage: sys.global_cpu_usage(),
+            cores,
         }
     };
 
@@ -182,6 +201,26 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
         })
         .collect();
 
+    // Collect top processes (by CPU usage)
+    let mut process_list: Vec<ProcessInfo> = sys
+        .processes()
+        .iter()
+        .map(|(pid, process)| ProcessInfo {
+            pid: pid.as_u32(),
+            name: process.name().to_string_lossy().to_string(),
+            cpu_usage: process.cpu_usage(),
+            memory_bytes: process.memory(),
+        })
+        .collect();
+
+    process_list.sort_by(|a, b| {
+        b.cpu_usage
+            .partial_cmp(&a.cpu_usage)
+            .unwrap_or(Ordering::Equal)
+    });
+
+    let top_processes = process_list.into_iter().take(10).collect();
+
     Ok(SystemInfo {
         os,
         cpu,
@@ -194,6 +233,7 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
         load_avg,
         networks,
         users,
+        top_processes,
         uptime_seconds: System::uptime(),
         boot_time: System::boot_time(),
     })

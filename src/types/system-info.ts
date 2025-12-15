@@ -37,6 +37,21 @@ export interface CpuInfo {
   frequencyMhz: number;
   /** Global CPU usage percentage (0-100) */
   globalUsage: number;
+
+  /** Per-core details */
+  cores: CpuCoreInfo[];
+}
+
+/**
+ * Per-core CPU information
+ */
+export interface CpuCoreInfo {
+  /** Core name/label (platform dependent) */
+  name: string;
+  /** Core usage percentage (0-100) */
+  cpuUsage: number;
+  /** Core frequency in MHz */
+  frequencyMhz: number;
 }
 
 /**
@@ -212,6 +227,20 @@ export interface UserInfo {
 }
 
 /**
+ * Process summary information
+ */
+export interface ProcessInfo {
+  /** Process ID */
+  pid: number;
+  /** Process name */
+  name: string;
+  /** CPU usage percentage (0-100) */
+  cpuUsage: number;
+  /** Memory usage in bytes */
+  memoryBytes: number;
+}
+
+/**
  * Complete system information response
  */
 export interface SystemInfo {
@@ -237,6 +266,9 @@ export interface SystemInfo {
   networks: NetworkInfo[];
   /** System users */
   users: UserInfo[];
+
+  /** Top processes by CPU usage */
+  topProcesses: ProcessInfo[];
   /** System uptime in seconds */
   uptimeSeconds: number;
   /** Boot time as Unix timestamp */

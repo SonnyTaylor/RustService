@@ -7,7 +7,7 @@
  * Designed to be extensible for additional system info sections.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Monitor, 
@@ -34,6 +34,8 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 import { 
   SystemInfo, 
@@ -121,6 +123,38 @@ function LoadingSkeleton() {
 }
 
 /**
+ * Refresh overlay skeleton (cross-fades over existing content)
+ */
+function RefreshOverlay({ visible }: { visible: boolean }) {
+  return (
+    <div
+      className={
+        `absolute inset-0 pointer-events-none transition-opacity duration-300 ` +
+        `${visible ? 'opacity-100' : 'opacity-0'}`
+      }
+      aria-hidden
+    >
+      <div className="absolute inset-0 bg-background/60" />
+      <div className="relative p-6 grid gap-6 md:grid-cols-2">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-4 w-48" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * System Info Page - Main component
  */
 export function SystemInfoPage() {
@@ -128,21 +162,37 @@ export function SystemInfoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const inFlightRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   /**
    * Fetch system information from backend
    */
   const fetchSystemInfo = useCallback(async (isRefresh = false) => {
     try {
+      // Prevent overlapping requests (auto-refresh + manual refresh)
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+      const requestId = ++requestIdRef.current;
+
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       
       setError(null);
       const info = await invoke<SystemInfo>('get_system_info');
-      setSystemInfo(info);
+
+      // Avoid out-of-order updates
+      if (requestId === requestIdRef.current) {
+        setSystemInfo(info);
+        setLastUpdated(new Date());
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -155,6 +205,17 @@ export function SystemInfoPage() {
 
   // Handle refresh
   const handleRefresh = () => fetchSystemInfo(true);
+
+  // Auto refresh
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const id = window.setInterval(() => {
+      fetchSystemInfo(true);
+    }, 2000);
+
+    return () => window.clearInterval(id);
+  }, [autoRefresh, fetchSystemInfo]);
 
   // Loading state
   if (loading) {
@@ -175,10 +236,16 @@ export function SystemInfoPage() {
 
   if (!systemInfo) return null;
 
+  const bootTimeLabel =
+    systemInfo.bootTime > 0
+      ? new Date(systemInfo.bootTime * 1000).toLocaleString()
+      : null;
+
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6 space-y-6">
+        <div className="relative p-6 space-y-6">
+          <RefreshOverlay visible={refreshing} />
       {/* Header with refresh button */}
       <div className="flex items-center justify-between">
         <div>
@@ -190,15 +257,28 @@ export function SystemInfoPage() {
             Hardware and operating system details
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="auto-refresh"
+              checked={autoRefresh}
+              onCheckedChange={setAutoRefresh}
+              disabled={loading}
+            />
+            <Label htmlFor="auto-refresh" className="text-sm text-muted-foreground">
+              Auto refresh
+            </Label>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Info Cards Grid */}
@@ -224,6 +304,7 @@ export function SystemInfoPage() {
               label="Uptime" 
               value={formatUptime(systemInfo.uptimeSeconds)} 
             />
+            <InfoRow label="Boot time" value={bootTimeLabel} />
           </CardContent>
         </Card>
 
@@ -250,11 +331,51 @@ export function SystemInfoPage() {
             />
             <Separator className="my-2" />
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground text-sm">CPU Usage</span>
+              <span className="text-muted-foreground text-sm">Average CPU usage</span>
               <Badge variant={systemInfo.cpu.globalUsage > 80 ? 'destructive' : 'secondary'}>
                 {systemInfo.cpu.globalUsage.toFixed(1)}%
               </Badge>
             </div>
+            <Progress value={systemInfo.cpu.globalUsage} className="h-2 mt-2" />
+          </CardContent>
+        </Card>
+
+        {/* CPU Cores Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Cpu className="h-5 w-5 text-orange-500" />
+              CPU Cores
+            </CardTitle>
+            <CardDescription>Per-core usage snapshot</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {systemInfo.cpu.cores.length > 0 ? (
+              <ScrollArea className="h-48">
+                <div className="space-y-2 pr-2">
+                  {systemInfo.cpu.cores.map((core, index) => (
+                    <div key={`core-${index}`} className="space-y-1">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground truncate max-w-[60%]">
+                          {core.name || `Core ${index + 1}`}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {core.frequencyMhz} MHz
+                          </span>
+                          <Badge variant={core.cpuUsage > 80 ? 'destructive' : 'secondary'}>
+                            {core.cpuUsage.toFixed(1)}%
+                          </Badge>
+                        </div>
+                      </div>
+                      <Progress value={core.cpuUsage} className="h-2" />
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-sm text-muted-foreground">No per-core data available.</div>
+            )}
           </CardContent>
         </Card>
 
@@ -287,6 +408,39 @@ export function SystemInfoPage() {
             />
           </CardContent>
         </Card>
+
+        {/* Top Processes Card */}
+        {systemInfo.topProcesses.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Activity className="h-5 w-5 text-cyan-500" />
+                Top Processes
+              </CardTitle>
+              <CardDescription>Highest CPU usage right now</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-48">
+                <div className="space-y-2 pr-2">
+                  {systemInfo.topProcesses.slice(0, 10).map((p) => (
+                    <div key={p.pid} className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{p.name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">PID {p.pid}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{formatBytes(p.memoryBytes)}</span>
+                        <Badge variant={p.cpuUsage > 80 ? 'destructive' : 'secondary'}>
+                          {p.cpuUsage.toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Motherboard Card */}
         {systemInfo.motherboard && (
@@ -627,7 +781,7 @@ export function SystemInfoPage() {
       {/* Footer with timestamp */}
           <div className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
             <Clock className="h-3 w-3" />
-            Last updated: {new Date().toLocaleTimeString()}
+            Last updated: {(lastUpdated ?? new Date()).toLocaleTimeString()}
           </div>
         </div>
       </ScrollArea>

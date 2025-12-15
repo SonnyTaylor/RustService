@@ -25,6 +25,16 @@ pub struct CpuInfo {
     pub logical_cpus: usize,
     pub frequency_mhz: u64,
     pub global_usage: f32,
+    pub cores: Vec<CpuCoreInfo>,
+}
+
+/// Per-core CPU information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuCoreInfo {
+    pub name: String,
+    pub cpu_usage: f32,
+    pub frequency_mhz: u64,
 }
 
 /// Memory (RAM/Swap) information
@@ -179,6 +189,16 @@ pub struct UserInfo {
     pub groups: Vec<String>,
 }
 
+/// Process summary information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub cpu_usage: f32,
+    pub memory_bytes: u64,
+}
+
 /// Complete system information response
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,6 +218,8 @@ pub struct SystemInfo {
     pub networks: Vec<NetworkInfo>,
     /// System users
     pub users: Vec<UserInfo>,
+    /// Top processes by CPU usage
+    pub top_processes: Vec<ProcessInfo>,
     pub uptime_seconds: u64,
     pub boot_time: u64,
 }
