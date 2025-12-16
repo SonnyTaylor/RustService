@@ -101,6 +101,8 @@ export interface ServicePreset {
 
 /** An item in the service run queue */
 export interface ServiceQueueItem {
+  /** Unique queue item ID (UUID) */
+  id: string;
   /** Service ID */
   serviceId: ServiceId;
   /** Whether this service is enabled for the run */

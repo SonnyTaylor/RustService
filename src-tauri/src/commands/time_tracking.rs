@@ -633,12 +633,15 @@ pub fn get_pc_fingerprint() -> PcFingerprint {
 #[tauri::command]
 pub fn get_estimated_time(
     service_id: String,
-    options_hash: Option<String>,
+    options: Option<serde_json::Value>,
     default_secs: u32,
 ) -> u64 {
     // Move fingerprint generation outside lock
     let fingerprint = generate_pc_fingerprint();
     let metrics = get_cached_metrics().lock().unwrap();
+
+    // Compute hash if options provided
+    let options_hash = options.map(|o| compute_options_hash(&o));
 
     // Create composite key for this service+options combination
     let model_key = make_model_key(&service_id, &options_hash);

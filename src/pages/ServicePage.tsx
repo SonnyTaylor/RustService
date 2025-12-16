@@ -54,6 +54,7 @@ import {
   PackageCheck,
   FileSearch,
   CloudDownload,
+  Copy,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -129,8 +130,10 @@ function getIcon(iconName: string) {
 interface SortableQueueItemProps {
   item: ServiceQueueItem;
   definition: ServiceDefinition;
-  onToggle: (serviceId: string) => void;
-  onOptionsChange: (serviceId: string, options: Record<string, unknown>) => void;
+  onToggle: (itemId: string) => void;
+  onOptionsChange: (itemId: string, options: Record<string, unknown>) => void;
+  onDuplicate: (itemId: string) => void;
+  onRemove: (itemId: string) => void;
 }
 
 function SortableQueueItem({
@@ -138,6 +141,8 @@ function SortableQueueItem({
   definition,
   onToggle,
   onOptionsChange,
+  onDuplicate,
+  onRemove,
 }: SortableQueueItemProps) {
   const {
     attributes,
@@ -146,7 +151,32 @@ function SortableQueueItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.serviceId });
+  } = useSortable({ id: item.id });
+
+  const [estimatedMs, setEstimatedMs] = useState<number | null>(null);
+
+  // Fetch estimated time when options change
+  useEffect(() => {
+    let active = true;
+    const fetchEstimate = async () => {
+      try {
+        const ms = await invoke<number>('get_estimated_time', {
+          serviceId: item.serviceId,
+          options: item.options,
+          defaultSecs: definition.estimatedDurationSecs,
+        });
+        if (active) setEstimatedMs(ms);
+      } catch (err) {
+        console.error('Failed to estimate time:', err);
+      }
+    };
+
+    const timer = setTimeout(fetchEstimate, 500); // Debounce
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [item.serviceId, item.options, definition.estimatedDurationSecs]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -157,97 +187,184 @@ function SortableQueueItem({
 
   const Icon = getIcon(definition.icon);
 
+  // Helper to format time
+  const formatTime = (ms: number | undefined) => {
+    if (ms === undefined) return `~${definition.estimatedDurationSecs}s`;
+    const secs = Math.round(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    return `${(secs / 60).toFixed(1)}m`;
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-4 p-4 rounded-xl border-2 bg-card/50 backdrop-blur-sm transition-all duration-200 ${
+      className={`group relative flex flex-col gap-3 p-4 rounded-xl border-2 bg-card/50 backdrop-blur-sm transition-all duration-200 ${
         item.enabled
           ? 'border-border hover:border-primary/30 hover:bg-card/80 hover:shadow-lg'
           : 'border-muted/50 opacity-50'
       } ${isDragging ? 'shadow-2xl ring-2 ring-primary/50' : ''}`}
     >
-      {/* Drag Handle */}
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-muted/80 transition-colors touch-none group-hover:bg-muted/50"
-      >
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
-      </button>
+      <div className="flex items-center gap-4">
+        {/* Drag Handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-muted/80 transition-colors touch-none group-hover:bg-muted/50"
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </button>
 
-      {/* Service Icon */}
-      <div
-        className={`p-3 rounded-xl transition-colors ${
-          item.enabled
-            ? 'bg-gradient-to-br from-primary/20 to-primary/5 text-primary'
-            : 'bg-muted text-muted-foreground'
-        }`}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
+        {/* Service Icon */}
+        <div
+          className={`p-3 rounded-xl transition-colors ${
+            item.enabled
+              ? 'bg-gradient-to-br from-primary/20 to-primary/5 text-primary'
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
 
-      {/* Service Info */}
-      <div className="flex-1 min-w-0">
-        <h4 className="font-semibold truncate">{definition.name}</h4>
-        <p className="text-sm text-muted-foreground truncate">{definition.description}</p>
-        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>~{definition.estimatedDurationSecs}s</span>
+        {/* Service Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold truncate">{definition.name}</h4>
+             {/* Accuracy/Time Indicator */}
+            <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                estimatedMs ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+            }`}>
+              <Clock className="h-3 w-3" />
+              <span>{formatTime(estimatedMs ?? undefined)}</span>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground truncate">{definition.description}</p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+           <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-primary"
+            onClick={() => onDuplicate(item.id)}
+            title="Duplicate service"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          
+          <Switch checked={item.enabled} onCheckedChange={() => onToggle(item.id)} />
+          
+           <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            onClick={() => onRemove(item.id)}
+            title="Remove service"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Options (inline for simple options) */}
+      {/* Options */}
       {item.enabled && definition.options.length > 0 && (
-        <div className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2">
-          {definition.options.slice(0, 2).map((opt) => (
+        <div className="ml-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-muted/30 rounded-lg p-3">
+          {definition.options.map((opt) => (
             <div key={opt.id} className="flex items-center gap-2">
-              <Label
-                htmlFor={`${item.serviceId}-${opt.id}`}
-                className="text-xs text-muted-foreground whitespace-nowrap"
-              >
-                {opt.label}:
-              </Label>
-              {opt.optionType === 'number' && (
-                <Input
-                  id={`${item.serviceId}-${opt.id}`}
-                  type="number"
-                  min={opt.min}
-                  max={opt.max}
-                  value={(item.options[opt.id] as number) ?? opt.defaultValue}
-                  onChange={(e) =>
-                    onOptionsChange(item.serviceId, {
-                      ...item.options,
-                      [opt.id]: parseInt(e.target.value) || opt.defaultValue,
-                    })
-                  }
-                  className="h-8 w-16 text-sm"
-                />
-              )}
-              {opt.optionType === 'string' && (
-                <Input
-                  id={`${item.serviceId}-${opt.id}`}
-                  type="text"
-                  value={(item.options[opt.id] as string) ?? opt.defaultValue}
-                  onChange={(e) =>
-                    onOptionsChange(item.serviceId, {
-                      ...item.options,
-                      [opt.id]: e.target.value,
-                    })
-                  }
-                  className="h-8 w-28 text-sm"
-                />
+              {opt.optionType === 'boolean' ? (
+                 <div className="flex items-center gap-2">
+                    <Switch
+                        id={`${item.id}-${opt.id}`}
+                        checked={(item.options[opt.id] as boolean) ?? opt.defaultValue}
+                        onCheckedChange={(checked) => 
+                            onOptionsChange(item.id, {
+                                ...item.options,
+                                [opt.id]: checked
+                            })
+                        }
+                        className="scale-75 origin-left"
+                    />
+                     <Label
+                        htmlFor={`${item.id}-${opt.id}`}
+                        className="text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
+                      >
+                        {opt.label}
+                      </Label>
+                 </div>
+              ) : opt.optionType === 'select' && opt.options ? (
+                 <div className="flex items-center gap-2">
+                    <Label
+                        htmlFor={`${item.id}-${opt.id}`}
+                        className="text-xs text-muted-foreground whitespace-nowrap"
+                      >
+                        {opt.label}:
+                      </Label>
+                    <Select
+                      value={(item.options[opt.id] as string) ?? opt.defaultValue}
+                      onValueChange={(val) =>
+                        onOptionsChange(item.id, {
+                          ...item.options,
+                          [opt.id]: val,
+                        })
+                      }
+                    >
+                      <SelectTrigger id={`${item.id}-${opt.id}`} className="h-7 min-w-[120px] max-w-[180px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {opt.options.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                 </div>
+              ) : (
+                <>
+                  <Label
+                    htmlFor={`${item.id}-${opt.id}`}
+                    className="text-xs text-muted-foreground whitespace-nowrap"
+                  >
+                    {opt.label}:
+                  </Label>
+                  {opt.optionType === 'number' && (
+                    <Input
+                      id={`${item.id}-${opt.id}`}
+                      type="number"
+                      min={opt.min}
+                      max={opt.max}
+                      value={(item.options[opt.id] as number) ?? opt.defaultValue}
+                      onChange={(e) =>
+                        onOptionsChange(item.id, {
+                          ...item.options,
+                          [opt.id]: parseFloat(e.target.value) || opt.defaultValue,
+                        })
+                      }
+                      className="h-7 w-20 text-xs"
+                    />
+                  )}
+                  {opt.optionType === 'string' && (
+                    <Input
+                      id={`${item.id}-${opt.id}`}
+                      type="text"
+                      value={(item.options[opt.id] as string) ?? opt.defaultValue}
+                      onChange={(e) =>
+                        onOptionsChange(item.id, {
+                          ...item.options,
+                          [opt.id]: e.target.value,
+                        })
+                      }
+                      className="h-7 w-full min-w-[100px] text-xs"
+                    />
+                  )}
+                </>
               )}
             </div>
           ))}
         </div>
       )}
-
-      {/* Enable Toggle */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">{item.enabled ? 'On' : 'Off'}</span>
-        <Switch checked={item.enabled} onCheckedChange={() => onToggle(item.serviceId)} />
-      </div>
     </div>
   );
 }
@@ -448,8 +565,8 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = queue.findIndex((q) => q.serviceId === active.id);
-      const newIndex = queue.findIndex((q) => q.serviceId === over.id);
+      const oldIndex = queue.findIndex((q) => q.id === active.id);
+      const newIndex = queue.findIndex((q) => q.id === over.id);
       const newQueue = arrayMove(queue, oldIndex, newIndex).map((item, index) => ({
         ...item,
         order: index,
@@ -458,21 +575,47 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
     }
   };
 
-  const handleToggle = (serviceId: string) => {
+  const handleToggle = (itemId: string) => {
     onQueueChange(
       queue.map((item) =>
-        item.serviceId === serviceId ? { ...item, enabled: !item.enabled } : item
+        item.id === itemId ? { ...item, enabled: !item.enabled } : item
       )
     );
   };
 
-  const handleOptionsChange = (serviceId: string, options: Record<string, unknown>) => {
+  const handleOptionsChange = (itemId: string, options: Record<string, unknown>) => {
     onQueueChange(
       queue.map((item) =>
-        item.serviceId === serviceId ? { ...item, options } : item
+        item.id === itemId ? { ...item, options } : item
       )
     );
   };
+
+  const handleDuplicate = (itemId: string) => {
+    const index = queue.findIndex((q) => q.id === itemId);
+    if (index === -1) return;
+    
+    const itemToClone = queue[index];
+    const newItem: ServiceQueueItem = {
+      ...itemToClone,
+      id: crypto.randomUUID(),
+      order: index + 1,
+    };
+    
+    // Insert after the original
+    const newQueue = [
+      ...queue.slice(0, index + 1),
+      newItem,
+      ...queue.slice(index + 1)
+    ].map((item, idx) => ({ ...item, order: idx }));
+    
+    onQueueChange(newQueue);
+  };
+
+  const handleRemove = (itemId: string) => {
+      const newQueue = queue.filter(q => q.id !== itemId).map((item, idx) => ({ ...item, order: idx }));
+      onQueueChange(newQueue);
+  }
 
   const enabledCount = queue.filter((q) => q.enabled).length;
   const totalDuration = queue
@@ -512,7 +655,7 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={queue.map((q) => q.serviceId)}
+            items={queue.map((q) => q.id)}
             strategy={verticalListSortingStrategy}
           >
             <div className="space-y-3 pb-4">
@@ -521,11 +664,13 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
                 if (!def) return null;
                 return (
                   <SortableQueueItem
-                    key={item.serviceId}
+                    key={item.id}
                     item={item}
                     definition={def}
                     onToggle={handleToggle}
                     onOptionsChange={handleOptionsChange}
+                    onDuplicate={handleDuplicate}
+                    onRemove={handleRemove}
                   />
                 );
               })}
@@ -717,11 +862,11 @@ export function ServicePage() {
       // Restore state if service was running
       if (stateData.isRunning && stateData.currentReport) {
         setReport(stateData.currentReport);
-        setQueue(stateData.currentReport.queue);
+        setQueue(stateData.currentReport.queue.map(q => ({ ...q, id: q.id || crypto.randomUUID() })));
         setPhase('running');
       } else if (stateData.currentReport && stateData.currentReport.status !== 'running') {
         setReport(stateData.currentReport);
-        setQueue(stateData.currentReport.queue);
+        setQueue(stateData.currentReport.queue.map(q => ({ ...q, id: q.id || crypto.randomUUID() })));
         setPhase('results');
       }
     } catch (error) {
@@ -792,6 +937,7 @@ export function ServicePage() {
   // Handlers
   const handleSelectPreset = (preset: ServicePreset) => {
     const queueItems: ServiceQueueItem[] = preset.services.map((s, index) => ({
+      id: crypto.randomUUID(),
       serviceId: s.serviceId,
       enabled: s.enabled,
       order: index,
