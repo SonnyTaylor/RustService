@@ -177,6 +177,15 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.business.technicians = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid business.technicians value: {}", e))?;
         }
+        // Technician tabs settings
+        ["technicianTabs", "tabs"] => {
+            settings.technician_tabs.tabs = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid technicianTabs.tabs value: {}", e))?;
+        }
+        ["technicianTabs", "useFavicons"] => {
+            settings.technician_tabs.use_favicons = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid technicianTabs.useFavicons value: {}", e))?;
+        }
         _ => {
             return Err(format!("Unknown setting key: {}", key));
         }

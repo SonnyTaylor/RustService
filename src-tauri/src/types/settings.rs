@@ -134,6 +134,37 @@ pub struct ProgramsSettings {
     pub overrides: std::collections::HashMap<String, String>,
 }
 
+/// A single technician tab configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TechnicianTab {
+    /// Unique identifier for the tab
+    pub id: String,
+    /// Display name shown in the tab bar
+    pub name: String,
+    /// URL to load in the iframe
+    pub url: String,
+    /// Icon to display (preset icon name, or None for favicon)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// Technician tabs settings
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TechnicianTabsSettings {
+    /// List of custom technician tabs
+    #[serde(default)]
+    pub tabs: Vec<TechnicianTab>,
+    /// Whether to use website favicons for tab icons
+    #[serde(default = "default_use_favicons")]
+    pub use_favicons: bool,
+}
+
+fn default_use_favicons() -> bool {
+    true
+}
+
 /// Main application settings schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -155,6 +186,9 @@ pub struct AppSettings {
     /// Required program path overrides
     #[serde(default)]
     pub programs: ProgramsSettings,
+    /// Custom technician tabs for embedding external websites
+    #[serde(default)]
+    pub technician_tabs: TechnicianTabsSettings,
 }
 
 impl Default for AppSettings {
@@ -166,6 +200,7 @@ impl Default for AppSettings {
             reports: ReportsSettings::default(),
             business: BusinessSettings::default(),
             programs: ProgramsSettings::default(),
+            technician_tabs: TechnicianTabsSettings::default(),
         }
     }
 }

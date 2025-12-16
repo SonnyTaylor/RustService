@@ -224,6 +224,58 @@ export interface ProgramsSettings {
   overrides: Record<string, string>;
 }
 
+/**
+ * A single technician tab configuration
+ */
+export interface TechnicianTab {
+  /** Unique identifier for the tab */
+  id: string;
+  /** Display name shown in the tab bar */
+  name: string;
+  /** URL to load in the iframe */
+  url: string;
+  /** Icon to display (preset icon name, or undefined for auto-favicon) */
+  icon?: string;
+}
+
+/**
+ * Available preset icons for technician tabs
+ */
+export const TECHNICIAN_TAB_ICONS = [
+  { id: 'globe', name: 'Globe', description: 'Default web icon' },
+  { id: 'file-text', name: 'Document', description: 'Documentation or files' },
+  { id: 'folder', name: 'Folder', description: 'File management' },
+  { id: 'database', name: 'Database', description: 'Data or storage' },
+  { id: 'mail', name: 'Mail', description: 'Email or messaging' },
+  { id: 'calendar', name: 'Calendar', description: 'Scheduling or dates' },
+  { id: 'settings', name: 'Settings', description: 'Configuration' },
+  { id: 'user', name: 'User', description: 'Account or profile' },
+  { id: 'shopping-cart', name: 'Cart', description: 'Shopping or orders' },
+  { id: 'credit-card', name: 'Payment', description: 'Billing or payments' },
+  { id: 'bar-chart', name: 'Analytics', description: 'Charts or stats' },
+  { id: 'code', name: 'Code', description: 'Development tools' },
+  { id: 'terminal', name: 'Terminal', description: 'Console or CLI' },
+  { id: 'cloud', name: 'Cloud', description: 'Cloud services' },
+  { id: 'lock', name: 'Security', description: 'Security or auth' },
+  { id: 'tool', name: 'Tools', description: 'Utilities' },
+  { id: 'wrench', name: 'Wrench', description: 'Repair or maintenance' },
+  { id: 'monitor', name: 'Monitor', description: 'Display or screen' },
+  { id: 'smartphone', name: 'Phone', description: 'Mobile' },
+  { id: 'headphones', name: 'Support', description: 'Help or support' },
+] as const;
+
+export type TechnicianTabIconId = typeof TECHNICIAN_TAB_ICONS[number]['id'];
+
+/**
+ * Technician tabs settings
+ */
+export interface TechnicianTabsSettings {
+  /** List of custom technician tabs */
+  tabs: TechnicianTab[];
+  /** Whether to use website favicons for tab icons (when no icon is set) */
+  useFavicons: boolean;
+}
+
 // =============================================================================
 // Main Settings Interface
 // =============================================================================
@@ -251,6 +303,8 @@ export interface AppSettings {
   business: BusinessSettings;
   /** Required program path overrides */
   programs: ProgramsSettings;
+  /** Custom technician tabs for embedding external websites */
+  technicianTabs: TechnicianTabsSettings;
 }
 
 // =============================================================================
@@ -306,6 +360,14 @@ export const DEFAULT_PROGRAMS: ProgramsSettings = {
 };
 
 /**
+ * Default technician tabs settings
+ */
+export const DEFAULT_TECHNICIAN_TABS: TechnicianTabsSettings = {
+  tabs: [],
+  useFavicons: true,
+};
+
+/**
  * Default application settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -315,6 +377,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reports: DEFAULT_REPORTS,
   business: DEFAULT_BUSINESS,
   programs: DEFAULT_PROGRAMS,
+  technicianTabs: DEFAULT_TECHNICIAN_TABS,
 };
 
 // =============================================================================
@@ -341,7 +404,9 @@ export type SettingKey =
   | 'business.website'
   | 'business.tfn'
   | 'business.abn'
-  | 'business.technicians';
+  | 'business.technicians'
+  | 'technicianTabs.tabs'
+  | 'technicianTabs.useFavicons';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -364,9 +429,11 @@ export type SettingValueType<K extends SettingKey> =
   K extends 'business.tfn' ? string :
   K extends 'business.abn' ? string :
   K extends 'business.technicians' ? string[] :
+  K extends 'technicianTabs.tabs' ? TechnicianTab[] :
+  K extends 'technicianTabs.useFavicons' ? boolean :
   never;
 
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'about';
