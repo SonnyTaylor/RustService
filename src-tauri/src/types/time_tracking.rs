@@ -120,6 +120,7 @@ impl PcFingerprint {
             if self.has_discrete_gpu { 1.0 } else { 0.0 },
             self.network_type.to_score(),
             self.cpu_load_percent / 100.0, // Raw load 0-1 (SGD will learn positive coefficient)
+            1.0,                           // Bias term for intercept
         ]
     }
 }

@@ -32,8 +32,8 @@ const RIDGE_LAMBDA: f64 = 0.01;
 /// Time decay base (0.95^days_old)
 const TIME_DECAY_BASE: f64 = 0.95;
 
-/// Number of features in the fingerprint vector
-const NUM_FEATURES: usize = 8;
+/// Number of features in the fingerprint vector (score, ram, ssd, power, avx2, gpu, net, cpu_load, bias)
+const NUM_FEATURES: usize = 9;
 
 /// SGD learning rate (0.05 is aggressive but safe with Z-score normalization)
 const LEARNING_RATE: f64 = 0.05;
@@ -41,14 +41,21 @@ const LEARNING_RATE: f64 = 0.05;
 /// SGD epochs (1000 for better convergence with batch GD)
 const SGD_EPOCHS: usize = 1000;
 
-/// Index of cpu_load feature (the only one with positive coefficient)
-const CPU_LOAD_FEATURE_INDEX: usize = 7;
+/// Index of cpu_load feature (positive coefficient)
+const IDX_CPU_LOAD: usize = 7;
+/// Index of bias term (intercept)
+const IDX_BIAS: usize = 8;
 
 // =============================================================================
 // Metrics File Management
 // =============================================================================
 
 static METRICS_CACHE: OnceLock<Mutex<ServiceTimeMetrics>> = OnceLock::new();
+static SYSTEM: OnceLock<Mutex<System>> = OnceLock::new();
+
+fn get_system() -> &'static Mutex<System> {
+    SYSTEM.get_or_init(|| Mutex::new(System::new()))
+}
 
 fn get_metrics_path() -> std::path::PathBuf {
     get_data_dir_path().join("service_metrics.json")
@@ -177,13 +184,16 @@ fn get_static_specs() -> &'static StaticPcSpecs {
 fn generate_pc_fingerprint() -> PcFingerprint {
     let static_specs = get_static_specs();
 
-    // Only refresh RAM and CPU usage (fast operations)
-    let mut sys = System::new();
-    sys.refresh_memory();
-    sys.refresh_cpu_usage();
-
-    let available_ram_gb = sys.available_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
-    let cpu_load_percent = sys.global_cpu_usage() as f64;
+    // Use persistent System instance to avoid "always 0.0" CPU usage bug
+    let (available_ram_gb, cpu_load_percent) = {
+        let mut sys = get_system().lock().unwrap();
+        sys.refresh_memory();
+        sys.refresh_cpu_usage();
+        (
+            sys.available_memory() as f64 / (1024.0 * 1024.0 * 1024.0),
+            sys.global_cpu_usage() as f64,
+        )
+    };
 
     // Power source - only check if laptop
     let is_on_ac_power = if static_specs.is_laptop {
@@ -276,7 +286,12 @@ fn calculate_normalization(samples: &[ServiceTimeSample]) -> FeatureNormalizatio
         }
     }
 
-    let means: Vec<f64> = sums.iter().map(|&s| s / n).collect();
+    let mut means: Vec<f64> = sums.iter().map(|&s| s / n).collect();
+    // Force bias term mean to 0.0 so that (1.0 - 0.0) / 1.0 remains 1.0
+    if means.len() > IDX_BIAS {
+        means[IDX_BIAS] = 0.0;
+    }
+
     let std_devs: Vec<f64> = sq_sums
         .iter()
         .zip(means.iter())
@@ -328,6 +343,7 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
     let normalization = calculate_normalization(samples);
 
     // Prepare data
+    // Includes bias term (1.0) as the last feature
     let mut x_matrix: Vec<Vec<f64>> = Vec::new();
     let mut y_values: Vec<f64> = Vec::new();
     let mut weights: Vec<f64> = Vec::new();
@@ -342,16 +358,7 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
 
     let n = samples.len();
 
-    // Calculate weighted mean of y (used as base intercept)
-    let total_weight: f64 = weights.iter().sum();
-    let y_mean: f64 = y_values
-        .iter()
-        .zip(weights.iter())
-        .map(|(y, w)| y * w)
-        .sum::<f64>()
-        / total_weight;
-
-    // Initialize coefficients to zero
+    // Initialize coefficients to zero (including bias at IDX_BIAS)
     let mut coefficients = vec![0.0; NUM_FEATURES];
 
     // SGD training loop
@@ -359,21 +366,26 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
         let mut gradients = vec![0.0; NUM_FEATURES];
 
         for i in 0..n {
-            // Predict: intercept + sum(coef * feature)
-            let prediction: f64 = y_mean
-                + x_matrix[i]
-                    .iter()
-                    .zip(coefficients.iter())
-                    .map(|(x, c)| x * c)
-                    .sum::<f64>();
+            // Predict: sum(coef * feature)
+            // Note: Bias is just another feature (1.0)
+            let prediction: f64 = x_matrix[i]
+                .iter()
+                .zip(coefficients.iter())
+                .map(|(x, c)| x * c)
+                .sum::<f64>();
 
             let error = prediction - y_values[i];
             let sample_weight = weights[i];
 
             // Accumulate gradients with L2 regularization
             for j in 0..NUM_FEATURES {
-                gradients[j] +=
-                    sample_weight * error * x_matrix[i][j] + (RIDGE_LAMBDA * coefficients[j]);
+                // Don't regularize bias term (intercept)
+                let regularization = if j == IDX_BIAS {
+                    0.0
+                } else {
+                    RIDGE_LAMBDA * coefficients[j]
+                };
+                gradients[j] += sample_weight * error * x_matrix[i][j] + regularization;
             }
         }
 
@@ -385,30 +397,38 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
 
     // Apply coefficient clamping with CORRECT signs
     for (j, coef) in coefficients.iter_mut().enumerate() {
-        if j == CPU_LOAD_FEATURE_INDEX {
-            // CPU load: higher load = SLOWER = positive coefficient
+        if j == IDX_CPU_LOAD {
+            // CPU load: higher load = SLOWER = positive coefficient.
+            // But we already normalized inputs. If CPU load is high (positive Z), time is high.
+            // So coef should be positive.
             *coef = coef.clamp(0.0, 100000.0);
+        } else if j == IDX_BIAS {
+            // Intercept: can be anything
+            // No clamp
         } else {
-            // All other features: higher = FASTER = negative coefficient
+            // All other features (RAM, SSD, GPU, etc.): higher = FASTER = negative coefficient
+            // e.g. High RAM (pos Z) -> Low Time. Coef should be negative.
             *coef = coef.clamp(-100000.0, 0.0);
         }
     }
 
     // Calculate R-squared
+    let y_mean: f64 = y_values.iter().sum::<f64>() / n as f64;
     let ss_tot: f64 = y_values
         .iter()
         .zip(weights.iter())
+        // R2 is usually calculated against mean, weighted or unweighted.
+        // Using standard mean here for standard R2 interpretation.
         .map(|(y, w)| w * (y - y_mean).powi(2))
         .sum();
 
     let mut ss_res = 0.0;
     for i in 0..n {
-        let predicted = y_mean
-            + x_matrix[i]
-                .iter()
-                .zip(coefficients.iter())
-                .map(|(x, c)| x * c)
-                .sum::<f64>();
+        let predicted: f64 = x_matrix[i]
+            .iter()
+            .zip(coefficients.iter())
+            .map(|(x, c)| x * c)
+            .sum::<f64>();
         ss_res += weights[i] * (y_values[i] - predicted).powi(2);
     }
 
@@ -419,7 +439,7 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
     };
 
     Some(ServiceModelWeights {
-        intercept: y_mean,
+        intercept: 0.0, // Intercept is now embedded in coefficients[IDX_BIAS]
         coefficients,
         sample_count: n,
         normalization,
@@ -533,6 +553,9 @@ pub fn record_service_time(
     preset_id: Option<String>,
     options_hash: Option<String>,
 ) -> Result<(), String> {
+    // Generate fingerprint OUTSIDE the lock to avoid freezing UI during hardware scan
+    let pc_fingerprint = generate_pc_fingerprint();
+
     let mut metrics = get_cached_metrics().lock().unwrap();
 
     // Clone options_hash before moving into struct (for model key lookup later)
@@ -542,7 +565,7 @@ pub fn record_service_time(
         service_id: service_id.clone(),
         duration_ms,
         timestamp: Utc::now().to_rfc3339(),
-        pc_fingerprint: generate_pc_fingerprint(),
+        pc_fingerprint,
         preset_id,
         options_hash,
     };
@@ -613,8 +636,9 @@ pub fn get_estimated_time(
     options_hash: Option<String>,
     default_secs: u32,
 ) -> u64 {
-    let metrics = get_cached_metrics().lock().unwrap();
+    // Move fingerprint generation outside lock
     let fingerprint = generate_pc_fingerprint();
+    let metrics = get_cached_metrics().lock().unwrap();
 
     // Create composite key for this service+options combination
     let model_key = make_model_key(&service_id, &options_hash);
@@ -657,8 +681,9 @@ pub fn get_estimated_time(
 
 #[tauri::command]
 pub fn get_service_averages() -> Vec<ServiceTimeStats> {
-    let metrics = get_cached_metrics().lock().unwrap();
+    // Move fingerprint generation outside lock
     let fingerprint = generate_pc_fingerprint();
+    let metrics = get_cached_metrics().lock().unwrap();
 
     let mut by_service: HashMap<String, Vec<ServiceTimeSample>> = HashMap::new();
     for sample in &metrics.samples {
@@ -750,9 +775,20 @@ pub fn clear_service_metrics(service_id: Option<String>) -> Result<u32, String> 
     let before_count = metrics.samples.len();
 
     if let Some(id) = &service_id {
+        // Remove samples for this service ID
         metrics.samples.retain(|s| s.service_id != *id);
-        metrics.models.remove(id);
-        metrics.samples_since_retrain.remove(id);
+
+        // Remove models: check if key starts with "service_id" (handles composite keys)
+        let keys_to_remove: Vec<String> = metrics
+            .models
+            .keys()
+            .filter(|k| *k == id || k.starts_with(&format!("{}:", id)))
+            .cloned()
+            .collect();
+        for k in keys_to_remove {
+            metrics.models.remove(&k);
+            metrics.samples_since_retrain.remove(&k);
+        }
     } else {
         metrics.samples.clear();
         metrics.models.clear();
@@ -768,19 +804,22 @@ pub fn clear_service_metrics(service_id: Option<String>) -> Result<u32, String> 
 pub fn retrain_time_models() -> Result<u32, String> {
     let mut metrics = get_cached_metrics().lock().unwrap();
 
-    let mut by_service: HashMap<String, Vec<ServiceTimeSample>> = HashMap::new();
+    // Group samples by (service_id, options_hash) tuple to create specific models
+    let mut by_service_options: HashMap<(String, Option<String>), Vec<ServiceTimeSample>> =
+        HashMap::new();
     for sample in &metrics.samples {
-        by_service
-            .entry(sample.service_id.clone())
+        by_service_options
+            .entry((sample.service_id.clone(), sample.options_hash.clone()))
             .or_default()
             .push(sample.clone());
     }
 
     let mut trained_count = 0;
-    for (service_id, samples) in by_service {
+    for ((service_id, options_hash), samples) in by_service_options {
         if let Some(weights) = train_sgd_regression(&samples) {
-            metrics.models.insert(service_id.clone(), weights);
-            metrics.samples_since_retrain.insert(service_id, 0);
+            let model_key = make_model_key(&service_id, &options_hash);
+            metrics.models.insert(model_key.clone(), weights);
+            metrics.samples_since_retrain.insert(model_key, 0);
             trained_count += 1;
         }
     }
