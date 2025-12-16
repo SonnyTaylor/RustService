@@ -18,6 +18,10 @@ import {
   Settings,
   Globe,
   ChevronDown,
+  MoreHorizontal,
+  Rocket,
+  Network,
+  Skull,
   // Icon picker icons
   Folder,
   Database,
@@ -35,15 +39,15 @@ import {
   User,
 } from 'lucide-react';
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/theme-provider';
 import { SettingsProvider, useSettings } from '@/components/settings-context';
 import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVariants } from '@/components/animation-context';
@@ -58,6 +62,10 @@ import {
   ScriptsPage,
   ReportsPage,
   SettingsPage,
+  NetworkDiagnosticsPage,
+  StartupManagerPage,
+  EventLogPage,
+  BluescreenPage,
 } from '@/pages';
 import type { TechnicianTab } from '@/types/settings';
 
@@ -131,18 +139,31 @@ function TechnicianTabIcon({ tab, useFavicons }: { tab: TechnicianTab; useFavico
 }
 
 /**
- * Tab configuration for main navigation
+ * Primary tabs shown directly in the tab bar
  */
-const TABS = [
+const PRIMARY_TABS = [
   { id: 'service', label: 'Service', icon: Wrench, component: ServicePage },
   { id: 'system-info', label: 'System Info', icon: Monitor, component: SystemInfoPage },
   { id: 'component-test', label: 'Component Test', icon: TestTube, component: ComponentTestPage },
   { id: 'shortcuts', label: 'Shortcuts', icon: Zap, component: ShortcutsPage },
   { id: 'programs', label: 'Programs', icon: AppWindow, component: ProgramsPage },
   { id: 'scripts', label: 'Scripts', icon: ScrollText, component: ScriptsPage },
+] as const;
+
+/**
+ * Secondary tabs shown in the "More" dropdown
+ */
+const SECONDARY_TABS = [
+  { id: 'network-diagnostics', label: 'Network Diagnostics', icon: Network, component: NetworkDiagnosticsPage },
+  { id: 'startup-manager', label: 'Startup Manager', icon: Rocket, component: StartupManagerPage },
+  { id: 'event-log', label: 'Event Log', icon: ScrollText, component: EventLogPage },
+  { id: 'bluescreen', label: 'Bluescreen Analysis', icon: Skull, component: BluescreenPage },
   { id: 'reports', label: 'Reports', icon: FileText, component: ReportsPage },
   { id: 'settings', label: 'Settings', icon: Settings, component: SettingsPage },
 ] as const;
+
+/** All tabs combined for content rendering */
+const ALL_TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 
 /** Number of technician tabs to show before using dropdown */
 const VISIBLE_TECH_TABS = 3;
@@ -196,7 +217,7 @@ function AppContent() {
       const nextTab = custom.detail;
       if (typeof nextTab !== 'string') return;
       // Check both regular tabs and technician tabs
-      if (TABS.some((t) => t.id === nextTab) || technicianTabs.some(t => `tech-${t.id}` === nextTab)) {
+      if (ALL_TABS.some((t) => t.id === nextTab) || technicianTabs.some(t => `tech-${t.id}` === nextTab)) {
         setActiveTab(nextTab);
       }
     };
@@ -217,48 +238,93 @@ function AppContent() {
         className="flex-1 flex flex-col min-h-0"
       >
         {/* Tab Navigation */}
-        <TabsList className="w-full justify-start rounded-none border-b bg-muted/50 px-2 h-auto py-1 flex-shrink-0">
-          {/* Regular tabs */}
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <TabsTrigger
+        <div className="w-full flex items-center border-b bg-muted/50 px-2 py-1 flex-shrink-0 gap-1">
+          {/* Primary tabs */}
+          {PRIMARY_TABS.map(({ id, label, icon: Icon }) => (
+            <button
               key={id}
-              value={id}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md transition-all duration-150"
+              onClick={() => setActiveTab(id)}
+              className={`flex-1 justify-center flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-all duration-150 hover:bg-background/50 ${
+                activeTab === id 
+                  ? 'bg-background shadow-sm text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
               <Icon className="h-4 w-4" />
               <span className="hidden sm:inline">{label}</span>
-            </TabsTrigger>
+            </button>
           ))}
+
+          {/* More dropdown for secondary tabs */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`flex-1 justify-center flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-all duration-150 hover:bg-background/50 ${
+                  SECONDARY_TABS.some(t => t.id === activeTab)
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">More</span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {SECONDARY_TABS.slice(0, 4).map(({ id, label, icon: Icon }) => (
+                <DropdownMenuItem
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className="gap-2"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              {SECONDARY_TABS.slice(4).map(({ id, label, icon: Icon }) => (
+                <DropdownMenuItem
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className="gap-2"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Separator and technician tabs */}
           {technicianTabs.length > 0 && (
             <>
-              <Separator orientation="vertical" className="h-6 mx-2" />
+              <Separator orientation="vertical" className="h-6 mx-1" />
               
               {/* Visible technician tabs */}
               {visibleTechTabs.map((tab) => (
-                <TabsTrigger
+                <button
                   key={`tech-${tab.id}`}
-                  value={`tech-${tab.id}`}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md transition-all duration-150"
+                  onClick={() => setActiveTab(`tech-${tab.id}`)}
+                  className={`flex-1 justify-center flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-all duration-150 hover:bg-background/50 ${
+                    activeTab === `tech-${tab.id}`
+                      ? 'bg-background shadow-sm text-foreground' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 >
                   <TechnicianTabIcon tab={tab} useFavicons={useFavicons} />
                   <span className="hidden sm:inline">{tab.name}</span>
-                </TabsTrigger>
+                </button>
               ))}
 
-              {/* Overflow dropdown for extra tabs */}
+              {/* Overflow dropdown for extra technician tabs */}
               {overflowTechTabs.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-8 px-2 gap-1 text-sm"
+                    <button
+                      className="flex-shrink-0 flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-all duration-150 hover:bg-background/50 text-muted-foreground hover:text-foreground"
                     >
-                      <span className="hidden sm:inline">More</span>
                       <ChevronDown className="h-4 w-4" />
-                    </Button>
+                    </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {overflowTechTabs.map((tab) => (
@@ -276,13 +342,13 @@ function AppContent() {
               )}
             </>
           )}
-        </TabsList>
+        </div>
 
         {/* Tab Content with Animation */}
         <div className="flex-1 overflow-hidden min-h-0 relative">
           <AnimatePresence mode="wait" initial={false}>
             {/* Regular tab content */}
-            {TABS.map(({ id, component: Component }) => (
+            {ALL_TABS.map(({ id, component: Component }) => (
               activeTab === id && (
                 <TabsContent
                   key={id}

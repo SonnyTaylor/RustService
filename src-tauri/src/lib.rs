@@ -82,7 +82,27 @@ pub fn run() {
             commands::get_service_averages,
             commands::get_preset_averages,
             commands::clear_service_metrics,
-            commands::retrain_time_models
+            commands::retrain_time_models,
+            // Network diagnostics commands
+            commands::get_detailed_network_info,
+            commands::ping_host,
+            commands::trace_route,
+            commands::dns_lookup,
+            commands::get_wifi_info,
+            // Startup manager commands
+            commands::get_startup_items,
+            commands::toggle_startup_item,
+            commands::delete_startup_item,
+            // Event log commands
+            commands::get_event_log_sources,
+            commands::get_event_logs,
+            commands::get_event_log_stats,
+            commands::search_event_logs,
+            // Bluescreen analysis commands
+            commands::get_bsod_history,
+            commands::get_bsod_details,
+            commands::get_bsod_stats,
+            commands::delete_crash_dump
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
