@@ -1103,13 +1103,42 @@ export function ServicePage() {
 
   // Handlers
   const handleSelectPreset = (preset: ServicePreset) => {
-    const queueItems: ServiceQueueItem[] = preset.services.map((s, index) => ({
-      id: crypto.randomUUID(),
-      serviceId: s.serviceId,
-      enabled: s.enabled,
-      order: index,
-      options: s.options as Record<string, unknown>,
-    }));
+    // 1. Create a map of preset configurations for quick lookup
+    const presetConfigMap = new Map(preset.services.map(s => [s.serviceId, s]));
+
+    // 2. Build the full queue from ALL definitions
+    // We want preset items to appear at the top in their specific order, followed by the rest
+    const orderedServices = [
+        ...preset.services.map(s => definitions.find(d => d.id === s.serviceId)).filter((d): d is ServiceDefinition => !!d),
+        ...definitions.filter(d => !presetConfigMap.has(d.id))
+    ];
+
+    const queueItems: ServiceQueueItem[] = orderedServices.map((def, index) => {
+        const presetConfig = presetConfigMap.get(def.id);
+        
+        // If in preset, use preset config. If not, use defaults/disabled.
+        if (presetConfig) {
+            return {
+                id: crypto.randomUUID(),
+                serviceId: def.id,
+                enabled: presetConfig.enabled,
+                order: index,
+                options: presetConfig.options as Record<string, unknown>,
+            };
+        } else {
+             return {
+                id: crypto.randomUUID(),
+                serviceId: def.id,
+                enabled: false,
+                order: index,
+                options: def.options.reduce((acc, opt) => {
+                    acc[opt.id] = opt.defaultValue;
+                    return acc;
+                }, {} as Record<string, unknown>),
+            };
+        }
+    });
+
     setQueue(queueItems);
     setSelectedPresetName(preset.name);
     setPhase('queue');
