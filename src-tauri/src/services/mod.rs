@@ -3,7 +3,10 @@
 //! Each service is implemented in its own file and registered here.
 //! Services implement the `Service` trait for consistent execution.
 
+mod battery_info;
+mod disk_space;
 mod ping_test;
+mod winsat;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -32,7 +35,9 @@ pub trait Service: Send + Sync {
 static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock::new(|| {
     let services: Vec<Box<dyn Service>> = vec![
         Box::new(ping_test::PingTestService),
-        // Add new services here
+        Box::new(disk_space::DiskSpaceService),
+        Box::new(winsat::WinsatService),
+        Box::new(battery_info::BatteryInfoService),
     ];
 
     services
@@ -71,11 +76,23 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             id: "diagnostics".to_string(),
             name: "Diagnostics".to_string(),
             description: "Quick diagnostic tests to identify system issues".to_string(),
-            services: vec![PresetServiceConfig {
-                service_id: "ping-test".to_string(),
-                enabled: true,
-                options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
-            }],
+            services: vec![
+                PresetServiceConfig {
+                    service_id: "ping-test".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
+                },
+                PresetServiceConfig {
+                    service_id: "disk-space".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+            ],
             icon: "stethoscope".to_string(),
             color: "blue".to_string(),
         },
@@ -83,11 +100,23 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             id: "general".to_string(),
             name: "General Service".to_string(),
             description: "Standard maintenance tasks for regular checkups".to_string(),
-            services: vec![PresetServiceConfig {
-                service_id: "ping-test".to_string(),
-                enabled: true,
-                options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
-            }],
+            services: vec![
+                PresetServiceConfig {
+                    service_id: "ping-test".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
+                },
+                PresetServiceConfig {
+                    service_id: "disk-space".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+            ],
             icon: "wrench".to_string(),
             color: "green".to_string(),
         },
@@ -95,11 +124,28 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             id: "complete".to_string(),
             name: "Complete Service".to_string(),
             description: "Comprehensive scan and cleanup for thorough maintenance".to_string(),
-            services: vec![PresetServiceConfig {
-                service_id: "ping-test".to_string(),
-                enabled: true,
-                options: serde_json::json!({"target": "8.8.8.8", "count": 10}),
-            }],
+            services: vec![
+                PresetServiceConfig {
+                    service_id: "ping-test".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"target": "8.8.8.8", "count": 10}),
+                },
+                PresetServiceConfig {
+                    service_id: "disk-space".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "winsat".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"drive": "C"}),
+                },
+            ],
             icon: "shield-check".to_string(),
             color: "purple".to_string(),
         },
@@ -107,11 +153,28 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             id: "custom".to_string(),
             name: "Custom Service".to_string(),
             description: "Build your own service configuration".to_string(),
-            services: vec![PresetServiceConfig {
-                service_id: "ping-test".to_string(),
-                enabled: false,
-                options: serde_json::json!({}),
-            }],
+            services: vec![
+                PresetServiceConfig {
+                    service_id: "ping-test".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "disk-space".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-info".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "winsat".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"drive": "C"}),
+                },
+            ],
             icon: "settings-2".to_string(),
             color: "orange".to_string(),
         },

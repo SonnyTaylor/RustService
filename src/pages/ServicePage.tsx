@@ -39,6 +39,9 @@ import {
   Wifi,
   Clock,
   ChevronRight,
+  HardDrive,
+  Gauge,
+  BatteryFull,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -86,6 +89,9 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   'shield-check': ShieldCheck,
   'settings-2': Settings2,
   wifi: Wifi,
+  'hard-drive': HardDrive,
+  gauge: Gauge,
+  'battery-full': BatteryFull,
 };
 
 function getIcon(iconName: string) {

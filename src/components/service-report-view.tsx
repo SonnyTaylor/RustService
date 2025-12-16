@@ -26,7 +26,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 
 import type {
   ServiceReport,
@@ -521,57 +520,49 @@ export function ServiceReportView({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="p-6 pb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
-              {report.status === 'completed' ? (
-                <div className="p-1.5 rounded-full bg-green-500/10">
-                  <CheckCircle2 className="h-6 w-6 text-green-500" />
-                </div>
-              ) : (
-                <div className="p-1.5 rounded-full bg-red-500/10">
-                  <XCircle className="h-6 w-6 text-red-500" />
-                </div>
-              )}
-              {headerTitle}
-            </h2>
-            <p className="text-muted-foreground">
-              {successCount}/{totalCount} services completed in {totalDuration}s
-            </p>
-          </div>
-          {headerActions}
-          {onNewService && (
-            <Button onClick={onNewService} className="gap-2">
-              <Wrench className="h-4 w-4" />
-              New Service
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <Separator className="mx-6" />
-
-      {/* Tabs */}
+      {/* Compact Header with Inline Tabs */}
       <Tabs defaultValue="findings" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-6 mt-4 w-fit">
-          <TabsTrigger value="findings" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Findings
-          </TabsTrigger>
-          <TabsTrigger value="printout" className="gap-2">
-            <Printer className="h-4 w-4" />
-            Printout
-          </TabsTrigger>
-          <TabsTrigger value="customer" className="gap-2">
-            <Users className="h-4 w-4" />
-            Customer Print
-          </TabsTrigger>
-        </TabsList>
+        <div className="px-4 py-2 flex items-center gap-3 border-b">
+          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 h-8 w-8">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-2">
+            {report.status === 'completed' ? (
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            ) : (
+              <XCircle className="h-4 w-4 text-red-500" />
+            )}
+            <span className="font-semibold">{headerTitle}</span>
+            <span className="text-xs text-muted-foreground">
+              {successCount}/{totalCount} in {totalDuration}s
+            </span>
+          </div>
+          
+          <TabsList className="ml-4 h-8">
+            <TabsTrigger value="findings" className="gap-1.5 text-xs h-7 px-2.5">
+              <FileText className="h-3.5 w-3.5" />
+              Findings
+            </TabsTrigger>
+            <TabsTrigger value="printout" className="gap-1.5 text-xs h-7 px-2.5">
+              <Printer className="h-3.5 w-3.5" />
+              Printout
+            </TabsTrigger>
+            <TabsTrigger value="customer" className="gap-1.5 text-xs h-7 px-2.5">
+              <Users className="h-3.5 w-3.5" />
+              Customer Print
+            </TabsTrigger>
+          </TabsList>
+          
+          <div className="ml-auto flex items-center gap-2">
+            {headerActions}
+            {onNewService && (
+              <Button size="sm" onClick={onNewService} className="gap-1.5 h-8">
+                <Wrench className="h-3.5 w-3.5" />
+                New Service
+              </Button>
+            )}
+          </div>
+        </div>
 
         <div className="flex-1 min-h-0">
           <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">

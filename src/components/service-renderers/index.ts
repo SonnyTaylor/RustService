@@ -13,6 +13,9 @@ import type { ServiceResult, ServiceDefinition } from '@/types/service';
 
 // Import custom renderers
 import { PingTestRenderer } from './PingTestRenderer';
+import { DiskSpaceRenderer } from './DiskSpaceRenderer';
+import { WinsatRenderer } from './WinsatRenderer';
+import { BatteryInfoRenderer } from './BatteryInfoRenderer';
 
 // =============================================================================
 // Types
@@ -38,9 +41,9 @@ export type ServiceRenderer = React.FC<ServiceRendererProps>;
  */
 export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'ping-test': PingTestRenderer,
-  // Add more service renderers here:
-  // 'disk-space': DiskSpaceRenderer,
-  // 'cpu-stress': CpuStressRenderer,
+  'disk-space': DiskSpaceRenderer,
+  'winsat': WinsatRenderer,
+  'battery-info': BatteryInfoRenderer,
 };
 
 /**
