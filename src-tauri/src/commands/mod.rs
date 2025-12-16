@@ -11,6 +11,7 @@ mod services;
 mod settings;
 mod shortcuts;
 mod system_info;
+mod time_tracking;
 mod utils;
 
 pub use data_dir::*;
@@ -22,4 +23,5 @@ pub use services::*;
 pub use settings::*;
 pub use shortcuts::*;
 pub use system_info::*;
+pub use time_tracking::*;
 pub use utils::*;

@@ -204,6 +204,17 @@ pub async fn run_services(
         let result = services::run_service(&queue_item.service_id, &queue_item.options, &app)
             .ok_or_else(|| format!("Unknown service: {}", queue_item.service_id))?;
 
+        // Record timing for service metrics (only for successful runs)
+        if result.success {
+            if let Err(e) = super::time_tracking::record_service_time(
+                queue_item.service_id.clone(),
+                result.duration_ms,
+                None, // preset_id could be passed from frontend if needed
+            ) {
+                eprintln!("Failed to record service time: {}", e);
+            }
+        }
+
         report.results.push(result);
 
         // Update state with latest results

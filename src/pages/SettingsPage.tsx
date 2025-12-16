@@ -54,6 +54,7 @@ import {
   Wrench,
   Smartphone,
   Headphones,
+  Timer,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -77,6 +78,7 @@ import { useTheme } from '@/components/theme-provider';
 import type { SettingsCategory, ThemeMode, LogLevel, BusinessSettings, TechnicianTab } from '@/types/settings';
 import type { RequiredProgramStatus } from '@/types/required-programs';
 import { COLOR_SCHEMES, DEFAULT_BUSINESS, DEFAULT_TECHNICIAN_TABS, TECHNICIAN_TAB_ICONS } from '@/types/settings';
+import { ServiceMetricsPanel } from '@/components/ServiceMetricsPanel';
 
 // =============================================================================
 // Icon Helper
@@ -167,6 +169,13 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     description: 'Custom web tabs',
     icon: Globe,
     iconColor: 'text-indigo-500',
+  },
+  {
+    id: 'serviceMetrics',
+    label: 'Service Metrics',
+    description: 'Timing & estimates',
+    icon: Timer,
+    iconColor: 'text-teal-500',
   },
   {
     id: 'about',
@@ -1854,6 +1863,8 @@ export function SettingsPage() {
         return <ProgramsPanel />;
       case 'technicianTabs':
         return <TechnicianTabsPanel />;
+      case 'serviceMetrics':
+        return <ServiceMetricsPanel />;
       case 'about':
         return <AboutPanel />;
       default:

@@ -436,4 +436,5 @@ export type SettingValueType<K extends SettingKey> =
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'serviceMetrics' | 'about';
+

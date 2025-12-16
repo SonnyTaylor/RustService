@@ -73,7 +73,16 @@ pub fn run() {
             commands::validate_required_programs,
             // Business logo commands
             commands::save_business_logo,
-            commands::get_business_logo
+            commands::get_business_logo,
+            // Service time tracking commands
+            commands::get_service_time_metrics,
+            commands::record_service_time,
+            commands::get_pc_fingerprint,
+            commands::get_estimated_time,
+            commands::get_service_averages,
+            commands::get_preset_averages,
+            commands::clear_service_metrics,
+            commands::retrain_time_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
