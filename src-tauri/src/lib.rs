@@ -64,6 +64,13 @@ pub fn run() {
             commands::list_service_reports,
             commands::delete_report,
             commands::clear_all_reports,
+            // Required programs commands
+            commands::get_required_programs,
+            commands::get_required_programs_by_ids,
+            commands::get_required_programs_status,
+            commands::set_program_path_override,
+            commands::get_program_exe_path,
+            commands::validate_required_programs,
             // Business logo commands
             commands::save_business_logo,
             commands::get_business_logo

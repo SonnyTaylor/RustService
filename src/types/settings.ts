@@ -216,6 +216,14 @@ export interface BusinessSettings {
   technicians: string[];
 }
 
+/**
+ * Required program path overrides
+ */
+export interface ProgramsSettings {
+  /** Custom path overrides for required programs (keyed by program ID) */
+  overrides: Record<string, string>;
+}
+
 // =============================================================================
 // Main Settings Interface
 // =============================================================================
@@ -241,6 +249,8 @@ export interface AppSettings {
   reports: ReportsSettings;
   /** Business branding and technician settings */
   business: BusinessSettings;
+  /** Required program path overrides */
+  programs: ProgramsSettings;
 }
 
 // =============================================================================
@@ -289,14 +299,22 @@ export const DEFAULT_BUSINESS: BusinessSettings = {
 };
 
 /**
+ * Default programs settings
+ */
+export const DEFAULT_PROGRAMS: ProgramsSettings = {
+  overrides: {},
+};
+
+/**
  * Default application settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: '0.6.0',
+  version: '0.7.0',
   appearance: DEFAULT_APPEARANCE,
   data: DEFAULT_DATA,
   reports: DEFAULT_REPORTS,
   business: DEFAULT_BUSINESS,
+  programs: DEFAULT_PROGRAMS,
 };
 
 // =============================================================================
@@ -351,4 +369,4 @@ export type SettingValueType<K extends SettingKey> =
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'about';

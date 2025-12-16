@@ -125,6 +125,15 @@ pub struct BusinessSettings {
     pub technicians: Vec<String>,
 }
 
+/// Required program path overrides
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramsSettings {
+    /// Custom path overrides for required programs (keyed by program ID)
+    #[serde(default)]
+    pub overrides: std::collections::HashMap<String, String>,
+}
+
 /// Main application settings schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,6 +152,9 @@ pub struct AppSettings {
     /// Business branding and technician settings
     #[serde(default)]
     pub business: BusinessSettings,
+    /// Required program path overrides
+    #[serde(default)]
+    pub programs: ProgramsSettings,
 }
 
 impl Default for AppSettings {
@@ -153,6 +165,7 @@ impl Default for AppSettings {
             data: DataSettings::default(),
             reports: ReportsSettings::default(),
             business: BusinessSettings::default(),
+            programs: ProgramsSettings::default(),
         }
     }
 }

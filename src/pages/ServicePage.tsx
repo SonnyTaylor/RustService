@@ -663,6 +663,9 @@ export function ServicePage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPresetName, setSelectedPresetName] = useState<string>();
+
+  const [missingRequirements, setMissingRequirements] = useState<Record<string, string[]> | null>(null);
+  const [showMissingDialog, setShowMissingDialog] = useState(false);
   
   // Business mode dialog state
   const [showStartDialog, setShowStartDialog] = useState(false);
@@ -781,6 +784,25 @@ export function ServicePage() {
   };
 
   const handleStart = async () => {
+    // Validate external program requirements before starting
+    try {
+      const enabledServiceIds = queue.filter((q) => q.enabled).map((q) => q.serviceId);
+      if (enabledServiceIds.length > 0) {
+        const missing = await invoke<Record<string, string[]>>('validate_service_requirements', {
+          serviceIds: enabledServiceIds,
+        });
+
+        if (Object.keys(missing).length > 0) {
+          setMissingRequirements(missing);
+          setShowMissingDialog(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to validate service requirements:', e);
+      // Fall through and allow the run attempt; backend may still error.
+    }
+
     // If business mode is enabled, show dialog first
     if (settings.business?.enabled) {
       setShowStartDialog(true);
@@ -795,6 +817,21 @@ export function ServicePage() {
       setShowStartDialog(false);
       setLogs([]);
       setPhase('running');
+
+      // Safety check: validate requirements again right before starting
+      const enabledServiceIds = queue.filter((q) => q.enabled).map((q) => q.serviceId);
+      if (enabledServiceIds.length > 0) {
+        const missing = await invoke<Record<string, string[]>>('validate_service_requirements', {
+          serviceIds: enabledServiceIds,
+        });
+        if (Object.keys(missing).length > 0) {
+          setMissingRequirements(missing);
+          setShowMissingDialog(true);
+          setPhase('queue');
+          return;
+        }
+      }
+
       const result = await invoke<ServiceReport>('run_services', { 
         queue,
         technicianName: technicianName || null,
@@ -873,6 +910,49 @@ export function ServicePage() {
           onBack={handleBack}
         />
       )}
+
+      {/* Missing Requirements Dialog */}
+      <Dialog open={showMissingDialog} onOpenChange={setShowMissingDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Missing Required Programs</DialogTitle>
+            <DialogDescription>
+              One or more enabled services require external programs that are not configured yet.
+              Configure them in Settings → Programs, then try again.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {missingRequirements &&
+              Object.entries(missingRequirements).map(([serviceId, missing]) => {
+                const def = definitions.find((d) => d.id === serviceId);
+                return (
+                  <div key={serviceId} className="rounded-lg border bg-muted/20 p-3">
+                    <div className="font-medium">{def?.name ?? serviceId}</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Missing: <span className="font-mono">{missing.join(', ')}</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowMissingDialog(false);
+                // Navigate to Settings tab, then to Programs category
+                window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'settings' }));
+                window.dispatchEvent(new CustomEvent('navigate-settings-category', { detail: 'programs' }));
+              }}
+            >
+              Go to Settings
+            </Button>
+            <Button onClick={() => setShowMissingDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Business Mode Start Dialog */}
       <Dialog open={showStartDialog} onOpenChange={setShowStartDialog}>

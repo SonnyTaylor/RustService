@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use super::data_dir::get_data_dir_path;
+use super::required_programs::validate_required_programs;
 use crate::services;
 use crate::types::{
     ServiceDefinition, ServicePreset, ServiceQueueItem, ServiceReport, ServiceRunState,
@@ -71,14 +72,43 @@ pub fn validate_service_requirements(
     let definitions = services::get_all_definitions();
     let def_map: HashMap<_, _> = definitions.iter().map(|d| (d.id.clone(), d)).collect();
 
+    // Collect all required program IDs
+    let mut all_required: Vec<String> = Vec::new();
+    for service_id in &service_ids {
+        if let Some(def) = def_map.get(service_id) {
+            for req in &def.required_programs {
+                if !all_required.contains(req) {
+                    all_required.push(req.clone());
+                }
+            }
+        }
+    }
+
+    // Validate using the new required programs system
+    let validation = validate_required_programs(all_required)?;
+
     let mut missing: HashMap<String, Vec<String>> = HashMap::new();
 
     for service_id in service_ids {
         if let Some(def) = def_map.get(&service_id) {
-            // TODO: Check against programs.json to see if programs are installed
-            // For now, assume all built-in services have no external requirements
-            if !def.required_programs.is_empty() {
-                missing.insert(service_id, def.required_programs.clone());
+            if def.required_programs.is_empty() {
+                continue;
+            }
+
+            let mut service_missing: Vec<String> = Vec::new();
+            for req in &def.required_programs {
+                if let Some(&found) = validation.get(req) {
+                    if !found {
+                        service_missing.push(req.clone());
+                    }
+                } else {
+                    // Unknown program ID
+                    service_missing.push(req.clone());
+                }
+            }
+
+            if !service_missing.is_empty() {
+                missing.insert(service_id, service_missing);
             }
         }
     }

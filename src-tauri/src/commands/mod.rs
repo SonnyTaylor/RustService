@@ -5,6 +5,7 @@
 mod data_dir;
 mod network;
 mod programs;
+mod required_programs;
 mod scripts;
 mod services;
 mod settings;
@@ -15,6 +16,7 @@ mod utils;
 pub use data_dir::*;
 pub use network::*;
 pub use programs::*;
+pub use required_programs::*;
 pub use scripts::*;
 pub use services::*;
 pub use settings::*;

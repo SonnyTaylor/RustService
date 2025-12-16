@@ -58,7 +58,7 @@ impl Service for MyService {
             description: "What this service does".to_string(),
             category: "diagnostics".to_string(), // or "cleanup", "security", etc.
             estimated_duration_secs: 30,
-            required_programs: vec![], // Add program IDs if external tools needed
+            required_programs: vec![], // IDs from REQUIRED_PROGRAMS registry (e.g., "bleachbit")
             options: vec![
                 ServiceOptionSchema {
                     id: "option_name".to_string(),
@@ -254,15 +254,63 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
 
 ## External Program Dependencies
 
-If your service requires an external program:
+If your service requires an external program (like BleachBit or AdwCleaner), you need to:
 
-1. Add the program ID to `required_programs` in your service definition
-2. Users must add the program via the Programs page
-3. The system validates requirements before allowing the service to run
+### 1. Add Program to Registry
+
+Edit `src-tauri/src/commands/required_programs.rs` and add an entry to `REQUIRED_PROGRAMS`:
 
 ```rust
-required_programs: vec!["bleachbit".to_string()],
+RequiredProgramDef {
+    id: "my-program".to_string(),           // Stable ID used in service definitions
+    name: "My Program".to_string(),          // Display name
+    description: "What this program does".to_string(),
+    exe_names: vec![                         // Executable names to auto-detect
+        "myprogram.exe".to_string(),
+        "myprogram64.exe".to_string(),       // Include variants
+    ],
+    url: Some("https://example.com/".to_string()),  // Download link (optional)
+},
 ```
+
+### 2. Reference in Service Definition
+
+In your service's `definition()` method, add the program ID to `required_programs`:
+
+```rust
+required_programs: vec!["my-program".to_string()],
+```
+
+### 3. Use the Program in Your Service
+
+Get the executable path via the command:
+
+```rust
+use crate::commands::required_programs::get_program_exe_path;
+
+// In your run() method:
+let exe_path = get_program_exe_path("my-program".to_string())?
+    .ok_or("my-program executable not found")?;
+
+// Use exe_path to run the program
+std::process::Command::new(&exe_path)
+    .args(["--your", "--args"])
+    .output()?;
+```
+
+### How Auto-Detection Works
+
+1. **Programs folder scan**: The system searches `data/programs/` recursively for any exe matching the `exe_names` list
+2. **User override**: Users can set a custom path in **Settings → Programs** if auto-detection fails
+3. **Validation**: Before running services, the system validates all required programs are available
+
+### User Experience
+
+Users see required programs in **Settings → Programs**:
+- **Added**: Program auto-detected or custom path set ✓
+- **Missing**: Program not found, with download link if available
+
+If a service run is blocked due to missing programs, a dialog shows what's needed and links to Settings.
 
 ## Testing
 

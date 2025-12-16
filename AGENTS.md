@@ -265,6 +265,46 @@ const programs = await invoke<Program[]>('get_programs');
 await invoke('launch_program', { id: programId });
 ```
 
+## Required Programs System
+
+Auto-detection system for external programs required by services (e.g., BleachBit, AdwCleaner).
+
+### Architecture
+- **Registry**: Static list of known required programs in `src-tauri/src/commands/required_programs.rs`
+- **Auto-detection**: Searches `data/programs/` recursively for matching exe names
+- **Overrides**: Users can set custom paths in **Settings → Programs**
+- **Validation**: Services check requirements before execution
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/commands/required_programs.rs` | Registry + detection commands |
+| `src-tauri/src/types/required_program.rs` | Rust type definitions |
+| `src/types/required-programs.ts` | TypeScript type definitions |
+| `src/pages/SettingsPage.tsx` | ProgramsPanel UI in Settings |
+
+### Tauri Commands
+| Command | Description |
+|---------|-------------|
+| `get_required_programs_status` | Get all programs with found/missing status |
+| `get_program_exe_path` | Get resolved path for a program ID |
+| `set_program_path_override` | Set/clear custom path override |
+| `validate_required_programs` | Check if program IDs are available |
+
+### Adding a Required Program
+1. Add `RequiredProgramDef` to `REQUIRED_PROGRAMS` in `required_programs.rs`:
+   ```rust
+   RequiredProgramDef {
+       id: "program-id".to_string(),
+       name: "Display Name".to_string(),
+       description: "What it does".to_string(),
+       exe_names: vec!["program.exe".to_string()],
+       url: Some("https://download-link.com/".to_string()),
+   }
+   ```
+2. Reference the ID in service's `required_programs` vector
+3. Use `get_program_exe_path("program-id")` to get the resolved path
+
 ## Service System
 
 Modular service automation with 4-step flow: **Presets → Queue → Runner → Results**.

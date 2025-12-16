@@ -81,6 +81,20 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('service');
   const { animationsEnabled } = useAnimation();
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      const nextTab = custom.detail;
+      if (typeof nextTab !== 'string') return;
+      if (TABS.some((t) => t.id === nextTab)) {
+        setActiveTab(nextTab);
+      }
+    };
+
+    window.addEventListener('navigate-tab', handler as EventListener);
+    return () => window.removeEventListener('navigate-tab', handler as EventListener);
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Custom Titlebar */}
