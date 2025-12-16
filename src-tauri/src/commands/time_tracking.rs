@@ -2,19 +2,23 @@
 //!
 //! Tauri commands for recording, analyzing, and estimating service execution times.
 //!
-//! Critical fixes applied:
-//! - Stochastic Gradient Descent (SGD) for true multivariate regression
-//! - Optimized PC fingerprint with static data caching
-//! - Correct coefficient clamping (cpu_load is positive, others negative)
-//! - Failed service filtering
-//! - Service options hash for settings-aware tracking
+//! Implementation features:
+//! - **SGD with learning rate decay**: Prevents oscillation, ensures convergence
+//! - **Bias initialization**: Starts at mean(y) for faster training
+//! - **Static data caching**: Expensive hardware detection done once at startup
+//! - **Debounced disk I/O**: Saves every N samples to prevent UI freezes
+//! - **Log-normal outlier detection**: Better handles execution time distributions
+//! - **Thermal throttling detection**: Tracks CPU temperature for performance prediction
+//! - **Swap/memory pressure tracking**: Detects disk thrashing conditions
+//! - **Correct coefficient clamping**: Load/temp/swap positive, hardware specs negative
 
 use std::collections::HashMap;
 use std::fs;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use chrono::{DateTime, Utc};
-use sysinfo::{DiskKind, Disks, Networks, System};
+use sysinfo::{Components, DiskKind, Disks, Networks, System};
 
 use super::data_dir::get_data_dir_path;
 use crate::types::{
@@ -32,19 +36,30 @@ const RIDGE_LAMBDA: f64 = 0.01;
 /// Time decay base (0.95^days_old)
 const TIME_DECAY_BASE: f64 = 0.95;
 
-/// Number of features in the fingerprint vector (score, ram, ssd, power, avx2, gpu, net, cpu_load, bias)
-const NUM_FEATURES: usize = 9;
+/// Number of features in the fingerprint vector
+/// Features: cpu_score, ram, ssd, power, avx2, gpu, net, cpu_load, bias, cpu_temp, swap
+const NUM_FEATURES: usize = 11;
 
-/// SGD learning rate (0.05 is aggressive but safe with Z-score normalization)
-const LEARNING_RATE: f64 = 0.05;
+/// Base SGD learning rate (will decay over epochs)
+const BASE_LEARNING_RATE: f64 = 0.05;
+
+/// Learning rate decay factor: lr = base_lr / (1 + decay * epoch)
+const LEARNING_RATE_DECAY: f64 = 0.001;
 
 /// SGD epochs (1000 for better convergence with batch GD)
 const SGD_EPOCHS: usize = 1000;
 
-/// Index of cpu_load feature (positive coefficient)
-const IDX_CPU_LOAD: usize = 7;
-/// Index of bias term (intercept)
-const IDX_BIAS: usize = 8;
+/// Feature indices for coefficient clamping
+const IDX_CPU_LOAD: usize = 7; // Positive coef (higher load = slower)
+const IDX_BIAS: usize = 8; // Intercept (unclamped)
+const IDX_CPU_TEMP: usize = 9; // Positive coef (thermal throttling = slower)
+const IDX_SWAP_USAGE: usize = 10; // Positive coef (swap thrashing = much slower)
+
+/// Number of samples to accumulate before saving to disk (debounce)
+const SAVE_DEBOUNCE_COUNT: usize = 10;
+
+/// Global counter for save debouncing (reduces disk I/O)
+static SAVE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 // =============================================================================
 // Metrics File Management
@@ -181,18 +196,41 @@ fn get_static_specs() -> &'static StaticPcSpecs {
 // =============================================================================
 
 /// Generate PC fingerprint with minimal system calls
+///
+/// Gathers dynamic system metrics:
+/// - CPU load, RAM availability, swap usage, CPU temperature
+/// - Power source status (for laptops)
+/// - Network type
 fn generate_pc_fingerprint() -> PcFingerprint {
     let static_specs = get_static_specs();
 
     // Use persistent System instance to avoid "always 0.0" CPU usage bug
-    let (available_ram_gb, cpu_load_percent) = {
+    let (available_ram_gb, swap_used_gb, cpu_load_percent) = {
         let mut sys = get_system().lock().unwrap();
         sys.refresh_memory();
         sys.refresh_cpu_usage();
         (
             sys.available_memory() as f64 / (1024.0 * 1024.0 * 1024.0),
+            sys.used_swap() as f64 / (1024.0 * 1024.0 * 1024.0),
             sys.global_cpu_usage() as f64,
         )
+    };
+
+    // Get CPU temperature (NEW: for thermal throttling detection)
+    // Note: On Windows, this may not always return values for all CPUs
+    // We use a separate Components instance to avoid refreshing everything
+    let cpu_temp_c = {
+        let components = Components::new_with_refreshed_list();
+        components
+            .iter()
+            .filter(|c| {
+                let label = c.label().to_lowercase();
+                label.contains("cpu") || label.contains("core") || label.contains("package")
+            })
+            .filter_map(|c| c.temperature()) // temperature() returns Option<f32>
+            .map(|t| t as f64)
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or(40.0) // Default to cool temp if sensor not found
     };
 
     // Power source - only check if laptop
@@ -227,6 +265,8 @@ fn generate_pc_fingerprint() -> PcFingerprint {
         has_discrete_gpu: static_specs.has_discrete_gpu,
         network_type,
         cpu_load_percent,
+        cpu_temp_c,   // NEW: Thermal throttling indicator
+        swap_used_gb, // NEW: Memory pressure indicator
     }
 }
 
@@ -334,7 +374,12 @@ fn calculate_time_decay(timestamp: &str) -> f64 {
 // Stochastic Gradient Descent (SGD) Ridge Regression
 // =============================================================================
 
-/// Train using SGD - handles correlated features correctly
+/// Train using SGD with learning rate decay
+///
+/// Enhancements:
+/// - Learning rate decay: lr = base_lr / (1 + decay * epoch) prevents oscillation
+/// - Bias initialized to mean(y) for faster convergence
+/// - Correct coefficient clamping for all feature types
 fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWeights> {
     if samples.len() < 5 {
         return None;
@@ -358,11 +403,21 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
 
     let n = samples.len();
 
-    // Initialize coefficients to zero (including bias at IDX_BIAS)
-    let mut coefficients = vec![0.0; NUM_FEATURES];
+    // Calculate mean duration for bias initialization (gives SGD a head start)
+    let y_mean: f64 = y_values.iter().sum::<f64>() / n as f64;
 
-    // SGD training loop
-    for _epoch in 0..SGD_EPOCHS {
+    // Initialize coefficients:
+    // - Bias term starts at mean(y) so SGD doesn't spend epochs finding baseline
+    // - Other coefficients start at 0
+    let mut coefficients = vec![0.0; NUM_FEATURES];
+    coefficients[IDX_BIAS] = y_mean;
+
+    // SGD training loop with learning rate decay
+    for epoch in 0..SGD_EPOCHS {
+        // Learning rate decay: lr = base_lr / (1 + decay * epoch)
+        // This prevents oscillation as we approach the minimum
+        let learning_rate = BASE_LEARNING_RATE / (1.0 + LEARNING_RATE_DECAY * epoch as f64);
+
         let mut gradients = vec![0.0; NUM_FEATURES];
 
         for i in 0..n {
@@ -389,25 +444,26 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
             }
         }
 
-        // Update coefficients
+        // Update coefficients with decaying learning rate
         for j in 0..NUM_FEATURES {
-            coefficients[j] -= (LEARNING_RATE * gradients[j]) / n as f64;
+            coefficients[j] -= (learning_rate * gradients[j]) / n as f64;
         }
     }
 
-    // Apply coefficient clamping with CORRECT signs
+    // Apply coefficient clamping with CORRECT signs for all features
     for (j, coef) in coefficients.iter_mut().enumerate() {
-        if j == IDX_CPU_LOAD {
-            // CPU load: higher load = SLOWER = positive coefficient.
-            // But we already normalized inputs. If CPU load is high (positive Z), time is high.
-            // So coef should be positive.
+        if j == IDX_CPU_LOAD || j == IDX_CPU_TEMP || j == IDX_SWAP_USAGE {
+            // These factors INCREASE execution time when high:
+            // - CPU load: contention = slower
+            // - CPU temp: thermal throttling = slower
+            // - Swap usage: disk thrashing = MUCH slower
+            // Coefficient should be POSITIVE
             *coef = coef.clamp(0.0, 100000.0);
         } else if j == IDX_BIAS {
-            // Intercept: can be anything
-            // No clamp
+            // Intercept: can be anything (unclamped)
         } else {
-            // All other features (RAM, SSD, GPU, etc.): higher = FASTER = negative coefficient
-            // e.g. High RAM (pos Z) -> Low Time. Coef should be negative.
+            // Hardware specs (RAM, SSD, GPU, etc.): higher = FASTER
+            // High RAM (pos Z) -> Low Time. Coef should be NEGATIVE.
             *coef = coef.clamp(-100000.0, 0.0);
         }
     }
@@ -464,41 +520,62 @@ fn predict_duration(weights: &ServiceModelWeights, fingerprint: &PcFingerprint) 
 }
 
 // =============================================================================
-// IQR-Based Outlier Filtering
+// Log-Normal IQR-Based Outlier Filtering
 // =============================================================================
 
+/// Calculate weighted stats with log-normal outlier filtering
+///
+/// Execution times follow a log-normal distribution:
+/// - Cannot be negative
+/// - Have long right tails (random huge lags)
+///
+/// Using ln(duration) for IQR calculation handles outliers much better
+/// than linear-space statistics.
 fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u64, f64) {
     if samples.is_empty() {
         return (0.0, 0, 0, 0, 0.0);
     }
 
-    let mut weighted_pairs: Vec<(u64, f64)> = samples
+    // Convert to (duration, weight, ln_duration) tuples
+    let mut weighted_pairs: Vec<(u64, f64, f64)> = samples
         .iter()
-        .map(|s| (s.duration_ms, calculate_time_decay(&s.timestamp)))
+        .map(|s| {
+            let dur = s.duration_ms.max(1); // Avoid ln(0)
+            (dur, calculate_time_decay(&s.timestamp), (dur as f64).ln())
+        })
         .collect();
 
-    weighted_pairs.sort_by_key(|(d, _)| *d);
+    // Sort by duration for min/max/median
+    weighted_pairs.sort_by_key(|(d, _, _)| *d);
 
     let len = weighted_pairs.len();
     let min = weighted_pairs[0].0;
     let max = weighted_pairs[len - 1].0;
     let median = weighted_pairs[len / 2].0;
 
+    // Apply IQR filtering in LOG SPACE (handles long-tail outliers better)
     let filtered_pairs = if len >= 4 {
+        // Sort by ln_duration for log-space IQR
+        let mut log_sorted = weighted_pairs.clone();
+        log_sorted.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
         let q1_idx = len / 4;
         let q3_idx = (3 * len) / 4;
-        let q1 = weighted_pairs[q1_idx].0 as f64;
-        let q3 = weighted_pairs[q3_idx].0 as f64;
-        let iqr = q3 - q1;
-        let lower = (q1 - 1.5 * iqr).max(0.0);
-        let upper = q3 + 1.5 * iqr;
+        let q1_ln = log_sorted[q1_idx].2;
+        let q3_ln = log_sorted[q3_idx].2;
+        let iqr_ln = q3_ln - q1_ln;
+
+        // IQR bounds in log space
+        let lower_ln = q1_ln - 1.5 * iqr_ln;
+        let upper_ln = q3_ln + 1.5 * iqr_ln;
 
         weighted_pairs
             .into_iter()
-            .filter(|(d, _)| (*d as f64) >= lower && (*d as f64) <= upper)
+            .filter(|(_, _, ln_d)| *ln_d >= lower_ln && *ln_d <= upper_ln)
+            .map(|(d, w, _)| (d, w))
             .collect::<Vec<_>>()
     } else {
-        weighted_pairs
+        weighted_pairs.into_iter().map(|(d, w, _)| (d, w)).collect()
     };
 
     if filtered_pairs.is_empty() {
@@ -546,6 +623,9 @@ pub fn get_service_time_metrics() -> ServiceTimeMetrics {
 
 /// Record a service execution time
 /// Only records SUCCESSFUL services (failed services filtered out by caller)
+///
+/// OPTIMIZATION: Uses debounced saving to prevent disk thrashing.
+/// Writing JSON on every sample would freeze the UI in batch operations.
 #[tauri::command]
 pub fn record_service_time(
     service_id: String,
@@ -620,7 +700,14 @@ pub fn record_service_time(
         }
     }
 
-    save_metrics(&metrics)?;
+    // OPTIMIZATION: Debounced saving to prevent disk thrashing
+    // Only save to disk every N samples instead of on every single sample
+    let current_count = SAVE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+    if current_count >= SAVE_DEBOUNCE_COUNT {
+        SAVE_COUNTER.store(0, Ordering::Relaxed);
+        save_metrics(&metrics)?;
+    }
+
     Ok(())
 }
 
@@ -840,4 +927,18 @@ pub fn compute_options_hash(options: &serde_json::Value) -> String {
     let mut hasher = DefaultHasher::new();
     options_str.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+/// Force-save any pending metrics to disk
+///
+/// Should be called on app close to ensure no data is lost due to debouncing.
+/// The debounced saving mechanism may have unsaved data in memory.
+#[tauri::command]
+pub fn flush_service_metrics() -> Result<(), String> {
+    // Reset the save counter
+    SAVE_COUNTER.store(0, Ordering::Relaxed);
+
+    // Force save current metrics
+    let metrics = get_cached_metrics().lock().unwrap();
+    save_metrics(&metrics)
 }

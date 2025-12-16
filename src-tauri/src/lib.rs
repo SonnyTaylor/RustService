@@ -83,6 +83,7 @@ pub fn run() {
             commands::get_preset_averages,
             commands::clear_service_metrics,
             commands::retrain_time_models,
+            commands::flush_service_metrics,
             // Network diagnostics commands
             commands::get_detailed_network_info,
             commands::ping_host,

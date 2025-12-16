@@ -80,6 +80,20 @@ pub struct PcFingerprint {
     /// Current CPU load percentage at time of capture (0-100)
     #[serde(default)]
     pub cpu_load_percent: f64,
+
+    // === NEW: Thermal & Memory Pressure ===
+    /// Max CPU core temperature in Celsius (for thermal throttling detection)
+    /// High temps (>85°C) indicate performance degradation
+    #[serde(default = "default_cpu_temp")]
+    pub cpu_temp_c: f64,
+    /// Swap/pagefile usage in GB (indicates memory pressure/thrashing)
+    /// High swap usage = disk I/O bottleneck = massive slowdown
+    #[serde(default)]
+    pub swap_used_gb: f64,
+}
+
+fn default_cpu_temp() -> f64 {
+    40.0 // Cool default if sensor not available
 }
 
 impl Default for PcFingerprint {
@@ -97,6 +111,8 @@ impl Default for PcFingerprint {
             has_discrete_gpu: false,
             network_type: NetworkType::Unknown,
             cpu_load_percent: 20.0,
+            cpu_temp_c: 40.0,  // Default to cool
+            swap_used_gb: 0.0, // Default to no swap
         }
     }
 }
@@ -110,17 +126,32 @@ impl PcFingerprint {
     }
 
     /// Get feature vector for regression (all normalized to ~0-1 range)
+    ///
+    /// Feature indices:
+    /// 0: cpu_score (normalized)
+    /// 1: available_ram_gb (normalized)
+    /// 2: disk_is_ssd (0/1)
+    /// 3: is_on_ac_power (0/1)
+    /// 4: has_avx2 (0/1)
+    /// 5: has_discrete_gpu (0/1)
+    /// 6: network_type (0-1 score)
+    /// 7: cpu_load_percent (normalized) - POSITIVE coef (higher load = slower)
+    /// 8: bias term (always 1.0)
+    /// 9: cpu_temp_c (normalized) - POSITIVE coef (higher temp = slower due to throttling)
+    /// 10: swap_used_gb (normalized) - POSITIVE coef (swap thrashing = massive slowdown)
     pub fn to_feature_vector(&self) -> Vec<f64> {
         vec![
-            self.cpu_score / 50.0,        // Normalize ~0-50 to ~0-1
-            self.available_ram_gb / 64.0, // Normalize ~0-64GB to ~0-1
-            if self.disk_is_ssd { 1.0 } else { 0.0 },
-            if self.is_on_ac_power { 1.0 } else { 0.0 },
-            if self.has_avx2 { 1.0 } else { 0.0 },
-            if self.has_discrete_gpu { 1.0 } else { 0.0 },
-            self.network_type.to_score(),
-            self.cpu_load_percent / 100.0, // Raw load 0-1 (SGD will learn positive coefficient)
-            1.0,                           // Bias term for intercept
+            self.cpu_score / 50.0,                         // 0: Normalize ~0-50 to ~0-1
+            self.available_ram_gb / 64.0,                  // 1: Normalize ~0-64GB to ~0-1
+            if self.disk_is_ssd { 1.0 } else { 0.0 },      // 2
+            if self.is_on_ac_power { 1.0 } else { 0.0 },   // 3
+            if self.has_avx2 { 1.0 } else { 0.0 },         // 4
+            if self.has_discrete_gpu { 1.0 } else { 0.0 }, // 5
+            self.network_type.to_score(),                  // 6
+            self.cpu_load_percent / 100.0,                 // 7: CPU load (positive coef)
+            1.0,                                           // 8: Bias term for intercept
+            self.cpu_temp_c / 100.0, // 9: Temp (normalized to 0-1 for 0-100°C)
+            self.swap_used_gb / 16.0, // 10: Swap (normalized, 16GB = heavy usage)
         ]
     }
 }
