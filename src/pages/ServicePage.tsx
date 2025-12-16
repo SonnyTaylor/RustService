@@ -201,21 +201,25 @@ function SortableQueueItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative flex flex-col gap-3 p-4 rounded-xl border-2 bg-card/50 backdrop-blur-sm transition-all duration-200 ${
+      className={`group relative flex flex-col gap-2 p-3 rounded-xl border-2 bg-card/50 backdrop-blur-sm transition-all duration-200 ${
         item.enabled
           ? 'border-border hover:border-primary/30 hover:bg-card/80 hover:shadow-lg'
           : 'border-muted/50 opacity-50'
       } ${isDragging ? 'shadow-2xl ring-2 ring-primary/50' : ''}`}
     >
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {/* Drag Handle */}
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing p-2 rounded-lg hover:bg-muted/80 transition-colors touch-none group-hover:bg-muted/50"
-        >
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
-        </button>
+        {item.enabled ? (
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing p-1.5 rounded-lg hover:bg-muted/80 transition-colors touch-none group-hover:bg-muted/50"
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </button>
+        ) : (
+          <div className="p-1.5 w-7" />
+        )}
 
         {/* Service Icon */}
         <div
@@ -575,6 +579,9 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
     return def?.name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  const enabledQueue = filteredQueue.filter(q => q.enabled);
+  const disabledQueue = filteredQueue.filter(q => !q.enabled);
+
   // Filter available services for "Add Service" dialog
   const availableServices = definitions.filter((def) => {
       if (!addSearchQuery) return true;
@@ -667,72 +674,103 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-6 pb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
-            <ArrowLeft className="h-5 w-5" />
+      {/* Compact Header */}
+      <div className="p-4 border-b bg-background/95 backdrop-blur z-10">
+        <div className="flex items-center gap-3 mb-3">
+          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 h-8 w-8">
+            <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold">Service Queue</h2>
-            <p className="text-muted-foreground">
-              {presetName && <span className="text-primary font-medium">{presetName}</span>}
-              {presetName && ' • '}
-              Drag to reorder, toggle to enable/disable
-            </p>
-          </div>
-          <div className="text-right text-sm text-muted-foreground">
-            <div className="font-medium text-foreground">{enabledCount} services enabled</div>
-            <div>~{totalDuration}s estimated</div>
+          
+          <h2 className="text-lg font-bold truncate">Service Queue</h2>
+          
+          <div className="flex-1" />
+          
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+             <span className="font-medium text-foreground">{enabledCount} services</span>
+             <span>~{totalDuration}s</span>
           </div>
         </div>
 
-        {/* Search and Add Toolbar */}
-        <div className="flex items-center gap-3 mt-4">
+        <div className="flex items-center gap-2">
             <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 <Input 
-                    placeholder="Filter queue..." 
-                    className="pl-9 bg-card/50" 
+                    placeholder="Filter services..." 
+                    className="pl-8 h-9 text-sm bg-muted/50 border-0" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
-            <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Service
+            <Button onClick={() => setIsAddDialogOpen(true)} size="sm" className="gap-2 h-9 px-4">
+                <Plus className="h-3.5 w-3.5" />
+                Add
             </Button>
         </div>
       </div>
 
-      <Separator className="mx-6" />
-
       {/* Queue List */}
-      <ScrollArea className="flex-1 min-h-0 px-6 py-4">
+      <ScrollArea className="flex-1 min-h-0 px-4 py-4">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={filteredQueue.map((q) => q.id)}
+            items={enabledQueue.map((q) => q.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-3 pb-4">
-              {filteredQueue.map((item) => {
-                const def = definitionMap.get(item.serviceId);
-                if (!def) return null;
-                return (
-                  <SortableQueueItem
-                    key={item.id}
-                    item={item}
-                    definition={def}
-                    onToggle={handleToggle}
-                    onOptionsChange={handleOptionsChange}
-                    onDuplicate={handleDuplicate}
-                    onRemove={handleRemove}
-                  />
-                );
-              })}
+            <div className="space-y-6 pb-4">
+              {/* Enabled Services */}
+              <div>
+                  {enabledQueue.length > 0 && (
+                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+                         Enabled Services
+                     </h3>
+                  )}
+                  <div className="space-y-3">
+                    {enabledQueue.map((item) => {
+                        const def = definitionMap.get(item.serviceId);
+                        if (!def) return null;
+                        return (
+                        <SortableQueueItem
+                            key={item.id}
+                            item={item}
+                            definition={def}
+                            onToggle={handleToggle}
+                            onOptionsChange={handleOptionsChange}
+                            onDuplicate={handleDuplicate}
+                            onRemove={handleRemove}
+                        />
+                        );
+                    })}
+                  </div>
+              </div>
+
+              {/* Disabled Services */}
+              {disabledQueue.length > 0 && (
+                  <div>
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+                          Disabled Services
+                      </h3>
+                      <div className="space-y-3 opacity-60">
+                        {disabledQueue.map((item) => {
+                            const def = definitionMap.get(item.serviceId);
+                            if (!def) return null;
+                            return (
+                            <SortableQueueItem
+                                key={item.id}
+                                item={item}
+                                definition={def}
+                                onToggle={handleToggle}
+                                onOptionsChange={handleOptionsChange}
+                                onDuplicate={handleDuplicate}
+                                onRemove={handleRemove}
+                            />
+                            );
+                        })}
+                      </div>
+                  </div>
+              )}
               
               {filteredQueue.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
