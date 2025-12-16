@@ -38,7 +38,7 @@
       },
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser"
+        "installMode": "perMachine"
       }
     }
   }
