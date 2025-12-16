@@ -84,6 +84,20 @@ static REQUIRED_PROGRAMS: LazyLock<HashMap<String, RequiredProgramDef>> = LazyLo
             exe_names: vec!["iperf3.exe".to_string()],
             url: Some("https://iperf.fr/iperf-download.php".to_string()),
         },
+        RequiredProgramDef {
+            id: "drivecleanup".to_string(),
+            name: "DriveCleanup".to_string(),
+            description: "Remove stale USB devices and registry entries".to_string(),
+            exe_names: vec!["DriveCleanup.exe".to_string()],
+            url: Some("https://www.uwe-sieber.de/drivetools_e.html".to_string()),
+        },
+        RequiredProgramDef {
+            id: "heavyload".to_string(),
+            name: "HeavyLoad".to_string(),
+            description: "CPU, memory, and disk stress testing tool".to_string(),
+            exe_names: vec!["HeavyLoad.exe".to_string()],
+            url: Some("https://www.jam-software.com/heavyload".to_string()),
+        },
         // Add more programs here as services require them
     ];
 

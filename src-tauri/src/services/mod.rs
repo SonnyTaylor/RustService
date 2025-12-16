@@ -5,13 +5,19 @@
 
 mod adwcleaner;
 mod battery_info;
+mod bleachbit;
 mod disk_space;
+mod dism;
+mod drivecleanup;
+mod heavyload;
 mod iperf;
 mod kvrt_scan;
 mod ping_test;
+mod sfc;
 mod smartctl;
 mod speedtest;
 mod whynotwin11;
+mod windows_update;
 mod winsat;
 
 use std::collections::HashMap;
@@ -50,6 +56,12 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(smartctl::SmartctlService),
         Box::new(speedtest::SpeedtestService),
         Box::new(iperf::IperfService),
+        Box::new(bleachbit::BleachBitService),
+        Box::new(drivecleanup::DriveCleanupService),
+        Box::new(heavyload::HeavyLoadService),
+        Box::new(dism::DismService),
+        Box::new(sfc::SfcService),
+        Box::new(windows_update::WindowsUpdateService),
     ];
 
     services
@@ -183,6 +195,16 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
+                    service_id: "bleachbit".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "drivecleanup".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"test_only": false}),
+                },
+                PresetServiceConfig {
                     service_id: "ping-test".to_string(),
                     enabled: true,
                     options: serde_json::json!({"target": "8.8.8.8", "count": 10}),
@@ -222,6 +244,21 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     enabled: true,
                     options: serde_json::json!({"drive": "C"}),
                 },
+                PresetServiceConfig {
+                    service_id: "dism".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"scan_only": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "sfc".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "windows-update".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"install_updates": true, "include_drivers": true}),
+                },
             ],
             icon: "shield-check".to_string(),
             color: "purple".to_string(),
@@ -240,6 +277,16 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "kvrt-scan".to_string(),
                     enabled: false,
                     options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "bleachbit".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "drivecleanup".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"test_only": true}),
                 },
                 PresetServiceConfig {
                     service_id: "ping-test".to_string(),
@@ -280,6 +327,26 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "winsat".to_string(),
                     enabled: false,
                     options: serde_json::json!({"drive": "C"}),
+                },
+                PresetServiceConfig {
+                    service_id: "heavyload".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"duration_minutes": 5, "stress_cpu": true, "stress_memory": true, "stress_disk": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "dism".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"scan_only": true}),
+                },
+                PresetServiceConfig {
+                    service_id: "sfc".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "windows-update".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"install_updates": false, "include_drivers": true}),
                 },
             ],
             icon: "settings-2".to_string(),

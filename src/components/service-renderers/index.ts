@@ -22,6 +22,10 @@ import { WhyNotWin11Renderer } from './WhyNotWin11Renderer';
 import { SmartctlRenderer } from './SmartctlRenderer';
 import { SpeedtestRenderer } from './SpeedtestRenderer';
 import { IperfRenderer } from './IperfRenderer';
+import { BleachBitRenderer } from './BleachBitRenderer';
+import { DismRenderer } from './DismRenderer';
+import { SfcRenderer } from './SfcRenderer';
+import { WindowsUpdateRenderer } from './WindowsUpdateRenderer';
 
 // =============================================================================
 // Types
@@ -56,6 +60,10 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'smartctl': SmartctlRenderer,
   'speedtest': SpeedtestRenderer,
   'iperf': IperfRenderer,
+  'bleachbit': BleachBitRenderer,
+  'dism': DismRenderer,
+  'sfc': SfcRenderer,
+  'windows-update': WindowsUpdateRenderer,
 };
 
 /**

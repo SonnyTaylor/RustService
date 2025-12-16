@@ -48,6 +48,12 @@ import {
   Activity,
   Download,
   Network,
+  Trash2,
+  Usb,
+  Weight,
+  PackageCheck,
+  FileSearch,
+  CloudDownload,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -104,6 +110,12 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   activity: Activity,
   download: Download,
   network: Network,
+  'trash-2': Trash2,
+  usb: Usb,
+  weight: Weight,
+  'package-check': PackageCheck,
+  'file-scan': FileSearch,
+  'cloud-download': CloudDownload,
 };
 
 function getIcon(iconName: string) {
