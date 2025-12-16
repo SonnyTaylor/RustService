@@ -55,6 +55,8 @@ import {
   FileSearch,
   CloudDownload,
   Copy,
+  Search,
+  Plus,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -559,7 +561,47 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
     })
   );
 
+  // State for search and filtering
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [addSearchQuery, setAddSearchQuery] = useState('');
+
   const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+  // Filter queue based on search query
+  const filteredQueue = queue.filter((item) => {
+    if (!searchQuery) return true;
+    const def = definitionMap.get(item.serviceId);
+    return def?.name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  // Filter available services for "Add Service" dialog
+  const availableServices = definitions.filter((def) => {
+      if (!addSearchQuery) return true;
+      return def.name.toLowerCase().includes(addSearchQuery.toLowerCase()) || 
+             def.description.toLowerCase().includes(addSearchQuery.toLowerCase());
+  });
+
+  const handleAddNewService = (serviceId: string) => {
+    const def = definitionMap.get(serviceId);
+    if (!def) return;
+
+    const newService: ServiceQueueItem = {
+        id: crypto.randomUUID(),
+        serviceId: serviceId,
+        enabled: true,
+        order: queue.length,
+        options: def.options.reduce((acc, opt) => {
+            acc[opt.id] = opt.defaultValue;
+            return acc;
+        }, {} as Record<string, unknown>),
+    };
+
+    onQueueChange([...queue, newService]);
+    setIsAddDialogOpen(false);
+    setAddSearchQuery('');
+    setSearchQuery(''); // Show the new item in queue
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -643,6 +685,23 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
             <div>~{totalDuration}s estimated</div>
           </div>
         </div>
+
+        {/* Search and Add Toolbar */}
+        <div className="flex items-center gap-3 mt-4">
+            <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                    placeholder="Filter queue..." 
+                    className="pl-9 bg-card/50" 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
+            <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add Service
+            </Button>
+        </div>
       </div>
 
       <Separator className="mx-6" />
@@ -655,11 +714,11 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
           onDragEnd={handleDragEnd}
         >
           <SortableContext
-            items={queue.map((q) => q.id)}
+            items={filteredQueue.map((q) => q.id)}
             strategy={verticalListSortingStrategy}
           >
             <div className="space-y-3 pb-4">
-              {queue.map((item) => {
+              {filteredQueue.map((item) => {
                 const def = definitionMap.get(item.serviceId);
                 if (!def) return null;
                 return (
@@ -674,6 +733,13 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
                   />
                 );
               })}
+              
+              {filteredQueue.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                      <p>No services match your filter.</p>
+                      <Button variant="link" onClick={() => setSearchQuery('')}>Clear filter</Button>
+                  </div>
+              )}
             </div>
           </SortableContext>
         </DndContext>
@@ -697,6 +763,69 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
           </Button>
         </div>
       </div>
+
+      {/* Add Service Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Add Service to Queue</DialogTitle>
+            <DialogDescription>
+              Choose a service to add to your current execution queue.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+                placeholder="Search available services..." 
+                className="pl-9" 
+                value={addSearchQuery}
+                onChange={(e) => setAddSearchQuery(e.target.value)}
+                autoFocus
+            />
+          </div>
+
+          <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="space-y-2 py-2">
+                  {availableServices.map((def) => {
+                      const Icon = getIcon(def.icon);
+                      return (
+                          <div 
+                              key={def.id} 
+                              className="flex items-start gap-4 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                              onClick={() => handleAddNewService(def.id)}
+                          >
+                              <div className="p-2 rounded-lg bg-primary/10 text-primary mt-1">
+                                  <Icon className="h-5 w-5" />
+                              </div>
+                              <div className="flex-1">
+                                  <h4 className="font-semibold text-sm">{def.name}</h4>
+                                  <p className="text-xs text-muted-foreground line-clamp-2">{def.description}</p>
+                                  <div className="flex items-center gap-2 mt-1.5">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground uppercase tracking-wider">
+                                          {def.category}
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          ~{def.estimatedDurationSecs}s
+                                      </span>
+                                  </div>
+                              </div>
+                              <Button size="sm" variant="ghost" className="self-center">
+                                  Add
+                              </Button>
+                          </div>
+                      );
+                  })}
+                  {availableServices.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                          No services found matching "{addSearchQuery}"
+                      </div>
+                  )}
+              </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
