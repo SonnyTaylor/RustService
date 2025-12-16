@@ -1,26 +1,65 @@
 /**
- * Service Time Tracking Types
+ * Service Time Tracking Types (Enhanced)
  * 
  * TypeScript interfaces for service execution time tracking,
  * PC fingerprinting, and statistical analysis.
+ * 
+ * Features:
+ * - Extended PC specs (AVX2, GPU, power, network, CPU load)
+ * - Ridge regression with Z-score normalization
+ * - Time decay weighting for recency bias
  */
 
 // =============================================================================
-// PC Fingerprint
+// Network Type
+// =============================================================================
+
+export type NetworkType = 'ethernet' | 'wifi' | 'cellular' | 'unknown';
+
+export function getNetworkTypeLabel(type: NetworkType): string {
+  switch (type) {
+    case 'ethernet': return 'Ethernet';
+    case 'wifi': return 'Wi-Fi';
+    case 'cellular': return 'Cellular';
+    default: return 'Unknown';
+  }
+}
+
+// =============================================================================
+// PC Fingerprint (Enhanced)
 // =============================================================================
 
 /**
- * Normalized PC specifications for correlating with execution times
+ * Extended PC specifications for correlating with execution times
  */
 export interface PcFingerprint {
-  /** CPU score: physical_cores * (frequency_ghz) */
+  // Core Specs
+  /** Physical core count */
+  physicalCores: number;
+  /** Logical core count (includes hyperthreading) */
+  logicalCores: number;
+  /** CPU frequency in GHz */
+  frequencyGhz: number;
+  /** Computed CPU score: (physical + (logical-physical)*0.3) * frequency */
   cpuScore: number;
   /** Available RAM in GB */
-  ramGb: number;
-  /** Whether the primary disk is SSD */
-  diskIsSsd: boolean;
+  availableRamGb: number;
   /** Total RAM in GB */
   totalRamGb: number;
+  /** Whether the primary disk is SSD */
+  diskIsSsd: boolean;
+
+  // Extended Specs
+  /** Is the system plugged in (AC power)? */
+  isOnAcPower: boolean;
+  /** Does the CPU support AVX2 (modern architecture proxy)? */
+  hasAvx2: boolean;
+  /** Is there a discrete GPU (NVIDIA/AMD)? */
+  hasDiscreteGpu: boolean;
+  /** Network connection type */
+  networkType: NetworkType;
+  /** Current CPU load percentage at time of capture (0-100) */
+  cpuLoadPercent: number;
 }
 
 // =============================================================================
@@ -48,19 +87,29 @@ export interface ServiceTimeSample {
 // =============================================================================
 
 /**
- * Trained linear regression weights for a service
+ * Feature normalization statistics (mean/std for Z-score)
+ */
+export interface FeatureNormalization {
+  means: number[];
+  stdDevs: number[];
+}
+
+/**
+ * Trained Ridge regression weights for a service
  */
 export interface ServiceModelWeights {
   /** Y-intercept (base time in ms) */
   intercept: number;
-  /** CPU score coefficient */
-  cpuCoef: number;
-  /** RAM coefficient */
-  ramCoef: number;
-  /** SSD bonus coefficient */
-  ssdCoef: number;
+  /** Feature coefficients */
+  coefficients: number[];
   /** Number of samples used to train */
   sampleCount: number;
+  /** Normalization stats for Z-score */
+  normalization: FeatureNormalization;
+  /** Ridge regularization lambda used */
+  ridgeLambda: number;
+  /** R-squared score (model quality, 0-1) */
+  rSquared: number;
 }
 
 // =============================================================================
@@ -73,7 +122,7 @@ export interface ServiceModelWeights {
 export interface ServiceTimeStats {
   /** Service ID */
   serviceId: string;
-  /** Average duration (outlier-filtered), ms */
+  /** Average duration (outlier-filtered + time-decay weighted), ms */
   averageMs: number;
   /** Minimum recorded duration, ms */
   minMs: number;
@@ -89,6 +138,8 @@ export interface ServiceTimeStats {
   confidence: 'low' | 'medium' | 'high';
   /** Estimated duration for current PC (if model trained) */
   estimatedMs?: number;
+  /** Model quality score (R-squared, if available) */
+  modelQuality?: number;
 }
 
 /**
@@ -125,6 +176,10 @@ export interface ServiceTimeMetrics {
   models: Record<string, ServiceModelWeights>;
   /** Maximum samples to keep per service */
   maxSamplesPerService: number;
+  /** Samples since last retrain (per service) */
+  samplesSinceRetrain: Record<string, number>;
+  /** Batch size for retraining */
+  retrainBatchSize: number;
 }
 
 // =============================================================================
@@ -136,7 +191,7 @@ export interface ServiceTimeMetrics {
  */
 export function formatDuration(ms: number): string {
   if (ms < 1000) {
-    return `${ms}ms`;
+    return `${Math.round(ms)}ms`;
   }
   if (ms < 60000) {
     return `${(ms / 1000).toFixed(1)}s`;
@@ -174,4 +229,20 @@ export function getConfidenceBadge(confidence: string): 'default' | 'secondary' 
     default:
       return 'outline';
   }
+}
+
+/**
+ * Format model quality as percentage
+ */
+export function formatModelQuality(rSquared: number): string {
+  return `${(rSquared * 100).toFixed(0)}%`;
+}
+
+/**
+ * Get model quality color
+ */
+export function getModelQualityColor(rSquared: number): string {
+  if (rSquared >= 0.7) return 'text-green-500';
+  if (rSquared >= 0.4) return 'text-yellow-500';
+  return 'text-orange-500';
 }

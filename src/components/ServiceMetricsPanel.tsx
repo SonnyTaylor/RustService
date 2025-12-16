@@ -20,6 +20,11 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  Zap,
+  Wifi,
+  Battery,
+  Monitor,
+  Activity,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,7 +47,7 @@ import type {
   ServiceTimeStats,
   ServiceTimeMetrics,
 } from '@/types/time-tracking';
-import { formatDuration, getConfidenceColor, getConfidenceBadge } from '@/types/time-tracking';
+import { formatDuration, getConfidenceColor, getConfidenceBadge, getNetworkTypeLabel, formatModelQuality, getModelQualityColor } from '@/types/time-tracking';
 
 // =============================================================================
 // Types
@@ -56,7 +61,7 @@ interface ServiceDefinition {
 }
 
 // =============================================================================
-// PC Fingerprint Display
+// PC Fingerprint Display (Enhanced)
 // =============================================================================
 
 function PcFingerprintCard({ fingerprint }: { fingerprint: PcFingerprint | null }) {
@@ -79,27 +84,59 @@ function PcFingerprintCard({ fingerprint }: { fingerprint: PcFingerprint | null 
     );
   }
 
-  const specs = [
+  // Core specs (top row)
+  const coreSpecs = [
     {
       icon: Cpu,
-      label: 'CPU Score',
+      label: 'CPU',
       value: fingerprint.cpuScore.toFixed(1),
-      description: 'cores × GHz',
+      description: `${fingerprint.physicalCores}c/${fingerprint.logicalCores}t @ ${fingerprint.frequencyGhz.toFixed(1)}GHz`,
       color: 'text-blue-500',
     },
     {
       icon: MemoryStick,
-      label: 'Available RAM',
-      value: `${fingerprint.ramGb.toFixed(1)} GB`,
-      description: `of ${fingerprint.totalRamGb.toFixed(1)} GB total`,
+      label: 'RAM',
+      value: `${fingerprint.availableRamGb.toFixed(0)}GB`,
+      description: `of ${fingerprint.totalRamGb.toFixed(0)}GB avail`,
       color: 'text-purple-500',
     },
     {
       icon: HardDrive,
-      label: 'Storage Type',
+      label: 'Storage',
       value: fingerprint.diskIsSsd ? 'SSD' : 'HDD',
-      description: fingerprint.diskIsSsd ? 'Fast storage' : 'Mechanical drive',
+      description: fingerprint.diskIsSsd ? 'Fast' : 'Slow',
       color: fingerprint.diskIsSsd ? 'text-green-500' : 'text-orange-500',
+    },
+    {
+      icon: Activity,
+      label: 'Load',
+      value: `${fingerprint.cpuLoadPercent.toFixed(0)}%`,
+      description: fingerprint.cpuLoadPercent > 70 ? 'High' : fingerprint.cpuLoadPercent > 30 ? 'Medium' : 'Low',
+      color: fingerprint.cpuLoadPercent > 70 ? 'text-red-500' : fingerprint.cpuLoadPercent > 30 ? 'text-yellow-500' : 'text-green-500',
+    },
+  ];
+
+  // Extended specs (bottom row - badges)
+  const extendedSpecs = [
+    {
+      icon: Battery,
+      label: fingerprint.isOnAcPower ? 'AC Power' : 'Battery',
+      active: fingerprint.isOnAcPower,
+    },
+    {
+      icon: Zap,
+      label: 'AVX2',
+      active: fingerprint.hasAvx2,
+    },
+    {
+      icon: Monitor,
+      label: 'Discrete GPU',
+      active: fingerprint.hasDiscreteGpu,
+    },
+    {
+      icon: Wifi,
+      label: getNetworkTypeLabel(fingerprint.networkType),
+      active: fingerprint.networkType === 'ethernet',
     },
   ];
 
@@ -114,18 +151,33 @@ function PcFingerprintCard({ fingerprint }: { fingerprint: PcFingerprint | null 
           Used for estimating service durations on your machine
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-3 gap-4">
-          {specs.map((spec) => (
+      <CardContent className="space-y-4">
+        {/* Core specs grid */}
+        <div className="grid grid-cols-4 gap-3">
+          {coreSpecs.map((spec) => (
             <div
               key={spec.label}
-              className="flex flex-col items-center p-3 rounded-lg bg-muted/50 text-center"
+              className="flex flex-col items-center p-2 rounded-lg bg-muted/50 text-center"
             >
-              <spec.icon className={`h-6 w-6 ${spec.color} mb-2`} />
-              <span className="text-lg font-semibold">{spec.value}</span>
+              <spec.icon className={`h-5 w-5 ${spec.color} mb-1`} />
+              <span className="text-base font-semibold">{spec.value}</span>
               <span className="text-xs text-muted-foreground">{spec.label}</span>
-              <span className="text-xs text-muted-foreground/70">{spec.description}</span>
+              <span className="text-[10px] text-muted-foreground/70 truncate w-full">{spec.description}</span>
             </div>
+          ))}
+        </div>
+        
+        {/* Extended specs badges */}
+        <div className="flex flex-wrap gap-2">
+          {extendedSpecs.map((spec) => (
+            <Badge
+              key={spec.label}
+              variant={spec.active ? 'default' : 'outline'}
+              className={`text-xs ${!spec.active && 'opacity-50'}`}
+            >
+              <spec.icon className="h-3 w-3 mr-1" />
+              {spec.label}
+            </Badge>
           ))}
         </div>
       </CardContent>
@@ -155,6 +207,11 @@ function ServiceStatsRow({ stats, serviceName, onClear }: ServiceStatsRowProps) 
           <Badge variant={confidenceVariant} className="text-xs">
             {stats.sampleCount} sample{stats.sampleCount !== 1 ? 's' : ''}
           </Badge>
+          {stats.modelQuality !== undefined && stats.modelQuality > 0 && (
+            <Badge variant="outline" className={`text-xs ${getModelQualityColor(stats.modelQuality)}`}>
+              R² {formatModelQuality(stats.modelQuality)}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
           <span className="flex items-center gap-1">
