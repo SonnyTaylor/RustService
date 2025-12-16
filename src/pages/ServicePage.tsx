@@ -44,6 +44,10 @@ import {
   BatteryFull,
   ShieldAlert,
   Sparkles,
+  MonitorCheck,
+  Activity,
+  Download,
+  Network,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -96,6 +100,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   'battery-full': BatteryFull,
   'shield-alert': ShieldAlert,
   sparkles: Sparkles,
+  'monitor-check': MonitorCheck,
+  activity: Activity,
+  download: Download,
+  network: Network,
 };
 
 function getIcon(iconName: string) {

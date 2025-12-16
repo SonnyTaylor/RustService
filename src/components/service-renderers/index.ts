@@ -18,6 +18,10 @@ import { WinsatRenderer } from './WinsatRenderer';
 import { BatteryInfoRenderer } from './BatteryInfoRenderer';
 import { KvrtScanRenderer } from './KvrtScanRenderer';
 import { AdwCleanerRenderer } from './AdwCleanerRenderer';
+import { WhyNotWin11Renderer } from './WhyNotWin11Renderer';
+import { SmartctlRenderer } from './SmartctlRenderer';
+import { SpeedtestRenderer } from './SpeedtestRenderer';
+import { IperfRenderer } from './IperfRenderer';
 
 // =============================================================================
 // Types
@@ -48,6 +52,10 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'battery-info': BatteryInfoRenderer,
   'kvrt-scan': KvrtScanRenderer,
   'adwcleaner': AdwCleanerRenderer,
+  'whynotwin11': WhyNotWin11Renderer,
+  'smartctl': SmartctlRenderer,
+  'speedtest': SpeedtestRenderer,
+  'iperf': IperfRenderer,
 };
 
 /**

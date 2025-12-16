@@ -6,8 +6,12 @@
 mod adwcleaner;
 mod battery_info;
 mod disk_space;
+mod iperf;
 mod kvrt_scan;
 mod ping_test;
+mod smartctl;
+mod speedtest;
+mod whynotwin11;
 mod winsat;
 
 use std::collections::HashMap;
@@ -42,6 +46,10 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(battery_info::BatteryInfoService),
         Box::new(kvrt_scan::KvrtScanService),
         Box::new(adwcleaner::AdwCleanerService),
+        Box::new(whynotwin11::WhyNotWin11Service),
+        Box::new(smartctl::SmartctlService),
+        Box::new(speedtest::SpeedtestService),
+        Box::new(iperf::IperfService),
     ];
 
     services
@@ -87,12 +95,27 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
                 },
                 PresetServiceConfig {
+                    service_id: "speedtest".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "disk-space".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
+                    service_id: "smartctl".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "whynotwin11".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -121,7 +144,17 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
                 },
                 PresetServiceConfig {
+                    service_id: "speedtest".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "disk-space".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "smartctl".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -155,12 +188,32 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({"target": "8.8.8.8", "count": 10}),
                 },
                 PresetServiceConfig {
+                    service_id: "speedtest".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "iperf".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"server": "iperf.he.net", "duration": 60, "reverse": true}),
+                },
+                PresetServiceConfig {
                     service_id: "disk-space".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
+                    service_id: "smartctl".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "whynotwin11".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -194,12 +247,32 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
+                    service_id: "speedtest".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "iperf".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"server": "iperf.he.net", "duration": 30, "reverse": true}),
+                },
+                PresetServiceConfig {
                     service_id: "disk-space".to_string(),
                     enabled: false,
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
+                    service_id: "smartctl".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "battery-info".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "whynotwin11".to_string(),
                     enabled: false,
                     options: serde_json::json!({}),
                 },

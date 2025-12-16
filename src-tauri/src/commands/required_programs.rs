@@ -53,6 +53,37 @@ static REQUIRED_PROGRAMS: LazyLock<HashMap<String, RequiredProgramDef>> = LazyLo
             exe_names: vec!["KVRT.exe".to_string()],
             url: Some("https://www.kaspersky.com/downloads/free-virus-removal-tool".to_string()),
         },
+        RequiredProgramDef {
+            id: "whynotwin11".to_string(),
+            name: "WhyNotWin11".to_string(),
+            description: "Windows 11 compatibility checker".to_string(),
+            exe_names: vec![
+                "WhyNotWin11.exe".to_string(),
+                "WhyNotWin11Portable.exe".to_string(),
+            ],
+            url: Some("https://github.com/rcmaehl/WhyNotWin11/releases".to_string()),
+        },
+        RequiredProgramDef {
+            id: "smartctl".to_string(),
+            name: "Smartctl (smartmontools)".to_string(),
+            description: "SMART disk health monitoring and reporting tool".to_string(),
+            exe_names: vec!["smartctl.exe".to_string()],
+            url: Some("https://www.smartmontools.org/wiki/Download".to_string()),
+        },
+        RequiredProgramDef {
+            id: "speedtest".to_string(),
+            name: "Speedtest CLI".to_string(),
+            description: "Ookla Speedtest command-line interface for bandwidth testing".to_string(),
+            exe_names: vec!["speedtest.exe".to_string()],
+            url: Some("https://www.speedtest.net/apps/cli".to_string()),
+        },
+        RequiredProgramDef {
+            id: "iperf3".to_string(),
+            name: "iPerf3".to_string(),
+            description: "Network performance and stability testing tool".to_string(),
+            exe_names: vec!["iperf3.exe".to_string()],
+            url: Some("https://iperf.fr/iperf-download.php".to_string()),
+        },
         // Add more programs here as services require them
     ];
 
