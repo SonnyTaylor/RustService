@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use super::data_dir::get_data_dir_path;
 use super::required_programs::validate_required_programs;
+use super::settings::{get_settings, save_settings};
 use crate::services;
 use crate::types::{
     ServiceDefinition, ServicePreset, ServiceQueueItem, ServiceReport, ServiceRunState,
@@ -58,10 +59,78 @@ pub fn get_service_definitions() -> Vec<ServiceDefinition> {
     services::get_all_definitions()
 }
 
-/// Get all service presets
+/// Get all service presets (built-in merged with custom from settings)
 #[tauri::command]
 pub fn get_service_presets() -> Vec<ServicePreset> {
+    // Get built-in presets
+    let mut presets = services::get_all_presets();
+
+    // Get custom presets from settings
+    if let Ok(settings) = get_settings() {
+        for custom_preset in settings.presets.custom_presets {
+            // Check if this custom preset overrides a built-in one
+            if let Some(pos) = presets.iter().position(|p| p.id == custom_preset.id) {
+                // Replace built-in with custom
+                presets[pos] = custom_preset;
+            } else {
+                // Add new custom preset
+                presets.push(custom_preset);
+            }
+        }
+    }
+
+    presets
+}
+
+/// Save or update a service preset
+#[tauri::command]
+pub fn save_service_preset(preset: ServicePreset) -> Result<(), String> {
+    let mut settings = get_settings()?;
+
+    // Check if updating an existing custom preset
+    if let Some(pos) = settings
+        .presets
+        .custom_presets
+        .iter()
+        .position(|p| p.id == preset.id)
+    {
+        settings.presets.custom_presets[pos] = preset;
+    } else {
+        // Add new custom preset
+        settings.presets.custom_presets.push(preset);
+    }
+
+    save_settings(settings)?;
+    Ok(())
+}
+
+/// Delete a custom service preset
+#[tauri::command]
+pub fn delete_service_preset(preset_id: String) -> Result<(), String> {
+    let mut settings = get_settings()?;
+
+    // Find and remove the preset
+    let initial_len = settings.presets.custom_presets.len();
+    settings
+        .presets
+        .custom_presets
+        .retain(|p| p.id != preset_id);
+
+    if settings.presets.custom_presets.len() == initial_len {
+        return Err(format!("Custom preset not found: {}", preset_id));
+    }
+
+    save_settings(settings)?;
+    Ok(())
+}
+
+/// Get the list of built-in preset IDs
+#[tauri::command]
+pub fn get_builtin_preset_ids() -> Vec<String> {
     services::get_all_presets()
+        .into_iter()
+        .map(|p| p.id)
+        .collect()
 }
 
 /// Check if required programs are installed for given services

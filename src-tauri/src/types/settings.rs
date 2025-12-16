@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::service::ServicePreset;
+
 /// Current settings schema version for migration support
 pub const SETTINGS_VERSION: &str = "0.6.0";
 
@@ -165,6 +167,15 @@ fn default_use_favicons() -> bool {
     true
 }
 
+/// Service presets settings (custom presets)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetsSettings {
+    /// Custom service presets created or modified by the user
+    #[serde(default)]
+    pub custom_presets: Vec<ServicePreset>,
+}
+
 /// Main application settings schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -189,6 +200,9 @@ pub struct AppSettings {
     /// Custom technician tabs for embedding external websites
     #[serde(default)]
     pub technician_tabs: TechnicianTabsSettings,
+    /// Custom service presets
+    #[serde(default)]
+    pub presets: PresetsSettings,
 }
 
 impl Default for AppSettings {
@@ -201,6 +215,7 @@ impl Default for AppSettings {
             business: BusinessSettings::default(),
             programs: ProgramsSettings::default(),
             technician_tabs: TechnicianTabsSettings::default(),
+            presets: PresetsSettings::default(),
         }
     }
 }

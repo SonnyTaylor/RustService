@@ -276,6 +276,16 @@ export interface TechnicianTabsSettings {
   useFavicons: boolean;
 }
 
+import type { ServicePreset } from './service';
+
+/**
+ * Service presets settings (custom presets)
+ */
+export interface PresetsSettings {
+  /** Custom service presets created or modified by the user */
+  customPresets: ServicePreset[];
+}
+
 // =============================================================================
 // Main Settings Interface
 // =============================================================================
@@ -305,6 +315,8 @@ export interface AppSettings {
   programs: ProgramsSettings;
   /** Custom technician tabs for embedding external websites */
   technicianTabs: TechnicianTabsSettings;
+  /** Custom service presets */
+  presets: PresetsSettings;
 }
 
 // =============================================================================
@@ -368,6 +380,13 @@ export const DEFAULT_TECHNICIAN_TABS: TechnicianTabsSettings = {
 };
 
 /**
+ * Default presets settings
+ */
+export const DEFAULT_PRESETS: PresetsSettings = {
+  customPresets: [],
+};
+
+/**
  * Default application settings
  */
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -378,6 +397,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   business: DEFAULT_BUSINESS,
   programs: DEFAULT_PROGRAMS,
   technicianTabs: DEFAULT_TECHNICIAN_TABS,
+  presets: DEFAULT_PRESETS,
 };
 
 // =============================================================================
@@ -406,7 +426,8 @@ export type SettingKey =
   | 'business.abn'
   | 'business.technicians'
   | 'technicianTabs.tabs'
-  | 'technicianTabs.useFavicons';
+  | 'technicianTabs.useFavicons'
+  | 'presets.customPresets';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -431,10 +452,11 @@ export type SettingValueType<K extends SettingKey> =
   K extends 'business.technicians' ? string[] :
   K extends 'technicianTabs.tabs' ? TechnicianTab[] :
   K extends 'technicianTabs.useFavicons' ? boolean :
+  K extends 'presets.customPresets' ? ServicePreset[] :
   never;
 
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'serviceMetrics' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'servicePresets' | 'serviceMetrics' | 'about';
 

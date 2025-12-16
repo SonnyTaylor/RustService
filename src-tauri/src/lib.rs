@@ -64,6 +64,10 @@ pub fn run() {
             commands::list_service_reports,
             commands::delete_report,
             commands::clear_all_reports,
+            // Service presets management
+            commands::save_service_preset,
+            commands::delete_service_preset,
+            commands::get_builtin_preset_ids,
             // Required programs commands
             commands::get_required_programs,
             commands::get_required_programs_by_ids,
