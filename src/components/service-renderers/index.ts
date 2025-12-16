@@ -26,6 +26,9 @@ import { BleachBitRenderer } from './BleachBitRenderer';
 import { DismRenderer } from './DismRenderer';
 import { SfcRenderer } from './SfcRenderer';
 import { WindowsUpdateRenderer } from './WindowsUpdateRenderer';
+import { ChkdskRenderer } from './ChkdskRenderer';
+import { FurmarkRenderer } from './FurmarkRenderer';
+import { StingerRenderer } from './StingerRenderer';
 
 // =============================================================================
 // Types
@@ -64,6 +67,9 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'dism': DismRenderer,
   'sfc': SfcRenderer,
   'windows-update': WindowsUpdateRenderer,
+  'chkdsk': ChkdskRenderer,
+  'furmark': FurmarkRenderer,
+  'stinger': StingerRenderer,
 };
 
 /**

@@ -98,6 +98,24 @@ static REQUIRED_PROGRAMS: LazyLock<HashMap<String, RequiredProgramDef>> = LazyLo
             exe_names: vec!["HeavyLoad.exe".to_string()],
             url: Some("https://www.jam-software.com/heavyload".to_string()),
         },
+        RequiredProgramDef {
+            id: "furmark".to_string(),
+            name: "FurMark".to_string(),
+            description: "GPU stress testing and stability tool".to_string(),
+            exe_names: vec!["FurMark.exe".to_string(), "FurMark_GUI.exe".to_string()],
+            url: Some("https://geeks3d.com/furmark/".to_string()),
+        },
+        RequiredProgramDef {
+            id: "stinger".to_string(),
+            name: "Trellix Stinger".to_string(),
+            description: "Standalone antivirus scanner for malware detection".to_string(),
+            exe_names: vec![
+                "stinger64.exe".to_string(),
+                "stinger32.exe".to_string(),
+                "stinger.exe".to_string(),
+            ],
+            url: Some("https://www.trellix.com/products/stinger/".to_string()),
+        },
         // Add more programs here as services require them
     ];
 

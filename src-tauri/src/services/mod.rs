@@ -6,9 +6,11 @@
 mod adwcleaner;
 mod battery_info;
 mod bleachbit;
+mod chkdsk;
 mod disk_space;
 mod dism;
 mod drivecleanup;
+mod furmark;
 mod heavyload;
 mod iperf;
 mod kvrt_scan;
@@ -16,6 +18,7 @@ mod ping_test;
 mod sfc;
 mod smartctl;
 mod speedtest;
+mod stinger;
 mod whynotwin11;
 mod windows_update;
 mod winsat;
@@ -52,6 +55,7 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(battery_info::BatteryInfoService),
         Box::new(kvrt_scan::KvrtScanService),
         Box::new(adwcleaner::AdwCleanerService),
+        Box::new(stinger::StingerService),
         Box::new(whynotwin11::WhyNotWin11Service),
         Box::new(smartctl::SmartctlService),
         Box::new(speedtest::SpeedtestService),
@@ -61,6 +65,8 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(heavyload::HeavyLoadService),
         Box::new(dism::DismService),
         Box::new(sfc::SfcService),
+        Box::new(chkdsk::ChkdskService),
+        Box::new(furmark::FurmarkService),
         Box::new(windows_update::WindowsUpdateService),
     ];
 
@@ -347,6 +353,21 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "windows-update".to_string(),
                     enabled: false,
                     options: serde_json::json!({"install_updates": false, "include_drivers": true}),
+                },
+                PresetServiceConfig {
+                    service_id: "chkdsk".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"drive": "C:", "mode": "read_only", "schedule_if_busy": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "furmark".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"duration_seconds": 60, "width": 1920, "height": 1080}),
+                },
+                PresetServiceConfig {
+                    service_id: "stinger".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"action": "report", "include_pups": false}),
                 },
             ],
             icon: "settings-2".to_string(),
