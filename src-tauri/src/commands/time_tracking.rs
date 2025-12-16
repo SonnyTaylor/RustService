@@ -35,11 +35,11 @@ const TIME_DECAY_BASE: f64 = 0.95;
 /// Number of features in the fingerprint vector
 const NUM_FEATURES: usize = 8;
 
-/// SGD learning rate
-const LEARNING_RATE: f64 = 0.001;
+/// SGD learning rate (0.05 is aggressive but safe with Z-score normalization)
+const LEARNING_RATE: f64 = 0.05;
 
-/// SGD epochs (iterations)
-const SGD_EPOCHS: usize = 500;
+/// SGD epochs (1000 for better convergence with batch GD)
+const SGD_EPOCHS: usize = 1000;
 
 /// Index of cpu_load feature (the only one with positive coefficient)
 const CPU_LOAD_FEATURE_INDEX: usize = 7;
@@ -500,6 +500,19 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
 }
 
 // =============================================================================
+// Composite Key Helper
+// =============================================================================
+
+/// Create a composite key for model storage: "service_id:hash" or just "service_id"
+fn make_model_key(service_id: &str, options_hash: &Option<String>) -> String {
+    if let Some(hash) = options_hash {
+        format!("{}:{}", service_id, hash)
+    } else {
+        service_id.to_string()
+    }
+}
+
+// =============================================================================
 // Tauri Commands
 // =============================================================================
 
@@ -519,6 +532,9 @@ pub fn record_service_time(
     options_hash: Option<String>,
 ) -> Result<(), String> {
     let mut metrics = get_cached_metrics().lock().unwrap();
+
+    // Clone options_hash before moving into struct (for model key lookup later)
+    let options_hash_for_key = options_hash.clone();
 
     let sample = ServiceTimeSample {
         service_id: service_id.clone(),
@@ -552,26 +568,30 @@ pub fn record_service_time(
         });
     }
 
+    // Create composite key for options-aware tracking
+    let model_key = make_model_key(&service_id, &options_hash_for_key);
+
     // Batch retraining
     let batch_size = metrics.retrain_batch_size;
     let counter = metrics
         .samples_since_retrain
-        .entry(service_id.clone())
+        .entry(model_key.clone())
         .or_insert(0);
     *counter += 1;
 
     if *counter >= batch_size {
         *counter = 0;
 
+        // Filter samples by EXACT service_id AND options_hash match
         let service_samples: Vec<_> = metrics
             .samples
             .iter()
-            .filter(|s| s.service_id == service_id)
+            .filter(|s| s.service_id == service_id && s.options_hash == options_hash_for_key)
             .cloned()
             .collect();
 
         if let Some(weights) = train_sgd_regression(&service_samples) {
-            metrics.models.insert(service_id, weights);
+            metrics.models.insert(model_key, weights);
         }
     }
 
@@ -584,26 +604,49 @@ pub fn get_pc_fingerprint() -> PcFingerprint {
     generate_pc_fingerprint()
 }
 
+/// Get estimated time for a service with specific options on the current PC
 #[tauri::command]
-pub fn get_estimated_time(service_id: String, default_secs: u32) -> u64 {
+pub fn get_estimated_time(
+    service_id: String,
+    options_hash: Option<String>,
+    default_secs: u32,
+) -> u64 {
     let metrics = get_cached_metrics().lock().unwrap();
     let fingerprint = generate_pc_fingerprint();
 
-    if let Some(weights) = metrics.models.get(&service_id) {
+    // Create composite key for this service+options combination
+    let model_key = make_model_key(&service_id, &options_hash);
+
+    // Try trained model with composite key first
+    if let Some(weights) = metrics.models.get(&model_key) {
         if weights.sample_count >= 5 {
             return predict_duration(weights, &fingerprint);
         }
     }
 
+    // Fall back to weighted average of samples with matching options_hash
     let service_samples: Vec<_> = metrics
+        .samples
+        .iter()
+        .filter(|s| s.service_id == service_id && s.options_hash == options_hash)
+        .cloned()
+        .collect();
+
+    if service_samples.len() >= 3 {
+        let (avg, _, _, _, _) = calculate_weighted_stats(&service_samples);
+        return avg as u64;
+    }
+
+    // Fall back to ANY samples for this service (ignoring options)
+    let any_samples: Vec<_> = metrics
         .samples
         .iter()
         .filter(|s| s.service_id == service_id)
         .cloned()
         .collect();
 
-    if service_samples.len() >= 3 {
-        let (avg, _, _, _, _) = calculate_weighted_stats(&service_samples);
+    if any_samples.len() >= 3 {
+        let (avg, _, _, _, _) = calculate_weighted_stats(&any_samples);
         return avg as u64;
     }
 
