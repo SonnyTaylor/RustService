@@ -16,6 +16,8 @@ import { PingTestRenderer } from './PingTestRenderer';
 import { DiskSpaceRenderer } from './DiskSpaceRenderer';
 import { WinsatRenderer } from './WinsatRenderer';
 import { BatteryInfoRenderer } from './BatteryInfoRenderer';
+import { KvrtScanRenderer } from './KvrtScanRenderer';
+import { AdwCleanerRenderer } from './AdwCleanerRenderer';
 
 // =============================================================================
 // Types
@@ -44,6 +46,8 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'disk-space': DiskSpaceRenderer,
   'winsat': WinsatRenderer,
   'battery-info': BatteryInfoRenderer,
+  'kvrt-scan': KvrtScanRenderer,
+  'adwcleaner': AdwCleanerRenderer,
 };
 
 /**

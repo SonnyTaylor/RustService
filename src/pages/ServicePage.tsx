@@ -42,6 +42,8 @@ import {
   HardDrive,
   Gauge,
   BatteryFull,
+  ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -92,6 +94,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   'hard-drive': HardDrive,
   gauge: Gauge,
   'battery-full': BatteryFull,
+  'shield-alert': ShieldAlert,
+  sparkles: Sparkles,
 };
 
 function getIcon(iconName: string) {

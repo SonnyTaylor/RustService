@@ -3,8 +3,10 @@
 //! Each service is implemented in its own file and registered here.
 //! Services implement the `Service` trait for consistent execution.
 
+mod adwcleaner;
 mod battery_info;
 mod disk_space;
+mod kvrt_scan;
 mod ping_test;
 mod winsat;
 
@@ -38,6 +40,8 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(disk_space::DiskSpaceService),
         Box::new(winsat::WinsatService),
         Box::new(battery_info::BatteryInfoService),
+        Box::new(kvrt_scan::KvrtScanService),
+        Box::new(adwcleaner::AdwCleanerService),
     ];
 
     services
@@ -102,6 +106,16 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             description: "Standard maintenance tasks for regular checkups".to_string(),
             services: vec![
                 PresetServiceConfig {
+                    service_id: "adwcleaner".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "kvrt-scan".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "ping-test".to_string(),
                     enabled: true,
                     options: serde_json::json!({"target": "8.8.8.8", "count": 4}),
@@ -125,6 +139,16 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             name: "Complete Service".to_string(),
             description: "Comprehensive scan and cleanup for thorough maintenance".to_string(),
             services: vec![
+                PresetServiceConfig {
+                    service_id: "adwcleaner".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "kvrt-scan".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
                 PresetServiceConfig {
                     service_id: "ping-test".to_string(),
                     enabled: true,
@@ -154,6 +178,16 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             name: "Custom Service".to_string(),
             description: "Build your own service configuration".to_string(),
             services: vec![
+                PresetServiceConfig {
+                    service_id: "adwcleaner".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "kvrt-scan".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
                 PresetServiceConfig {
                     service_id: "ping-test".to_string(),
                     enabled: false,

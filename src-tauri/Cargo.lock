@@ -4065,6 +4065,7 @@ dependencies = [
  "chrono",
  "gfxinfo",
  "image",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

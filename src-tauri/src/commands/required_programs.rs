@@ -46,6 +46,13 @@ static REQUIRED_PROGRAMS: LazyLock<HashMap<String, RequiredProgramDef>> = LazyLo
             ],
             url: Some("https://crystalmark.info/en/software/crystaldiskinfo/".to_string()),
         },
+        RequiredProgramDef {
+            id: "kvrt".to_string(),
+            name: "Kaspersky Virus Removal Tool".to_string(),
+            description: "Antivirus scanning and malware removal tool".to_string(),
+            exe_names: vec!["KVRT.exe".to_string()],
+            url: Some("https://www.kaspersky.com/downloads/free-virus-removal-tool".to_string()),
+        },
         // Add more programs here as services require them
     ];
 

@@ -32,6 +32,7 @@ chrono = { version = "0.4", features = ["serde"] }
 image = "0.25"
 tauri-plugin-dialog = "2"
 base64 = "0.22"
+regex = "1.12.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "libloaderapi", "winbase"] }
