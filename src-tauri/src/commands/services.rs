@@ -206,10 +206,16 @@ pub async fn run_services(
 
         // Record timing for service metrics (only for successful runs)
         if result.success {
+            // Compute options hash for settings-aware tracking
+            let options_hash = Some(super::time_tracking::compute_options_hash(
+                &queue_item.options,
+            ));
+
             if let Err(e) = super::time_tracking::record_service_time(
                 queue_item.service_id.clone(),
                 result.duration_ms,
                 None, // preset_id could be passed from frontend if needed
+                options_hash,
             ) {
                 eprintln!("Failed to record service time: {}", e);
             }

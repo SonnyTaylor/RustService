@@ -2,12 +2,12 @@
 //!
 //! Tauri commands for recording, analyzing, and estimating service execution times.
 //!
-//! Enhanced with:
-//! - Z-score normalization for feature scaling
-//! - Ridge regression (L2 regularization) with weight clamping
-//! - Time decay (exponential weighting for recency bias)
-//! - Batch retraining (every N samples, not per-write)
-//! - Extended PC specs (power, AVX2, GPU, network, system load)
+//! Critical fixes applied:
+//! - Stochastic Gradient Descent (SGD) for true multivariate regression
+//! - Optimized PC fingerprint with static data caching
+//! - Correct coefficient clamping (cpu_load is positive, others negative)
+//! - Failed service filtering
+//! - Service options hash for settings-aware tracking
 
 use std::collections::HashMap;
 use std::fs;
@@ -26,14 +26,23 @@ use crate::types::{
 // Constants
 // =============================================================================
 
-/// Ridge regularization parameter (prevents overfitting and multicollinearity)
-const RIDGE_LAMBDA: f64 = 0.1;
+/// Ridge regularization parameter (prevents overfitting)
+const RIDGE_LAMBDA: f64 = 0.01;
 
-/// Time decay base (0.95^days_old means ~60% weight after 10 days)
+/// Time decay base (0.95^days_old)
 const TIME_DECAY_BASE: f64 = 0.95;
 
 /// Number of features in the fingerprint vector
 const NUM_FEATURES: usize = 8;
+
+/// SGD learning rate
+const LEARNING_RATE: f64 = 0.001;
+
+/// SGD epochs (iterations)
+const SGD_EPOCHS: usize = 500;
+
+/// Index of cpu_load feature (the only one with positive coefficient)
+const CPU_LOAD_FEATURE_INDEX: usize = 7;
 
 // =============================================================================
 // Metrics File Management
@@ -72,98 +81,147 @@ fn get_cached_metrics() -> &'static Mutex<ServiceTimeMetrics> {
 }
 
 // =============================================================================
-// PC Fingerprint Generation (Enhanced)
+// Static PC Data Cache (expensive to compute, rarely changes)
 // =============================================================================
 
-/// Generate an extended PC fingerprint with all specs
+/// Cached static PC specs that don't change during runtime
+struct StaticPcSpecs {
+    physical_cores: u32,
+    logical_cores: u32,
+    frequency_ghz: f64,
+    cpu_score: f64,
+    total_ram_gb: f64,
+    disk_is_ssd: bool,
+    has_avx2: bool,
+    has_discrete_gpu: bool,
+    is_laptop: bool, // Track if we need to check battery
+}
+
+static STATIC_SPECS: OnceLock<StaticPcSpecs> = OnceLock::new();
+
+/// Initialize static specs ONCE (expensive operations)
+fn get_static_specs() -> &'static StaticPcSpecs {
+    STATIC_SPECS.get_or_init(|| {
+        // Only refresh CPU for static data
+        let sys = System::new_all(); // Full refresh ONCE at startup
+
+        let physical_cores = System::physical_core_count().unwrap_or(4) as u32;
+        let logical_cores = sys.cpus().len() as u32;
+        let frequency_ghz = sys
+            .cpus()
+            .first()
+            .map(|c| c.frequency() as f64 / 1000.0)
+            .unwrap_or(2.0);
+
+        let cpu_score =
+            PcFingerprint::compute_cpu_score(physical_cores, logical_cores, frequency_ghz);
+        let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+
+        // Disk type
+        let disk_list = Disks::new_with_refreshed_list();
+        let disk_is_ssd = disk_list
+            .iter()
+            .max_by_key(|d| d.total_space())
+            .map(|d| format!("{:?}", d.kind()).to_lowercase().contains("ssd"))
+            .unwrap_or(true);
+
+        // AVX2
+        let has_avx2 = {
+            #[cfg(target_arch = "x86_64")]
+            {
+                std::arch::is_x86_feature_detected!("avx2")
+            }
+            #[cfg(not(target_arch = "x86_64"))]
+            {
+                false
+            }
+        };
+
+        // Discrete GPU
+        let has_discrete_gpu = match gfxinfo::active_gpu() {
+            Ok(gpu) => {
+                let vendor = gpu.vendor().to_lowercase();
+                vendor.contains("nvidia") || vendor.contains("amd") || vendor.contains("radeon")
+            }
+            Err(_) => false,
+        };
+
+        // Check if laptop (has any batteries)
+        let is_laptop = battery::Manager::new()
+            .ok()
+            .and_then(|m| m.batteries().ok())
+            .map(|mut b| b.next().is_some())
+            .unwrap_or(false);
+
+        StaticPcSpecs {
+            physical_cores,
+            logical_cores,
+            frequency_ghz,
+            cpu_score,
+            total_ram_gb,
+            disk_is_ssd,
+            has_avx2,
+            has_discrete_gpu,
+            is_laptop,
+        }
+    })
+}
+
+// =============================================================================
+// PC Fingerprint Generation (Optimized)
+// =============================================================================
+
+/// Generate PC fingerprint with minimal system calls
 fn generate_pc_fingerprint() -> PcFingerprint {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    let static_specs = get_static_specs();
 
-    // CPU cores and frequency
-    let physical_cores = System::physical_core_count().unwrap_or(4) as u32;
-    let logical_cores = sys.cpus().len() as u32;
-    let frequency_ghz = sys
-        .cpus()
-        .first()
-        .map(|c| c.frequency() as f64 / 1000.0)
-        .unwrap_or(2.0);
+    // Only refresh RAM and CPU usage (fast operations)
+    let mut sys = System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu_usage();
 
-    // Calculate weighted CPU score
-    let cpu_score = PcFingerprint::compute_cpu_score(physical_cores, logical_cores, frequency_ghz);
-
-    // RAM
-    let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
     let available_ram_gb = sys.available_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
-
-    // Current CPU load
     let cpu_load_percent = sys.global_cpu_usage() as f64;
 
-    // Disk type (check primary/largest disk)
-    let disk_list = Disks::new_with_refreshed_list();
-    let disk_is_ssd = disk_list
-        .iter()
-        .max_by_key(|d| d.total_space())
-        .map(|d| format!("{:?}", d.kind()).to_lowercase().contains("ssd"))
-        .unwrap_or(true);
-
-    // Power source - check if any battery is discharging
-    let is_on_ac_power = battery::Manager::new()
-        .ok()
-        .and_then(|m| m.batteries().ok())
-        .map(|mut batteries| {
-            batteries.all(|b| {
-                b.map(|batt| batt.state() != battery::State::Discharging)
-                    .unwrap_or(true)
+    // Power source - only check if laptop
+    let is_on_ac_power = if static_specs.is_laptop {
+        battery::Manager::new()
+            .ok()
+            .and_then(|m| m.batteries().ok())
+            .map(|mut batteries| {
+                batteries.all(|b| {
+                    b.map(|batt| batt.state() != battery::State::Discharging)
+                        .unwrap_or(true)
+                })
             })
-        })
-        .unwrap_or(true); // Default to AC if no battery
-
-    // AVX2 support - use raw_cpuid if available, otherwise assume modern
-    let has_avx2 = {
-        #[cfg(target_arch = "x86_64")]
-        {
-            std::arch::is_x86_feature_detected!("avx2")
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            false
-        }
+            .unwrap_or(true)
+    } else {
+        true // Desktop always on AC
     };
 
-    // Discrete GPU detection
-    let has_discrete_gpu = match gfxinfo::active_gpu() {
-        Ok(gpu) => {
-            let vendor = gpu.vendor().to_lowercase();
-            vendor.contains("nvidia") || vendor.contains("amd") || vendor.contains("radeon")
-        }
-        Err(_) => false,
-    };
-
-    // Network type detection
+    // Network type (cached-ish, minimal overhead)
     let network_type = detect_network_type();
 
     PcFingerprint {
-        physical_cores,
-        logical_cores,
-        frequency_ghz,
-        cpu_score,
+        physical_cores: static_specs.physical_cores,
+        logical_cores: static_specs.logical_cores,
+        frequency_ghz: static_specs.frequency_ghz,
+        cpu_score: static_specs.cpu_score,
         available_ram_gb,
-        total_ram_gb,
-        disk_is_ssd,
+        total_ram_gb: static_specs.total_ram_gb,
+        disk_is_ssd: static_specs.disk_is_ssd,
         is_on_ac_power,
-        has_avx2,
-        has_discrete_gpu,
+        has_avx2: static_specs.has_avx2,
+        has_discrete_gpu: static_specs.has_discrete_gpu,
         network_type,
         cpu_load_percent,
     }
 }
 
-/// Detect the primary network connection type
+/// Detect network connection type (lightweight)
 fn detect_network_type() -> NetworkType {
     let networks = Networks::new_with_refreshed_list();
 
-    // Find the interface with most traffic (likely active)
     let active_interface = networks
         .iter()
         .filter(|(name, _)| {
@@ -196,7 +254,6 @@ fn detect_network_type() -> NetworkType {
 // Z-Score Normalization
 // =============================================================================
 
-/// Calculate mean and standard deviation for each feature
 fn calculate_normalization(samples: &[ServiceTimeSample]) -> FeatureNormalization {
     if samples.is_empty() {
         return FeatureNormalization {
@@ -223,7 +280,6 @@ fn calculate_normalization(samples: &[ServiceTimeSample]) -> FeatureNormalizatio
         .zip(means.iter())
         .map(|(&sq, &mean)| {
             let variance = (sq / n) - (mean * mean);
-            // Avoid division by zero
             if variance > 0.0001 {
                 variance.sqrt()
             } else {
@@ -235,7 +291,6 @@ fn calculate_normalization(samples: &[ServiceTimeSample]) -> FeatureNormalizatio
     FeatureNormalization { means, std_devs }
 }
 
-/// Apply Z-score normalization to a feature vector
 fn normalize_features(features: &[f64], norm: &FeatureNormalization) -> Vec<f64> {
     features
         .iter()
@@ -246,36 +301,31 @@ fn normalize_features(features: &[f64], norm: &FeatureNormalization) -> Vec<f64>
 }
 
 // =============================================================================
-// Time Decay Weighting
+// Time Decay
 // =============================================================================
 
-/// Calculate time decay weight for a sample based on age
 fn calculate_time_decay(timestamp: &str) -> f64 {
     let sample_time = DateTime::parse_from_rfc3339(timestamp)
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
 
     let days_old = (Utc::now() - sample_time).num_days().max(0) as f64;
-
-    // Exponential decay: 0.95^days
     TIME_DECAY_BASE.powf(days_old)
 }
 
 // =============================================================================
-// Ridge Regression with Weight Clamping
+// Stochastic Gradient Descent (SGD) Ridge Regression
 // =============================================================================
 
-/// Train a Ridge regression model with L2 regularization
-/// Uses weighted least squares with time decay
-fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWeights> {
+/// Train using SGD - handles correlated features correctly
+fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWeights> {
     if samples.len() < 5 {
         return None;
     }
 
-    // Calculate normalization stats
     let normalization = calculate_normalization(samples);
 
-    // Prepare data with time decay weights
+    // Prepare data
     let mut x_matrix: Vec<Vec<f64>> = Vec::new();
     let mut y_values: Vec<f64> = Vec::new();
     let mut weights: Vec<f64> = Vec::new();
@@ -290,7 +340,7 @@ fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelW
 
     let n = samples.len();
 
-    // Calculate weighted means
+    // Calculate weighted mean of y (used as base intercept)
     let total_weight: f64 = weights.iter().sum();
     let y_mean: f64 = y_values
         .iter()
@@ -299,39 +349,48 @@ fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelW
         .sum::<f64>()
         / total_weight;
 
-    // Simple closed-form Ridge regression for each coefficient
-    // β_j = (Σ w_i * x_ij * (y_i - ȳ)) / (Σ w_i * x_ij² + λ)
+    // Initialize coefficients to zero
     let mut coefficients = vec![0.0; NUM_FEATURES];
 
-    for j in 0..NUM_FEATURES {
-        let mut numerator = 0.0;
-        let mut denominator = RIDGE_LAMBDA; // Start with regularization term
+    // SGD training loop
+    for _epoch in 0..SGD_EPOCHS {
+        let mut gradients = vec![0.0; NUM_FEATURES];
 
         for i in 0..n {
-            let x_ij = x_matrix[i][j];
-            let y_i = y_values[i];
-            let w_i = weights[i];
+            // Predict: intercept + sum(coef * feature)
+            let prediction: f64 = y_mean
+                + x_matrix[i]
+                    .iter()
+                    .zip(coefficients.iter())
+                    .map(|(x, c)| x * c)
+                    .sum::<f64>();
 
-            numerator += w_i * x_ij * (y_i - y_mean);
-            denominator += w_i * x_ij * x_ij;
+            let error = prediction - y_values[i];
+            let sample_weight = weights[i];
+
+            // Accumulate gradients with L2 regularization
+            for j in 0..NUM_FEATURES {
+                gradients[j] +=
+                    sample_weight * error * x_matrix[i][j] + (RIDGE_LAMBDA * coefficients[j]);
+            }
         }
 
-        coefficients[j] = numerator / denominator;
+        // Update coefficients
+        for j in 0..NUM_FEATURES {
+            coefficients[j] -= (LEARNING_RATE * gradients[j]) / n as f64;
+        }
     }
 
-    // Apply weight clamping: CPU, RAM, AVX2 should generally reduce time (negative coefficients)
-    // SSD, AC power, discrete GPU should reduce time (negative coefficients)
-    // High load should increase time (positive when inverted, so coefficient can be negative)
-    // Clamp to reasonable ranges to prevent wild predictions
-    for (_i, coef) in coefficients.iter_mut().enumerate() {
-        // Features that should reduce time: clamp to non-positive
-        // CPU (0), RAM (1), SSD (2), Power (3), AVX2 (4), GPU (5), Network (6), LoadInverse (7)
-        // All should reduce time (faster PC = lower duration), so coefficients should be <= 0
-        *coef = coef.clamp(-100000.0, 0.0);
+    // Apply coefficient clamping with CORRECT signs
+    for (j, coef) in coefficients.iter_mut().enumerate() {
+        if j == CPU_LOAD_FEATURE_INDEX {
+            // CPU load: higher load = SLOWER = positive coefficient
+            *coef = coef.clamp(0.0, 100000.0);
+        } else {
+            // All other features: higher = FASTER = negative coefficient
+            *coef = coef.clamp(-100000.0, 0.0);
+        }
     }
-
-    // Calculate intercept (base time at mean feature values)
-    let intercept = y_mean;
 
     // Calculate R-squared
     let ss_tot: f64 = y_values
@@ -342,7 +401,7 @@ fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelW
 
     let mut ss_res = 0.0;
     for i in 0..n {
-        let predicted = intercept
+        let predicted = y_mean
             + x_matrix[i]
                 .iter()
                 .zip(coefficients.iter())
@@ -358,7 +417,7 @@ fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelW
     };
 
     Some(ServiceModelWeights {
-        intercept,
+        intercept: y_mean,
         coefficients,
         sample_count: n,
         normalization,
@@ -367,7 +426,6 @@ fn train_ridge_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelW
     })
 }
 
-/// Predict duration using trained model
 fn predict_duration(weights: &ServiceModelWeights, fingerprint: &PcFingerprint) -> u64 {
     let raw_features = fingerprint.to_feature_vector();
     let normalized = normalize_features(&raw_features, &weights.normalization);
@@ -384,10 +442,9 @@ fn predict_duration(weights: &ServiceModelWeights, fingerprint: &PcFingerprint) 
 }
 
 // =============================================================================
-// IQR-Based Outlier Filtering (with Time Decay)
+// IQR-Based Outlier Filtering
 // =============================================================================
 
-/// Calculate IQR-filtered, time-decay-weighted average
 fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u64, f64) {
     if samples.is_empty() {
         return (0.0, 0, 0, 0, 0.0);
@@ -398,7 +455,6 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
         .map(|s| (s.duration_ms, calculate_time_decay(&s.timestamp)))
         .collect();
 
-    // Sort by duration for IQR
     weighted_pairs.sort_by_key(|(d, _)| *d);
 
     let len = weighted_pairs.len();
@@ -406,14 +462,12 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
     let max = weighted_pairs[len - 1].0;
     let median = weighted_pairs[len / 2].0;
 
-    // IQR filtering (only if 4+ samples)
     let filtered_pairs = if len >= 4 {
         let q1_idx = len / 4;
         let q3_idx = (3 * len) / 4;
         let q1 = weighted_pairs[q1_idx].0 as f64;
         let q3 = weighted_pairs[q3_idx].0 as f64;
         let iqr = q3 - q1;
-
         let lower = (q1 - 1.5 * iqr).max(0.0);
         let upper = q3 + 1.5 * iqr;
 
@@ -429,7 +483,6 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
         return (median as f64, min, max, median, 0.0);
     }
 
-    // Weighted average
     let total_weight: f64 = filtered_pairs.iter().map(|(_, w)| w).sum();
     let weighted_avg: f64 = filtered_pairs
         .iter()
@@ -437,7 +490,6 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
         .sum::<f64>()
         / total_weight;
 
-    // Weighted standard deviation
     let variance: f64 = filtered_pairs
         .iter()
         .map(|(d, w)| w * (*d as f64 - weighted_avg).powi(2))
@@ -451,19 +503,20 @@ fn calculate_weighted_stats(samples: &[ServiceTimeSample]) -> (f64, u64, u64, u6
 // Tauri Commands
 // =============================================================================
 
-/// Get all service time metrics
 #[tauri::command]
 pub fn get_service_time_metrics() -> ServiceTimeMetrics {
     let metrics = get_cached_metrics().lock().unwrap();
     metrics.clone()
 }
 
-/// Record a service execution time (with batch retraining)
+/// Record a service execution time
+/// Only records SUCCESSFUL services (failed services filtered out by caller)
 #[tauri::command]
 pub fn record_service_time(
     service_id: String,
     duration_ms: u64,
     preset_id: Option<String>,
+    options_hash: Option<String>,
 ) -> Result<(), String> {
     let mut metrics = get_cached_metrics().lock().unwrap();
 
@@ -473,6 +526,7 @@ pub fn record_service_time(
         timestamp: Utc::now().to_rfc3339(),
         pc_fingerprint: generate_pc_fingerprint(),
         preset_id,
+        options_hash,
     };
 
     metrics.samples.push(sample);
@@ -498,21 +552,17 @@ pub fn record_service_time(
         });
     }
 
-    // Batch retraining: read batch_size before getting mutable ref to counter
+    // Batch retraining
     let batch_size = metrics.retrain_batch_size;
-
-    // Increment samples since retrain counter
     let counter = metrics
         .samples_since_retrain
         .entry(service_id.clone())
         .or_insert(0);
     *counter += 1;
 
-    // Only retrain if we've accumulated enough samples
     if *counter >= batch_size {
         *counter = 0;
 
-        // Get samples for this service
         let service_samples: Vec<_> = metrics
             .samples
             .iter()
@@ -520,7 +570,7 @@ pub fn record_service_time(
             .cloned()
             .collect();
 
-        if let Some(weights) = train_ridge_regression(&service_samples) {
+        if let Some(weights) = train_sgd_regression(&service_samples) {
             metrics.models.insert(service_id, weights);
         }
     }
@@ -529,26 +579,22 @@ pub fn record_service_time(
     Ok(())
 }
 
-/// Get the current PC fingerprint
 #[tauri::command]
 pub fn get_pc_fingerprint() -> PcFingerprint {
     generate_pc_fingerprint()
 }
 
-/// Get estimated time for a service on the current PC
 #[tauri::command]
 pub fn get_estimated_time(service_id: String, default_secs: u32) -> u64 {
     let metrics = get_cached_metrics().lock().unwrap();
     let fingerprint = generate_pc_fingerprint();
 
-    // Try using trained model first
     if let Some(weights) = metrics.models.get(&service_id) {
         if weights.sample_count >= 5 {
             return predict_duration(weights, &fingerprint);
         }
     }
 
-    // Fall back to weighted average if we have samples
     let service_samples: Vec<_> = metrics
         .samples
         .iter()
@@ -561,17 +607,14 @@ pub fn get_estimated_time(service_id: String, default_secs: u32) -> u64 {
         return avg as u64;
     }
 
-    // Fall back to default
     (default_secs as u64) * 1000
 }
 
-/// Get statistics for all services
 #[tauri::command]
 pub fn get_service_averages() -> Vec<ServiceTimeStats> {
     let metrics = get_cached_metrics().lock().unwrap();
     let fingerprint = generate_pc_fingerprint();
 
-    // Group samples by service_id
     let mut by_service: HashMap<String, Vec<ServiceTimeSample>> = HashMap::new();
     for sample in &metrics.samples {
         by_service
@@ -593,7 +636,6 @@ pub fn get_service_averages() -> Vec<ServiceTimeStats> {
             }
             .to_string();
 
-            // Get estimated time and model quality if model exists
             let (estimated_ms, model_quality) = metrics
                 .models
                 .get(&service_id)
@@ -617,7 +659,6 @@ pub fn get_service_averages() -> Vec<ServiceTimeStats> {
         .collect()
 }
 
-/// Get statistics for presets
 #[tauri::command]
 pub fn get_preset_averages() -> Vec<PresetTimeStats> {
     let metrics = get_cached_metrics().lock().unwrap();
@@ -657,7 +698,6 @@ pub fn get_preset_averages() -> Vec<PresetTimeStats> {
         .collect()
 }
 
-/// Clear all metrics or metrics for a specific service
 #[tauri::command]
 pub fn clear_service_metrics(service_id: Option<String>) -> Result<u32, String> {
     let mut metrics = get_cached_metrics().lock().unwrap();
@@ -676,16 +716,13 @@ pub fn clear_service_metrics(service_id: Option<String>) -> Result<u32, String> 
 
     let removed = before_count - metrics.samples.len();
     save_metrics(&metrics)?;
-
     Ok(removed as u32)
 }
 
-/// Manually retrain all models
 #[tauri::command]
 pub fn retrain_time_models() -> Result<u32, String> {
     let mut metrics = get_cached_metrics().lock().unwrap();
 
-    // Group samples by service
     let mut by_service: HashMap<String, Vec<ServiceTimeSample>> = HashMap::new();
     for sample in &metrics.samples {
         by_service
@@ -696,7 +733,7 @@ pub fn retrain_time_models() -> Result<u32, String> {
 
     let mut trained_count = 0;
     for (service_id, samples) in by_service {
-        if let Some(weights) = train_ridge_regression(&samples) {
+        if let Some(weights) = train_sgd_regression(&samples) {
             metrics.models.insert(service_id.clone(), weights);
             metrics.samples_since_retrain.insert(service_id, 0);
             trained_count += 1;
@@ -705,4 +742,15 @@ pub fn retrain_time_models() -> Result<u32, String> {
 
     save_metrics(&metrics)?;
     Ok(trained_count)
+}
+
+/// Compute a hash of service options for settings-aware tracking
+pub fn compute_options_hash(options: &serde_json::Value) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let options_str = options.to_string();
+    let mut hasher = DefaultHasher::new();
+    options_str.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
 }

@@ -80,6 +80,8 @@ export interface ServiceTimeSample {
   pcFingerprint: PcFingerprint;
   /** Preset ID used (if any) */
   presetId?: string;
+  /** Hash of service options (for settings-aware tracking) */
+  optionsHash?: string;
 }
 
 // =============================================================================

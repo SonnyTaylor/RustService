@@ -119,7 +119,7 @@ impl PcFingerprint {
             if self.has_avx2 { 1.0 } else { 0.0 },
             if self.has_discrete_gpu { 1.0 } else { 0.0 },
             self.network_type.to_score(),
-            1.0 - (self.cpu_load_percent / 100.0).clamp(0.0, 1.0), // Invert: low load = high score
+            self.cpu_load_percent / 100.0, // Raw load 0-1 (SGD will learn positive coefficient)
         ]
     }
 }
@@ -143,6 +143,10 @@ pub struct ServiceTimeSample {
     /// Preset ID used (if any) for per-preset tracking
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset_id: Option<String>,
+    /// Hash of service options (for settings-aware tracking)
+    /// Different settings (e.g., ping count, stress duration) = different samples
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub options_hash: Option<String>,
 }
 
 // =============================================================================
