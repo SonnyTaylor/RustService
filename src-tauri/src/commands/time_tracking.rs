@@ -14,7 +14,7 @@ use std::fs;
 use std::sync::{Mutex, OnceLock};
 
 use chrono::{DateTime, Utc};
-use sysinfo::{Disks, Networks, System};
+use sysinfo::{DiskKind, Disks, Networks, System};
 
 use super::data_dir::get_data_dir_path;
 use crate::types::{
@@ -117,13 +117,15 @@ fn get_static_specs() -> &'static StaticPcSpecs {
             PcFingerprint::compute_cpu_score(physical_cores, logical_cores, frequency_ghz);
         let total_ram_gb = sys.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
 
-        // Disk type
+        // Disk type - check primary/largest disk
+        // DiskKind::Unknown typically means NVMe (Windows doesn't expose the type properly)
+        // so we treat Unknown as SSD (modern assumption), only explicit HDD is slow
         let disk_list = Disks::new_with_refreshed_list();
         let disk_is_ssd = disk_list
             .iter()
             .max_by_key(|d| d.total_space())
-            .map(|d| format!("{:?}", d.kind()).to_lowercase().contains("ssd"))
-            .unwrap_or(true);
+            .map(|d| !matches!(d.kind(), DiskKind::HDD))
+            .unwrap_or(true); // Default to SSD if unknown
 
         // AVX2
         let has_avx2 = {
