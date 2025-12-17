@@ -404,124 +404,120 @@ export function AgentPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <div className="px-4 pt-2 border-b">
-              <TabsList>
-                <TabsTrigger value="chat" className="gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Chat
-                </TabsTrigger>
-                <TabsTrigger value="memory" className="gap-2">
-                  <Brain className="h-4 w-4" />
-                  Memory
-                </TabsTrigger>
-                <TabsTrigger value="history" className="gap-2">
-                  <History className="h-4 w-4" />
-                  History
-                </TabsTrigger>
-              </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="px-4 pt-2 border-b shrink-0">
+            <TabsList>
+              <TabsTrigger value="chat" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Chat
+              </TabsTrigger>
+              <TabsTrigger value="memory" className="gap-2">
+                <Brain className="h-4 w-4" />
+                Memory
+              </TabsTrigger>
+              <TabsTrigger value="history" className="gap-2">
+                <History className="h-4 w-4" />
+                History
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="chat" className="flex-1 flex flex-col m-0 min-h-0 overflow-hidden">
+            {/* Pending Approvals */}
+            {pendingCommands.length > 0 && (
+              <div className="p-4 border-b shrink-0">
+                <CommandApprovalPanel
+                  pendingCommands={pendingCommands}
+                  onCommandApproved={handleCommandApproved}
+                  onCommandRejected={handleCommandRejected}
+                />
+              </div>
+            )}
+
+            {/* Messages - scrollable area */}
+            <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
+              <div className="p-4">
+                {messages.length === 0 ? (
+                  <div className="flex items-center justify-center min-h-[300px]">
+                    <Card className="max-w-md">
+                      <CardContent className="p-6 text-center">
+                        <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                        <h3 className="font-medium mb-2">How can I help?</h3>
+                        <p className="text-sm text-muted-foreground">
+                          I can diagnose issues, run commands, search for solutions, 
+                          and help fix your Windows computer.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-w-3xl mx-auto pb-4">
+                    {messages.map((msg) => (
+                      <ChatMessage
+                        key={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        timestamp={msg.createdAt}
+                        isStreaming={isLoading && msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1 && !msg.content}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <TabsContent value="chat" className="flex-1 flex flex-col m-0 min-h-0">
-              {/* Pending Approvals */}
-              {pendingCommands.length > 0 && (
-                <div className="p-4 border-b">
-                  <CommandApprovalPanel
-                    pendingCommands={pendingCommands}
-                    onCommandApproved={handleCommandApproved}
-                    onCommandRejected={handleCommandRejected}
+            {/* Input - fixed at bottom */}
+            <div className="p-4 border-t shrink-0 bg-background">
+              <form onSubmit={handleSubmit} className="flex gap-2 max-w-3xl mx-auto">
+                <div className="flex-1 relative">
+                  <Textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Describe your issue or ask a question..."
+                    className="min-h-[44px] max-h-32 resize-none pr-12"
+                    rows={1}
                   />
                 </div>
-              )}
-
-              {/* Messages */}
-              <div ref={scrollRef} className="flex-1 overflow-hidden">
-                <ScrollArea className="h-full">
-                  <div className="p-4">
-                    {messages.length === 0 ? (
-                      <div className="h-full flex items-center justify-center min-h-[300px]">
-                        <Card className="max-w-md">
-                          <CardContent className="p-6 text-center">
-                            <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                            <h3 className="font-medium mb-2">How can I help?</h3>
-                            <p className="text-sm text-muted-foreground">
-                              I can diagnose issues, run commands, search for solutions, 
-                              and help fix your Windows computer.
-                            </p>
-                          </CardContent>
-                        </Card>
-                      </div>
+                <div className="flex flex-col gap-1">
+                  <Button 
+                    type="submit" 
+                    size="icon"
+                    disabled={!input.trim() || isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <div className="space-y-2 max-w-3xl mx-auto pb-4">
-                        {messages.map((msg) => (
-                          <ChatMessage
-                            key={msg.id}
-                            role={msg.role}
-                            content={msg.content}
-                            timestamp={msg.createdAt}
-                            isStreaming={isLoading && msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1 && !msg.content}
-                          />
-                        ))}
-                      </div>
+                      <Send className="h-4 w-4" />
                     )}
-                  </div>
-                </ScrollArea>
-              </div>
-
-              {/* Input */}
-              <div className="p-4 border-t">
-                <form onSubmit={handleSubmit} className="flex gap-2 max-w-3xl mx-auto">
-                  <div className="flex-1 relative">
-                    <Textarea
-                      ref={textareaRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Describe your issue or ask a question..."
-                      className="min-h-[44px] max-h-32 resize-none pr-12"
-                      rows={1}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Button 
-                      type="submit" 
+                  </Button>
+                  {messages.length > 0 && (
+                    <Button
+                      type="button"
                       size="icon"
-                      disabled={!input.trim() || isLoading}
+                      variant="ghost"
+                      onClick={clearChat}
+                      title="Clear chat"
                     >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                    {messages.length > 0 && (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={clearChat}
-                        title="Clear chat"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </form>
-              </div>
-            </TabsContent>
+                  )}
+                </div>
+              </form>
+            </div>
+          </TabsContent>
 
-            <TabsContent value="memory" className="flex-1 m-0 p-4 min-h-0">
-              <MemoryBrowser />
-            </TabsContent>
+          <TabsContent value="memory" className="flex-1 m-0 p-4 min-h-0 overflow-auto">
+            <MemoryBrowser />
+          </TabsContent>
 
-            <TabsContent value="history" className="flex-1 m-0 p-4 min-h-0">
-              <CommandHistory />
-            </TabsContent>
-          </Tabs>
-        </div>
+          <TabsContent value="history" className="flex-1 m-0 p-4 min-h-0 overflow-auto">
+            <CommandHistory />
+          </TabsContent>
+        </Tabs>
       </div>
     </motion.div>
   );
