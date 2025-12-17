@@ -401,6 +401,81 @@ function MyList() {
 ### Adding the Setting Toggle
 The toggle is in Settings → Appearance → Animations. When disabled, all `motion.div` elements render as plain `div` elements with no transitions.
 
+## Agent System
+
+AI-powered assistant with command execution, memory, and web search. Human-in-the-loop design ensures user control over all system modifications.
+
+### Architecture
+- **Frontend**: React chat UI + Vercel AI SDK (`@ai-sdk/react`, `ai`)
+- **Backend**: Rust commands in `src-tauri/src/commands/agent.rs`
+- **Storage**: SQLite database at `data/agent.db`
+- **Settings**: `data/settings.json` under `agent` key
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/pages/AgentPage.tsx` | Main chat interface |
+| `src/components/agent/ChatMessage.tsx` | Message display with tool calls |
+| `src/components/agent/CommandApproval.tsx` | Pending command approval UI |
+| `src/components/agent/MemoryBrowser.tsx` | Memory viewing/search |
+| `src/lib/agent-tools.ts` | Vercel AI SDK tool definitions |
+| `src/types/agent.ts` | TypeScript types |
+| `src-tauri/src/commands/agent.rs` | Rust backend commands |
+| `src-tauri/src/types/agent.rs` | Rust types |
+| `docs/agent-system.md` | Full documentation |
+
+### ⚠️ Critical: Tauri Parameter Naming
+
+**Tauri does NOT auto-convert between camelCase and snake_case.**
+
+When calling Tauri commands from TypeScript, **use snake_case** parameter names:
+
+```typescript
+// ❌ WRONG - will fail
+await invoke('approve_command', { commandId: id });
+
+// ✅ CORRECT - matches Rust parameter name
+await invoke('approve_command', { command_id: id });
+```
+
+### Tauri Commands
+| Command | Parameters (snake_case!) | Description |
+|---------|--------------------------|-------------|
+| `queue_agent_command` | `command`, `reason` | Queue command for approval |
+| `approve_command` | `command_id` | Approve and execute |
+| `reject_command` | `command_id` | Reject command |
+| `save_memory` | `memory_type`, `content`, `metadata?` | Save to memory |
+| `search_memories` | `query`, `memory_type?`, `limit?` | Search memories |
+| `get_all_memories` | `memory_type?`, `limit?` | Get all memories |
+| `delete_memory` | `memory_id` | Delete a memory |
+| `search_tavily` | `query`, `api_key` | Web search via Tavily |
+| `search_searxng` | `query`, `instance_url` | Web search via SearXNG |
+| `get_command_history` | `limit?` | Get executed commands |
+| `list_agent_programs` | - | List tools in data/programs/ |
+
+### Command Approval Modes
+| Mode | Behavior |
+|------|----------|
+| `always` | All commands require approval (default, safest) |
+| `whitelist` | Whitelisted patterns auto-execute, others need approval |
+| `yolo` | All commands auto-execute (⚠️ dangerous) |
+
+### Memory Types
+| Type | Purpose |
+|------|---------|
+| `fact` | User-provided information |
+| `solution` | Successful past solutions |
+| `conversation` | Chat context fragments |
+| `instruction` | Behavioral rules |
+
+### Adding an Agent Tool
+1. Add Rust command in `src-tauri/src/commands/agent.rs`
+2. Register in `src-tauri/src/lib.rs` invoke_handler
+3. Create Vercel AI SDK tool in `src/lib/agent-tools.ts`
+4. Add to tools array in `AgentPage.tsx`
+
+See `docs/agent-system.md` for complete documentation.
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -413,6 +488,11 @@ The toggle is in Settings → Appearance → Animations. When disabled, all `mot
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
+| `ai` | Vercel AI SDK core |
+| `@ai-sdk/react` | React hooks for AI SDK |
+| `@ai-sdk/openai` | OpenAI provider for AI SDK |
+| `@ai-sdk/anthropic` | Anthropic provider for AI SDK |
+| `zod` | Schema validation for AI tools |
 | `sysinfo` | System hardware/OS info (Rust) |
 | `gfxinfo` | GPU information (Rust) |
 | `battery` | Battery status (Rust) |
@@ -420,4 +500,6 @@ The toggle is in Settings → Appearance → Animations. When disabled, all `mot
 | `chrono` | Timestamps (Rust) |
 | `image` | Icon conversion (Rust) |
 | `winapi` | Windows icon extraction (Rust) |
+| `rusqlite` | SQLite database for agent memory (Rust) |
+| `urlencoding` | URL encoding for search queries (Rust) |
 

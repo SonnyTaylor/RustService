@@ -133,7 +133,7 @@ export function CommandApprovalPanel({
     setProcessingId(command.id);
     try {
       const result = await invoke<PendingCommand>('approve_command', {
-        commandId: command.id,
+        command_id: command.id,
       });
       onCommandApproved(result);
     } catch (error) {
@@ -147,7 +147,7 @@ export function CommandApprovalPanel({
     setProcessingId(command.id);
     try {
       const result = await invoke<PendingCommand>('reject_command', {
-        commandId: command.id,
+        command_id: command.id,
       });
       onCommandRejected(result);
     } catch (error) {

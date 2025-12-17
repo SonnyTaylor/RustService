@@ -80,12 +80,12 @@ export const searchWebTool = tool({
       if (provider === 'tavily' && settings.agent.tavilyApiKey) {
         results = await invoke<SearchResult[]>('search_tavily', {
           query,
-          apiKey: settings.agent.tavilyApiKey,
+          api_key: settings.agent.tavilyApiKey,
         });
       } else if (provider === 'searxng' && settings.agent.searxngUrl) {
         results = await invoke<SearchResult[]>('search_searxng', {
           query,
-          instanceUrl: settings.agent.searxngUrl,
+          instance_url: settings.agent.searxngUrl,
         });
       } else {
         return {
@@ -124,7 +124,7 @@ export const saveToMemoryTool = tool({
   execute: async ({ type, content, tags }) => {
     try {
       const memory = await invoke<Memory>('save_memory', {
-        memoryType: type,
+        memory_type: type,
         content,
         metadata: tags ? { tags } : undefined,
         embedding: undefined, // Embeddings generated on frontend if needed
@@ -158,7 +158,7 @@ export const recallMemoryTool = tool({
     try {
       const memories = await invoke<Memory[]>('search_memories', {
         query,
-        memoryType: type,
+        memory_type: type,
         limit,
       });
       

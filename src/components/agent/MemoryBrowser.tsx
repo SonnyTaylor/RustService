@@ -177,7 +177,7 @@ export function MemoryBrowser() {
     setError(null);
     try {
       const data = await invoke<Memory[]>('get_all_memories', {
-        memoryType: filterType === 'all' ? undefined : filterType,
+        memory_type: filterType === 'all' ? undefined : filterType,
         limit: 100,
       });
       setMemories(data);
@@ -199,7 +199,7 @@ export function MemoryBrowser() {
     try {
       const data = await invoke<Memory[]>('search_memories', {
         query: searchQuery,
-        memoryType: filterType === 'all' ? undefined : filterType,
+        memory_type: filterType === 'all' ? undefined : filterType,
         limit: 50,
       });
       setMemories(data);
@@ -212,7 +212,7 @@ export function MemoryBrowser() {
 
   const deleteMemory = async (id: string) => {
     try {
-      await invoke('delete_memory', { memoryId: id });
+      await invoke('delete_memory', { memory_id: id });
       setMemories(prev => prev.filter(m => m.id !== id));
     } catch (err) {
       console.error('Failed to delete memory:', err);
