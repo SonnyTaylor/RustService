@@ -65,35 +65,36 @@ export function createProviderModel(settings: AgentSettings): LanguageModel {
     }
 
     case 'deepseek': {
-      // DeepSeek uses OpenAI-compatible API
+      // DeepSeek uses OpenAI-compatible API (Chat Completions)
       const deepseek = createOpenAI({
         apiKey,
         baseURL: PROVIDER_BASE_URLS.deepseek,
       });
-      return deepseek(model);
+      return deepseek.chat(model);
     }
 
     case 'openrouter': {
-      // OpenRouter uses OpenAI-compatible API
+      // OpenRouter uses OpenAI-compatible API but doesn't support the Responses API
+      // Use .chat() to force Chat Completions API instead
       const openrouter = createOpenAI({
         apiKey,
         baseURL: PROVIDER_BASE_URLS.openrouter,
       });
-      return openrouter(model);
+      return openrouter.chat(model);
     }
 
     case 'ollama': {
-      // Ollama uses OpenAI-compatible API with custom base URL
+      // Ollama uses OpenAI-compatible API (Chat Completions)
       const ollamaUrl = baseUrl || 'http://localhost:11434/v1';
       const ollama = createOpenAI({
         apiKey: 'ollama', // Ollama doesn't require a real API key
         baseURL: ollamaUrl,
       });
-      return ollama(model);
+      return ollama.chat(model);
     }
 
     case 'custom': {
-      // Custom OpenAI-compatible endpoint
+      // Custom OpenAI-compatible endpoint (Chat Completions)
       if (!baseUrl) {
         throw new Error('Custom provider requires a base URL');
       }
@@ -101,7 +102,7 @@ export function createProviderModel(settings: AgentSettings): LanguageModel {
         apiKey,
         baseURL: baseUrl,
       });
-      return custom(model);
+      return custom.chat(model);
     }
 
     default:
