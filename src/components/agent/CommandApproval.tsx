@@ -138,6 +138,7 @@ export function CommandApprovalPanel({
       onCommandApproved(result);
     } catch (error) {
       console.error('Failed to approve command:', error);
+      alert(`Failed to approve command: ${error}`);
     } finally {
       setProcessingId(null);
     }
@@ -152,6 +153,7 @@ export function CommandApprovalPanel({
       onCommandRejected(result);
     } catch (error) {
       console.error('Failed to reject command:', error);
+      alert(`Failed to reject command: ${error}`);
     } finally {
       setProcessingId(null);
       setConfirmReject(null);

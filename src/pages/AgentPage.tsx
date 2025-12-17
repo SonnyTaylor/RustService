@@ -366,6 +366,7 @@ export function AgentPage() {
 
   const clearChat = () => {
     setMessages([]);
+    setPendingCommands([]);
   };
 
   if (!isConfigured) {

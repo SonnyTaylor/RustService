@@ -165,7 +165,8 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     model,
     system: systemPrompt,
     messages,
-    tools,
+    // Only pass tools if there are any defined - some models don't support tools
+    ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
     abortSignal,
   });
 
