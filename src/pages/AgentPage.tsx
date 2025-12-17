@@ -251,9 +251,13 @@ export function AgentPage() {
   // Scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      // Use scrollIntoView for better cross-browser support
+      const scrollElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const handleCommandApproved = useCallback((result: PendingCommand) => {
     setPendingCommands(prev => prev.filter(c => c.id !== result.id));
@@ -328,6 +332,15 @@ export function AgentPage() {
         setMessages(prev => prev.map(msg =>
           msg.id === assistantId
             ? { ...msg, content: fullText }
+            : msg
+        ));
+      }
+
+      // Handle case where no content was streamed
+      if (!fullText.trim()) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: 'I received your message but couldn\'t generate a response. Please try again.' }
             : msg
         ));
       }
@@ -425,41 +438,38 @@ export function AgentPage() {
               )}
 
               {/* Messages */}
-              <ScrollArea ref={scrollRef} className="flex-1 p-4">
-                {messages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <Card className="max-w-md">
-                      <CardContent className="p-6 text-center">
-                        <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                        <h3 className="font-medium mb-2">How can I help?</h3>
-                        <p className="text-sm text-muted-foreground">
-                          I can diagnose issues, run commands, search for solutions, 
-                          and help fix your Windows computer.
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-w-3xl mx-auto">
-                    {messages.map((msg) => (
-                      <ChatMessage
-                        key={msg.id}
-                        role={msg.role}
-                        content={msg.content}
-                        timestamp={msg.createdAt}
-                        isStreaming={false}
-                      />
-                    ))}
-                    {isLoading && (
-                      <ChatMessage
-                        role="assistant"
-                        content=""
-                        isStreaming={true}
-                      />
+              <div ref={scrollRef} className="flex-1 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <div className="p-4">
+                    {messages.length === 0 ? (
+                      <div className="h-full flex items-center justify-center min-h-[300px]">
+                        <Card className="max-w-md">
+                          <CardContent className="p-6 text-center">
+                            <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                            <h3 className="font-medium mb-2">How can I help?</h3>
+                            <p className="text-sm text-muted-foreground">
+                              I can diagnose issues, run commands, search for solutions, 
+                              and help fix your Windows computer.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-w-3xl mx-auto pb-4">
+                        {messages.map((msg) => (
+                          <ChatMessage
+                            key={msg.id}
+                            role={msg.role}
+                            content={msg.content}
+                            timestamp={msg.createdAt}
+                            isStreaming={isLoading && msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1 && !msg.content}
+                          />
+                        ))}
+                      </div>
                     )}
                   </div>
-                )}
-              </ScrollArea>
+                </ScrollArea>
+              </div>
 
               {/* Input */}
               <div className="p-4 border-t">

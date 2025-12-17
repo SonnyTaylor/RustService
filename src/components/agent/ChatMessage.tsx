@@ -223,11 +223,19 @@ export const ChatMessage = memo(function ChatMessage({
           isUser 
             ? 'bg-primary text-primary-foreground ml-auto' 
             : 'bg-muted',
-          isStreaming && 'animate-pulse'
+          isStreaming && !content && 'min-w-[60px]'
         )}>
-          <FormattedContent content={content} />
+          {content ? (
+            <FormattedContent content={content} />
+          ) : isStreaming ? (
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          ) : null}
           
-          {isStreaming && (
+          {isStreaming && content && (
             <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
           )}
         </div>
