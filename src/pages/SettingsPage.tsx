@@ -81,6 +81,7 @@ import type { RequiredProgramStatus } from '@/types/required-programs';
 import type { ServicePreset } from '@/types/service';
 import { COLOR_SCHEMES, DEFAULT_BUSINESS, DEFAULT_TECHNICIAN_TABS, TECHNICIAN_TAB_ICONS } from '@/types/settings';
 import { ServiceMetricsPanel } from '@/components/ServiceMetricsPanel';
+import { AGENT_PROVIDERS, type ProviderApiKeys, EMBEDDING_PROVIDERS, EMBEDDING_MODELS, type EmbeddingProvider } from '@/types/agent';
 
 // =============================================================================
 // Icon Helper
@@ -2081,18 +2082,25 @@ function AgentPanel() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [whitelistInput, setWhitelistInput] = useState('');
 
+  // Get provider config from AGENT_PROVIDERS
+  const currentProvider = agentSettings?.provider || 'openai';
+  const providerConfig = AGENT_PROVIDERS.find(p => p.id === currentProvider);
+  const needsApiKey = providerConfig?.requiresApiKey ?? true;
+  const needsBaseUrl = providerConfig?.requiresBaseUrl ?? false;
+  const modelPlaceholder = providerConfig?.modelPlaceholder ?? 'Enter model name...';
+  const helpText = providerConfig?.helpText;
+  const defaultBaseUrl = providerConfig?.defaultBaseUrl;
+
+  // Get current API key for the selected provider
+  const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
+
   const handleProviderChange = async (value: string) => {
-    // Update provider and reset model to first available
-    const models: Record<string, string> = {
-      openai: 'gpt-4o-mini',
-      anthropic: 'claude-sonnet-4-20250514',
-      ollama: 'llama3.2',
-      custom: '',
-    };
+    // When switching providers, keep the model if the same model works, otherwise prompt for new one
     const newSettings = {
       ...agentSettings,
       provider: value,
-      model: models[value] || '',
+      // Keep model if user typed something, otherwise clear for new provider
+      model: agentSettings?.model || '',
     };
     await updateSetting('agent' as any, newSettings as any);
   };
@@ -2118,7 +2126,12 @@ function AgentPanel() {
   };
 
   const handleApiKeyChange = async (value: string) => {
-    const newSettings = { ...agentSettings, apiKey: value };
+    // Update the API key for the current provider
+    const newApiKeys = {
+      ...(agentSettings?.apiKeys || {}),
+      [currentProvider]: value || undefined,
+    };
+    const newSettings = { ...agentSettings, apiKeys: newApiKeys };
     await updateSetting('agent' as any, newSettings as any);
   };
 
@@ -2152,16 +2165,8 @@ function AgentPanel() {
     await updateSetting('agent' as any, newSettings as any);
   };
 
-  const providerModels: Record<string, string[]> = {
-    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
-    ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'deepseek-coder'],
-    custom: [],
-  };
-
-  const currentProvider = agentSettings?.provider || 'openai';
-  const currentModels = providerModels[currentProvider] || [];
-  const needsBaseUrl = currentProvider === 'ollama' || currentProvider === 'custom';
+  // Count configured providers (those with API keys)
+  const configuredProviderCount = Object.values(agentSettings?.apiKeys || {}).filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -2178,6 +2183,11 @@ function AgentPanel() {
           <CardTitle className="text-lg flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-violet-500" />
             Provider
+            {configuredProviderCount > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {configuredProviderCount} configured
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription>AI model provider and authentication</CardDescription>
         </CardHeader>
@@ -2190,55 +2200,49 @@ function AgentPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai">OpenAI</SelectItem>
-                  <SelectItem value="anthropic">Anthropic</SelectItem>
-                  <SelectItem value="ollama">Ollama (Local)</SelectItem>
-                  <SelectItem value="custom">Custom OpenAI-Compatible</SelectItem>
+                  {AGENT_PROVIDERS.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.name}
+                      {agentSettings?.apiKeys?.[provider.id as keyof ProviderApiKeys] ? ' ✓' : ''}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label>Model</Label>
-              {currentModels.length > 0 ? (
-                <Select value={agentSettings?.model || ''} onValueChange={handleModelChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentModels.map((model) => (
-                      <SelectItem key={model} value={model}>{model}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  value={agentSettings?.model || ''}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  placeholder="Model name"
-                />
-              )}
+              <Input
+                value={agentSettings?.model || ''}
+                onChange={(e) => handleModelChange(e.target.value)}
+                placeholder={modelPlaceholder}
+              />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>API Key</Label>
-            <div className="flex gap-2">
-              <Input
-                type={apiKeyVisible ? 'text' : 'password'}
-                value={agentSettings?.apiKey || ''}
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-                placeholder="sk-..."
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setApiKeyVisible(!apiKeyVisible)}
-              >
-                {apiKeyVisible ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-              </Button>
+          {needsApiKey && (
+            <div className="space-y-2">
+              <Label>API Key for {providerConfig?.name}</Label>
+              <div className="flex gap-2">
+                <Input
+                  type={apiKeyVisible ? 'text' : 'password'}
+                  value={currentApiKey}
+                  onChange={(e) => handleApiKeyChange(e.target.value)}
+                  placeholder="Enter API key..."
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setApiKeyVisible(!apiKeyVisible)}
+                >
+                  {apiKeyVisible ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                </Button>
+              </div>
+              {helpText && (
+                <p className="text-xs text-muted-foreground">{helpText}</p>
+              )}
             </div>
-          </div>
+          )}
 
           {needsBaseUrl && (
             <div className="space-y-2">
@@ -2246,12 +2250,13 @@ function AgentPanel() {
               <Input
                 value={agentSettings?.baseUrl || ''}
                 onChange={(e) => handleBaseUrlChange(e.target.value)}
-                placeholder={currentProvider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com'}
+                placeholder={defaultBaseUrl || 'https://api.example.com'}
               />
             </div>
           )}
         </CardContent>
       </Card>
+
 
       {/* Execution Settings */}
       <Card>
@@ -2394,9 +2399,9 @@ function AgentPanel() {
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             <Database className="h-5 w-5 text-green-500" />
-            Memory
+            Memory & Embeddings
           </CardTitle>
-          <CardDescription>Agent memory and knowledge storage</CardDescription>
+          <CardDescription>Agent memory storage and vector embeddings</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
@@ -2415,19 +2420,93 @@ function AgentPanel() {
           </div>
 
           {agentSettings?.memoryEnabled && (
-            <div className="space-y-2">
-              <Label>Embedding Model</Label>
-              <Select value={agentSettings?.embeddingModel || 'text-embedding-3-small'} onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingModel: v } as any)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text-embedding-3-small">text-embedding-3-small (OpenAI)</SelectItem>
-                  <SelectItem value="text-embedding-3-large">text-embedding-3-large (OpenAI)</SelectItem>
-                  <SelectItem value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <>
+              {/* Warning about changing embedding models */}
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-amber-600 dark:text-amber-400">Embedding model compatibility</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Changing the embedding model or provider will make old memories incompatible. 
+                    Previously stored memories won't match new searches. Consider clearing memory if you switch models.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Embedding Provider</Label>
+                  <Select 
+                    value={agentSettings?.embeddingProvider || 'openai'} 
+                    onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingProvider: v, embeddingModel: EMBEDDING_MODELS.find(m => m.provider === v)?.id || '' } as any)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EMBEDDING_PROVIDERS.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Embedding Model</Label>
+                  <Select 
+                    value={agentSettings?.embeddingModel || 'text-embedding-3-small'} 
+                    onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingModel: v } as any)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EMBEDDING_MODELS
+                        .filter(m => m.provider === (agentSettings?.embeddingProvider || 'openai'))
+                        .map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} ({model.dimensions}d)
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Info about API keys */}
+              {(agentSettings?.embeddingProvider === 'openai' || 
+                agentSettings?.embeddingProvider === 'google' || 
+                agentSettings?.embeddingProvider === 'mistral') && (
+                <p className="text-xs text-muted-foreground p-2 rounded bg-muted/50">
+                  💡 Uses the same API key as your chat provider (configured above). Make sure you have a {agentSettings?.embeddingProvider === 'openai' ? 'OpenAI' : agentSettings?.embeddingProvider === 'google' ? 'Google' : 'Mistral'} API key set in the Provider section.
+                </p>
+              )}
+
+              {/* Cohere API key (only shown when Cohere is selected) */}
+              {agentSettings?.embeddingProvider === 'cohere' && (
+                <div className="space-y-2">
+                  <Label>Cohere API Key</Label>
+                  <Input
+                    type="password"
+                    value={agentSettings?.cohereApiKey || ''}
+                    onChange={(e) => updateSetting('agent' as any, { ...agentSettings, cohereApiKey: e.target.value || undefined } as any)}
+                    placeholder="Enter Cohere API key..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Get your API key from <a href="https://dashboard.cohere.com/api-keys" target="_blank" rel="noopener" className="text-primary hover:underline">dashboard.cohere.com</a>
+                  </p>
+                </div>
+              )}
+
+              {/* Ollama info */}
+              {agentSettings?.embeddingProvider === 'ollama' && (
+                <p className="text-xs text-muted-foreground p-2 rounded bg-muted/50">
+                  💡 Ollama embeddings run locally. Make sure you have the embedding model pulled (e.g., <code className="bg-muted px-1 rounded">ollama pull nomic-embed-text</code>).
+                </p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

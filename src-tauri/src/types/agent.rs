@@ -14,6 +14,13 @@ use serde::{Deserialize, Serialize};
 pub enum AgentProvider {
     OpenAI,
     Anthropic,
+    #[serde(rename = "xai")]
+    XAI,
+    Google,
+    Mistral,
+    DeepSeek,
+    Groq,
+    OpenRouter,
     Ollama,
     Custom,
 }
@@ -22,6 +29,30 @@ impl Default for AgentProvider {
     fn default() -> Self {
         Self::OpenAI
     }
+}
+
+/// Per-provider API key storage
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderApiKeys {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openai: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xai: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub google: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mistral: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deepseek: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub groq: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openrouter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<String>,
 }
 
 // =============================================================================
@@ -151,6 +182,18 @@ pub struct MemorySearchResult {
 // Agent Settings
 // =============================================================================
 
+/// Supported embedding providers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingProvider {
+    #[default]
+    OpenAI,
+    Google,
+    Mistral,
+    Cohere,
+    Ollama,
+}
+
 /// Agent configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,47 +201,55 @@ pub struct AgentSettings {
     /// AI provider to use
     #[serde(default)]
     pub provider: AgentProvider,
-    
+
     /// Model name/identifier
     #[serde(default = "default_model")]
     pub model: String,
-    
-    /// API key for the provider
+
+    /// Per-provider API key storage
     #[serde(default)]
-    pub api_key: String,
-    
+    pub api_keys: ProviderApiKeys,
+
     /// Base URL for custom/Ollama providers
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-    
+
     /// Command approval mode
     #[serde(default)]
     pub approval_mode: ApprovalMode,
-    
+
     /// Whitelisted command patterns (regex)
     #[serde(default = "default_whitelist")]
     pub whitelisted_commands: Vec<String>,
-    
+
     /// Search provider to use
     #[serde(default)]
     pub search_provider: SearchProvider,
-    
+
     /// Tavily API key
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tavily_api_key: Option<String>,
-    
+
     /// SearXNG instance URL
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub searxng_url: Option<String>,
-    
+
     /// Whether memory is enabled
     #[serde(default = "default_memory_enabled")]
     pub memory_enabled: bool,
-    
+
+    /// Embedding provider to use
+    #[serde(default)]
+    pub embedding_provider: EmbeddingProvider,
+
     /// Embedding model to use
     #[serde(default = "default_embedding_model")]
     pub embedding_model: String,
-    
+
+    /// Cohere API key (if using Cohere for embeddings)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cohere_api_key: Option<String>,
+
     /// Custom system prompt
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -232,7 +283,7 @@ impl Default for AgentSettings {
         Self {
             provider: AgentProvider::default(),
             model: default_model(),
-            api_key: String::new(),
+            api_keys: ProviderApiKeys::default(),
             base_url: None,
             approval_mode: ApprovalMode::default(),
             whitelisted_commands: default_whitelist(),
@@ -240,7 +291,9 @@ impl Default for AgentSettings {
             tavily_api_key: None,
             searxng_url: None,
             memory_enabled: default_memory_enabled(),
+            embedding_provider: EmbeddingProvider::default(),
             embedding_model: default_embedding_model(),
+            cohere_api_key: None,
             system_prompt: None,
         }
     }
@@ -273,4 +326,3 @@ pub struct CommandExecutionResult {
     pub stdout: String,
     pub stderr: String,
 }
-

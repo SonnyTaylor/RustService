@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useChat, Message } from '@ai-sdk/react';
+import { useChat } from '@ai-sdk/react';
 import {
   Bot,
   Send,
@@ -38,7 +38,7 @@ import { useAnimation, motion, AnimatedList, AnimatedItem } from '@/components/a
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { CommandApprovalPanel, PendingApprovalBadge } from '@/components/agent/CommandApproval';
 import { MemoryBrowser } from '@/components/agent/MemoryBrowser';
-import type { PendingCommand, AgentSettings, ApprovalMode } from '@/types/agent';
+import type { PendingCommand, AgentSettings, ApprovalMode, ProviderApiKeys } from '@/types/agent';
 
 // =============================================================================
 // Constants
@@ -246,7 +246,9 @@ export function AgentPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const agentSettings = settings.agent as AgentSettings | undefined;
-  const isConfigured = agentSettings?.apiKey && agentSettings?.apiKey.length > 0;
+  const currentProvider = agentSettings?.provider || 'openai';
+  const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
+  const isConfigured = currentApiKey.length > 0;
 
   // Chat state (using local state since we're calling backend directly)
   const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; createdAt: string }>>([]);

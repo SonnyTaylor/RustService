@@ -186,6 +186,16 @@ pub fn update_setting(key: String, value: String) -> Result<AppSettings, String>
             settings.technician_tabs.use_favicons = serde_json::from_str(&value)
                 .map_err(|e| format!("Invalid technicianTabs.useFavicons value: {}", e))?;
         }
+        // Presets
+        ["presets", "customPresets"] => {
+            settings.presets.custom_presets = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid presets.customPresets value: {}", e))?;
+        }
+        // Agent settings (entire object)
+        ["agent"] => {
+            settings.agent = serde_json::from_str(&value)
+                .map_err(|e| format!("Invalid agent settings value: {}", e))?;
+        }
         _ => {
             return Err(format!("Unknown setting key: {}", key));
         }
