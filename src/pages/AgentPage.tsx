@@ -7,14 +7,14 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useChat } from '@ai-sdk/react';
+import { streamChat, convertToCoreMessages } from '@/lib/agent-chat';
+import { getEnabledTools } from '@/lib/agent-tools';
 import {
   Bot,
   Send,
   Brain,
   History,
   Settings,
-  AlertTriangle,
   Loader2,
   Sparkles,
   Terminal,
@@ -32,34 +32,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 import { useSettings } from '@/components/settings-context';
-import { useAnimation, motion, AnimatedList, AnimatedItem } from '@/components/animation-context';
+import { useAnimation, motion } from '@/components/animation-context';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { CommandApprovalPanel, PendingApprovalBadge } from '@/components/agent/CommandApproval';
 import { MemoryBrowser } from '@/components/agent/MemoryBrowser';
 import type { PendingCommand, AgentSettings, ApprovalMode, ProviderApiKeys } from '@/types/agent';
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant specialized in diagnosing and fixing Windows computer issues. You have access to tools that can:
-
-1. Execute PowerShell commands to diagnose and fix issues
-2. Search the web for solutions and documentation
-3. Save and recall information from memory
-4. Read and write files
-5. List available CLI programs
-
-When helping users:
-- Ask clarifying questions if needed
-- Explain what you're doing and why
-- Use appropriate tools to gather information before suggesting fixes
-- Save successful solutions to memory for future reference
-- Be cautious with system-modifying commands
-
-Commands may require user approval before execution. Always explain what a command does before requesting to run it.`;
 
 // =============================================================================
 // Components
@@ -300,7 +278,7 @@ export function AgentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !agentSettings) return;
 
     const userMessage = {
       id: crypto.randomUUID(),
@@ -309,32 +287,58 @@ export function AgentPage() {
       createdAt: new Date().toISOString(),
     };
 
+    // Add user message and create placeholder for assistant
+    const assistantId = crypto.randomUUID();
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
+    // Create assistant message placeholder
+    setMessages(prev => [...prev, {
+      id: assistantId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date().toISOString(),
+    }]);
+
     try {
-      // For now, add a placeholder assistant message
-      // In a full implementation, this would call the Vercel AI SDK streaming endpoint
-      const assistantMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant' as const,
-        content: `I received your message: "${userMessage.content}"\n\nTo fully enable AI responses, please ensure your API key is configured in Settings → Agent. The chat functionality requires a backend API route to stream responses from the AI provider.\n\nIn the meantime, I can still execute commands if you ask me to run specific diagnostics.`,
-        createdAt: new Date().toISOString(),
-      };
-      
-      // Simulate a delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setMessages(prev => [...prev, assistantMessage]);
+      // Get enabled tools based on settings
+      const tools = getEnabledTools({
+        searchProvider: agentSettings.searchProvider || 'none',
+        memoryEnabled: agentSettings.memoryEnabled ?? true,
+      });
+
+      // Convert messages to CoreMessage format for the AI SDK
+      const allMessages = [...messages, userMessage];
+      const coreMessages = convertToCoreMessages(
+        allMessages.map(m => ({ role: m.role, content: m.content }))
+      );
+
+      // Stream the response
+      const result = await streamChat({
+        messages: coreMessages,
+        settings: agentSettings,
+        tools,
+      });
+
+      // Stream text tokens into the message
+      let fullText = '';
+      for await (const chunk of result.textStream) {
+        fullText += chunk;
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: fullText }
+            : msg
+        ));
+      }
     } catch (err) {
       console.error('Chat error:', err);
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `Sorry, I encountered an error: ${String(err)}`,
-        createdAt: new Date().toISOString(),
-      }]);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantId
+          ? { ...msg, content: `Sorry, I encountered an error: ${errorMessage}` }
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }
