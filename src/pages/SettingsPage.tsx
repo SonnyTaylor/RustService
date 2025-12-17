@@ -187,6 +187,13 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     iconColor: 'text-teal-500',
   },
   {
+    id: 'agent',
+    label: 'AI Agent',
+    description: 'Provider & execution',
+    icon: Sparkles,
+    iconColor: 'text-violet-500',
+  },
+  {
     id: 'about',
     label: 'About',
     description: 'Version info',
@@ -2067,6 +2074,367 @@ function TechnicianTabsPanel() {
   );
 }
 
+function AgentPanel() {
+  const { settings, updateSetting, isLoading } = useSettings();
+  const agentSettings = settings.agent;
+
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [whitelistInput, setWhitelistInput] = useState('');
+
+  const handleProviderChange = async (value: string) => {
+    // Update provider and reset model to first available
+    const models: Record<string, string> = {
+      openai: 'gpt-4o-mini',
+      anthropic: 'claude-sonnet-4-20250514',
+      ollama: 'llama3.2',
+      custom: '',
+    };
+    const newSettings = {
+      ...agentSettings,
+      provider: value,
+      model: models[value] || '',
+    };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleModelChange = async (value: string) => {
+    const newSettings = { ...agentSettings, model: value };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleApprovalModeChange = async (value: string) => {
+    const newSettings = { ...agentSettings, approvalMode: value };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleSearchProviderChange = async (value: string) => {
+    const newSettings = { ...agentSettings, searchProvider: value };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleMemoryToggle = async (checked: boolean) => {
+    const newSettings = { ...agentSettings, memoryEnabled: checked };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleApiKeyChange = async (value: string) => {
+    const newSettings = { ...agentSettings, apiKey: value };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleBaseUrlChange = async (value: string) => {
+    const newSettings = { ...agentSettings, baseUrl: value || undefined };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleTavilyKeyChange = async (value: string) => {
+    const newSettings = { ...agentSettings, tavilyApiKey: value || undefined };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const handleSearxngUrlChange = async (value: string) => {
+    const newSettings = { ...agentSettings, searxngUrl: value || undefined };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const addWhitelistPattern = async () => {
+    if (!whitelistInput.trim()) return;
+    const newPatterns = [...(agentSettings?.whitelistedCommands || []), whitelistInput.trim()];
+    const newSettings = { ...agentSettings, whitelistedCommands: newPatterns };
+    await updateSetting('agent' as any, newSettings as any);
+    setWhitelistInput('');
+  };
+
+  const removeWhitelistPattern = async (index: number) => {
+    const newPatterns = [...(agentSettings?.whitelistedCommands || [])];
+    newPatterns.splice(index, 1);
+    const newSettings = { ...agentSettings, whitelistedCommands: newPatterns };
+    await updateSetting('agent' as any, newSettings as any);
+  };
+
+  const providerModels: Record<string, string[]> = {
+    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+    anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    ollama: ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'deepseek-coder'],
+    custom: [],
+  };
+
+  const currentProvider = agentSettings?.provider || 'openai';
+  const currentModels = providerModels[currentProvider] || [];
+  const needsBaseUrl = currentProvider === 'ollama' || currentProvider === 'custom';
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-2xl font-semibold mb-1">AI Agent</h3>
+        <p className="text-muted-foreground">
+          Configure the AI provider, execution settings, and memory
+        </p>
+      </div>
+
+      {/* Provider Settings */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-violet-500" />
+            Provider
+          </CardTitle>
+          <CardDescription>AI model provider and authentication</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Provider</Label>
+              <Select value={currentProvider} onValueChange={handleProviderChange}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="ollama">Ollama (Local)</SelectItem>
+                  <SelectItem value="custom">Custom OpenAI-Compatible</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Model</Label>
+              {currentModels.length > 0 ? (
+                <Select value={agentSettings?.model || ''} onValueChange={handleModelChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentModels.map((model) => (
+                      <SelectItem key={model} value={model}>{model}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={agentSettings?.model || ''}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  placeholder="Model name"
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>API Key</Label>
+            <div className="flex gap-2">
+              <Input
+                type={apiKeyVisible ? 'text' : 'password'}
+                value={agentSettings?.apiKey || ''}
+                onChange={(e) => handleApiKeyChange(e.target.value)}
+                placeholder="sk-..."
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setApiKeyVisible(!apiKeyVisible)}
+              >
+                {apiKeyVisible ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {needsBaseUrl && (
+            <div className="space-y-2">
+              <Label>Base URL</Label>
+              <Input
+                value={agentSettings?.baseUrl || ''}
+                onChange={(e) => handleBaseUrlChange(e.target.value)}
+                placeholder={currentProvider === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com'}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Execution Settings */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Terminal className="h-5 w-5 text-cyan-500" />
+            Command Execution
+          </CardTitle>
+          <CardDescription>Control how the agent executes commands</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Approval Mode</Label>
+            <Select value={agentSettings?.approvalMode || 'always'} onValueChange={handleApprovalModeChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="always">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <span>Safe Mode - All commands require approval</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="whitelist">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <span>Whitelist Mode - Only whitelisted commands auto-execute</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="yolo">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span>YOLO Mode - Execute all commands without approval</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {agentSettings?.approvalMode === 'yolo' && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-500">Warning: YOLO Mode Enabled</p>
+                <p className="text-xs text-muted-foreground">
+                  The agent will execute commands without asking for approval. 
+                  This could potentially harm your system.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {agentSettings?.approvalMode === 'whitelist' && (
+            <div className="space-y-3">
+              <Label>Whitelisted Command Patterns (Regex)</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={whitelistInput}
+                  onChange={(e) => setWhitelistInput(e.target.value)}
+                  placeholder="^ping "
+                  onKeyDown={(e) => e.key === 'Enter' && addWhitelistPattern()}
+                />
+                <Button onClick={addWhitelistPattern} size="icon">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(agentSettings?.whitelistedCommands || []).map((pattern, i) => (
+                  <Badge key={i} variant="secondary" className="gap-1">
+                    <code className="text-xs">{pattern}</code>
+                    <button
+                      onClick={() => removeWhitelistPattern(i)}
+                      className="ml-1 hover:text-red-500"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Search Settings */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Globe className="h-5 w-5 text-indigo-500" />
+            Web Search
+          </CardTitle>
+          <CardDescription>Configure web search for finding solutions</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Search Provider</Label>
+            <Select value={agentSettings?.searchProvider || 'none'} onValueChange={handleSearchProviderChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Disabled</SelectItem>
+                <SelectItem value="tavily">Tavily API</SelectItem>
+                <SelectItem value="searxng">SearXNG (Self-hosted)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {agentSettings?.searchProvider === 'tavily' && (
+            <div className="space-y-2">
+              <Label>Tavily API Key</Label>
+              <Input
+                type="password"
+                value={agentSettings?.tavilyApiKey || ''}
+                onChange={(e) => handleTavilyKeyChange(e.target.value)}
+                placeholder="tvly-..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Get your API key from <a href="https://tavily.com" target="_blank" rel="noopener" className="text-primary hover:underline">tavily.com</a>
+              </p>
+            </div>
+          )}
+
+          {agentSettings?.searchProvider === 'searxng' && (
+            <div className="space-y-2">
+              <Label>SearXNG Instance URL</Label>
+              <Input
+                value={agentSettings?.searxngUrl || ''}
+                onChange={(e) => handleSearxngUrlChange(e.target.value)}
+                placeholder="https://your-searxng-instance.com"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Memory Settings */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Database className="h-5 w-5 text-green-500" />
+            Memory
+          </CardTitle>
+          <CardDescription>Agent memory and knowledge storage</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Database className={`h-5 w-5 ${agentSettings?.memoryEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+              <div>
+                <Label className="text-sm font-medium">Enable Memory</Label>
+                <p className="text-xs text-muted-foreground">Allow the agent to save and recall information</p>
+              </div>
+            </div>
+            <Switch
+              checked={agentSettings?.memoryEnabled ?? true}
+              onCheckedChange={handleMemoryToggle}
+              disabled={isLoading}
+            />
+          </div>
+
+          {agentSettings?.memoryEnabled && (
+            <div className="space-y-2">
+              <Label>Embedding Model</Label>
+              <Select value={agentSettings?.embeddingModel || 'text-embedding-3-small'} onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingModel: v } as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text-embedding-3-small">text-embedding-3-small (OpenAI)</SelectItem>
+                  <SelectItem value="text-embedding-3-large">text-embedding-3-large (OpenAI)</SelectItem>
+                  <SelectItem value="text-embedding-ada-002">text-embedding-ada-002 (OpenAI)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function AboutPanel() {
   return (
     <div className="space-y-6">
@@ -2197,6 +2565,8 @@ export function SettingsPage() {
         return <TechnicianTabsPanel />;
       case 'serviceMetrics':
         return <ServiceMetricsPanel />;
+      case 'agent':
+        return <AgentPanel />;
       case 'about':
         return <AboutPanel />;
       default:

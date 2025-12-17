@@ -277,6 +277,8 @@ export interface TechnicianTabsSettings {
 }
 
 import type { ServicePreset } from './service';
+import type { AgentSettings } from './agent';
+import { DEFAULT_AGENT_SETTINGS } from './agent';
 
 /**
  * Service presets settings (custom presets)
@@ -317,6 +319,8 @@ export interface AppSettings {
   technicianTabs: TechnicianTabsSettings;
   /** Custom service presets */
   presets: PresetsSettings;
+  /** Agent AI settings */
+  agent: AgentSettings;
 }
 
 // =============================================================================
@@ -398,6 +402,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   programs: DEFAULT_PROGRAMS,
   technicianTabs: DEFAULT_TECHNICIAN_TABS,
   presets: DEFAULT_PRESETS,
+  agent: DEFAULT_AGENT_SETTINGS,
 };
 
 // =============================================================================
@@ -458,5 +463,5 @@ export type SettingValueType<K extends SettingKey> =
 /**
  * Settings category IDs for sidebar navigation
  */
-export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'servicePresets' | 'serviceMetrics' | 'about';
+export type SettingsCategory = 'appearance' | 'data' | 'reports' | 'business' | 'programs' | 'technicianTabs' | 'servicePresets' | 'serviceMetrics' | 'agent' | 'about';
 

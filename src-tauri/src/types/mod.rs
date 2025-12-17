@@ -2,6 +2,7 @@
 //!
 //! This module contains all the data structures used throughout the application.
 
+mod agent;
 mod program;
 mod required_program;
 mod script;
@@ -10,6 +11,7 @@ mod settings;
 mod system_info;
 mod time_tracking;
 
+pub use agent::*;
 pub use program::*;
 pub use required_program::*;
 pub use script::*;

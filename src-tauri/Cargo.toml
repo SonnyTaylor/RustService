@@ -35,6 +35,11 @@ base64 = "0.22"
 regex = "1.12.2"
 dirs = "5"
 
+# Agent memory database
+rusqlite = { version = "0.32", features = ["bundled"] }
+zerocopy = "0.8"  # For efficient vector serialization
+urlencoding = "2"  # For URL encoding in search queries
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "libloaderapi", "winbase"] }
 widestring = "1.0"

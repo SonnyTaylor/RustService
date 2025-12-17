@@ -107,7 +107,24 @@ pub fn run() {
             commands::get_bsod_history,
             commands::get_bsod_details,
             commands::get_bsod_stats,
-            commands::delete_crash_dump
+            commands::delete_crash_dump,
+            // Agent commands
+            commands::queue_agent_command,
+            commands::get_pending_commands,
+            commands::approve_command,
+            commands::reject_command,
+            commands::save_memory,
+            commands::search_memories,
+            commands::get_all_memories,
+            commands::delete_memory,
+            commands::clear_all_memories,
+            commands::search_tavily,
+            commands::search_searxng,
+            commands::get_agent_settings,
+            commands::get_command_history,
+            commands::agent_read_file,
+            commands::agent_write_file,
+            commands::list_agent_programs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

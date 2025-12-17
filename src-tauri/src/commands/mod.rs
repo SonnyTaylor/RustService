@@ -2,6 +2,7 @@
 //!
 //! This module contains all the Tauri commands exposed to the frontend.
 
+mod agent;
 mod bluescreen;
 mod data_dir;
 mod event_log;
@@ -18,6 +19,7 @@ mod system_info;
 mod time_tracking;
 mod utils;
 
+pub use agent::*;
 pub use bluescreen::*;
 pub use data_dir::*;
 pub use event_log::*;

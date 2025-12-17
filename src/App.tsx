@@ -22,6 +22,7 @@ import {
   Rocket,
   Network,
   Skull,
+  Bot,
   // Icon picker icons
   Folder,
   Database,
@@ -54,6 +55,7 @@ import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVar
 import { Titlebar } from '@/components/titlebar';
 import { IframeTabContent } from '@/components/IframeTabContent';
 import {
+  AgentPage,
   ServicePage,
   SystemInfoPage,
   ComponentTestPage,
@@ -142,6 +144,7 @@ function TechnicianTabIcon({ tab, useFavicons }: { tab: TechnicianTab; useFavico
  * Primary tabs shown directly in the tab bar
  */
 const PRIMARY_TABS = [
+  { id: 'agent', label: 'Agent', icon: Bot, component: AgentPage },
   { id: 'service', label: 'Service', icon: Wrench, component: ServicePage },
   { id: 'system-info', label: 'System Info', icon: Monitor, component: SystemInfoPage },
   { id: 'component-test', label: 'Component Test', icon: TestTube, component: ComponentTestPage },

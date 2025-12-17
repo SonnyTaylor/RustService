@@ -1,6 +1,7 @@
 /**
  * Re-export all types from the types directory
  */
+export * from './agent';
 export * from './bluescreen';
 export * from './component-test';
 export * from './event-log';
