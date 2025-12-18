@@ -1,51 +1,27 @@
 /**
- * Chat Message Component
+ * Chat Message Component (Redesigned)
  *
- * Displays individual messages in the agent chat interface with
- * support for tool calls, streaming, and code formatting.
+ * Displays messages in a Claude/Cursor-style interface with:
+ * - Activity items showing agent actions
+ * - Terminal output blocks for commands
+ * - File references with icons
+ * - Clean, minimal design
  */
 
-import { memo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import {
-  User,
-  Bot,
-  Terminal,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Check,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import type { MessageRole } from "@/types/agent";
-
-interface ToolCallDisplay {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  result?: unknown;
-  status?: "pending" | "success" | "error";
-}
+import { memo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { User, Copy, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { AgentActivityItem } from './AgentActivityItem';
+import type { MessageRole } from '@/types/agent';
+import type { AgentActivity } from '@/types/agent-activity';
 
 interface ChatMessageProps {
   role: MessageRole;
   content: string;
   isStreaming?: boolean;
-  toolCalls?: ToolCallDisplay[];
+  activities?: AgentActivity[];
   timestamp?: string;
-}
-
-/**
- * Format tool name for display
- */
-function formatToolName(name: string): string {
-  return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**
@@ -53,7 +29,7 @@ function formatToolName(name: string): string {
  */
 function CodeBlock({
   code,
-  language = "text",
+  language = 'text',
 }: {
   code: string;
   language?: string;
@@ -67,131 +43,53 @@ function CodeBlock({
   };
 
   return (
-    <div className="relative group rounded-lg overflow-hidden bg-muted/50 border">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/30">
-        <span className="text-xs text-muted-foreground font-mono">
-          {language}
-        </span>
+    <div className="relative group rounded-lg overflow-hidden bg-zinc-900 border border-border/30 my-2">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 bg-zinc-800/50">
+        <span className="text-xs text-zinc-500 font-mono">{language}</span>
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={handleCopy}
         >
-          {copied ? (
-            <Check className="h-3 w-3" />
-          ) : (
-            <Copy className="h-3 w-3" />
-          )}
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </Button>
       </div>
       <pre className="p-3 overflow-x-auto text-sm">
-        <code className="font-mono">{code}</code>
+        <code className="font-mono text-zinc-300">{code}</code>
       </pre>
     </div>
   );
 }
 
 /**
- * Tool call display component
- */
-function ToolCallCard({ toolCall }: { toolCall: ToolCallDisplay }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const StatusIcon =
-    toolCall.status === "success"
-      ? CheckCircle2
-      : toolCall.status === "error"
-        ? XCircle
-        : Clock;
-
-  const statusColor =
-    toolCall.status === "success"
-      ? "text-green-500"
-      : toolCall.status === "error"
-        ? "text-red-500"
-        : "text-yellow-500";
-
-  return (
-    <Card className="mt-2 bg-muted/30 border-muted">
-      <CardContent className="p-3">
-        <button
-          className="flex items-center gap-2 w-full text-left"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-          <Terminal className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium text-sm">
-            {formatToolName(toolCall.name)}
-          </span>
-          <StatusIcon className={cn("h-4 w-4 ml-auto", statusColor)} />
-        </button>
-
-        {expanded && (
-          <div className="mt-3 space-y-3">
-            {/* Arguments */}
-            <div>
-              <span className="text-xs text-muted-foreground uppercase font-medium">
-                Arguments
-              </span>
-              <CodeBlock
-                code={JSON.stringify(toolCall.arguments, null, 2)}
-                language="json"
-              />
-            </div>
-
-            {/* Result */}
-            {toolCall.result !== undefined && (
-              <div>
-                <span className="text-xs text-muted-foreground uppercase font-medium">
-                  Result
-                </span>
-                <CodeBlock
-                  code={
-                    typeof toolCall.result === "string"
-                      ? toolCall.result
-                      : JSON.stringify(toolCall.result, null, 2)
-                  }
-                  language="json"
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * Formatted content using ReactMarkdown for proper markdown rendering
+ * Formatted markdown content
  */
 function FormattedContent({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
+    <div className="prose prose-sm prose-invert max-w-none">
       <ReactMarkdown
         components={{
           // Custom code block rendering
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
             const isInline = !className;
-            
+
             if (isInline) {
               return (
-                <code className="px-1.5 py-0.5 rounded bg-muted/50 font-mono text-sm" {...props}>
+                <code
+                  className="px-1.5 py-0.5 rounded bg-zinc-800 font-mono text-sm text-zinc-300"
+                  {...props}
+                >
                   {children}
                 </code>
               );
             }
-            
+
             return (
-              <CodeBlock 
-                code={String(children).replace(/\n$/, '')} 
-                language={match?.[1] || 'text'} 
+              <CodeBlock
+                code={String(children).replace(/\n$/, '')}
+                language={match?.[1] || 'text'}
               />
             );
           },
@@ -201,38 +99,38 @@ function FormattedContent({ content }: { content: string }) {
           },
           // Custom list styling
           ul({ children }) {
-            return <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>;
+            return <ul className="list-disc list-inside space-y-1 my-2 text-zinc-300">{children}</ul>;
           },
           ol({ children }) {
-            return <ol className="list-decimal list-inside space-y-1 my-2">{children}</ol>;
+            return <ol className="list-decimal list-inside space-y-1 my-2 text-zinc-300">{children}</ol>;
           },
           li({ children }) {
             return <li className="text-sm">{children}</li>;
           },
           // Custom paragraph styling
           p({ children }) {
-            return <p className="my-1.5 leading-relaxed">{children}</p>;
+            return <p className="my-1.5 leading-relaxed text-zinc-300">{children}</p>;
           },
           // Strong/bold text
           strong({ children }) {
-            return <strong className="font-semibold">{children}</strong>;
+            return <strong className="font-semibold text-zinc-100">{children}</strong>;
           },
           // Headers
           h1({ children }) {
-            return <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>;
+            return <h1 className="text-lg font-bold mt-3 mb-2 text-zinc-100">{children}</h1>;
           },
           h2({ children }) {
-            return <h2 className="text-base font-bold mt-3 mb-1.5">{children}</h2>;
+            return <h2 className="text-base font-bold mt-3 mb-1.5 text-zinc-100">{children}</h2>;
           },
           h3({ children }) {
-            return <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>;
+            return <h3 className="text-sm font-bold mt-2 mb-1 text-zinc-100">{children}</h3>;
           },
           // Links
           a({ href, children }) {
             return (
-              <a 
-                href={href} 
-                className="text-primary underline underline-offset-2 hover:text-primary/80"
+              <a
+                href={href}
+                className="text-blue-400 underline underline-offset-2 hover:text-blue-300"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -243,14 +141,14 @@ function FormattedContent({ content }: { content: string }) {
           // Blockquotes
           blockquote({ children }) {
             return (
-              <blockquote className="border-l-2 border-primary/50 pl-3 my-2 italic text-muted-foreground">
+              <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 italic text-zinc-400">
                 {children}
               </blockquote>
             );
           },
           // Horizontal rules
           hr() {
-            return <hr className="my-3 border-border" />;
+            return <hr className="my-3 border-zinc-700" />;
           },
         }}
       >
@@ -267,98 +165,81 @@ export const ChatMessage = memo(function ChatMessage({
   role,
   content,
   isStreaming,
-  toolCalls,
+  activities,
   timestamp,
 }: ChatMessageProps) {
-  const isUser = role === "user";
-  const isSystem = role === "system";
+  const isUser = role === 'user';
+  const isSystem = role === 'system';
 
+  // System messages
   if (isSystem) {
     return (
       <div className="flex justify-center my-4">
-        <Badge variant="secondary" className="text-xs">
+        <span className="text-xs text-zinc-500 px-3 py-1 rounded-full bg-zinc-800/50">
           {content}
-        </Badge>
+        </span>
       </div>
     );
   }
 
-  return (
-    <div
-      className={cn(
-        "flex gap-3 py-4",
-        isUser ? "flex-row-reverse" : "flex-row",
-      )}
-    >
-      {/* Avatar */}
-      <div
-        className={cn(
-          "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted",
-        )}
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-      </div>
-
-      {/* Content */}
-      <div
-        className={cn(
-          "flex-1 min-w-0 space-y-1",
-          isUser ? "items-end" : "items-start",
-        )}
-      >
-        {/* Header */}
-        <div
-          className={cn(
-            "flex items-center gap-2 text-xs text-muted-foreground",
-            isUser ? "flex-row-reverse" : "flex-row",
-          )}
-        >
-          <span className="font-medium">{isUser ? "You" : "Agent"}</span>
-          {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
+  // User messages - keep bubble style
+  if (isUser) {
+    return (
+      <div className="flex gap-3 py-3 flex-row-reverse">
+        {/* Avatar */}
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+          <User className="h-4 w-4" />
         </div>
 
-        {/* Message bubble */}
-        <div
-          className={cn(
-            "rounded-2xl px-4 py-3 max-w-[85%]",
-            isUser ? "bg-primary text-primary-foreground ml-auto" : "bg-muted",
-            isStreaming && !content && "min-w-[60px]",
-          )}
-        >
-          {content ? (
-            <FormattedContent content={content} />
-          ) : isStreaming ? (
-            <div className="flex items-center gap-1">
-              <span
-                className="w-2 h-2 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <span
-                className="w-2 h-2 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="w-2 h-2 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
-            </div>
-          ) : null}
-
-          {isStreaming && content && (
-            <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
-          )}
-        </div>
-
-        {/* Tool calls */}
-        {toolCalls && toolCalls.length > 0 && (
-          <div className="space-y-2 max-w-[85%]">
-            {toolCalls.map((tc) => (
-              <ToolCallCard key={tc.id} toolCall={tc} />
-            ))}
+        {/* Content */}
+        <div className="flex-1 min-w-0 flex flex-col items-end">
+          <div className="flex items-center gap-2 text-xs text-zinc-500 flex-row-reverse mb-1">
+            <span className="font-medium">You</span>
+            {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
           </div>
-        )}
+          <div className="rounded-2xl px-4 py-3 bg-primary text-primary-foreground max-w-[85%]">
+            <FormattedContent content={content} />
+          </div>
+        </div>
       </div>
+    );
+  }
+
+  // Assistant messages - new clean layout
+  return (
+    <div className="py-3">
+      {/* Activities (shown before content) */}
+      {activities && activities.length > 0 && (
+        <div className="space-y-0.5 mb-3">
+          {activities.map((activity) => (
+            <AgentActivityItem key={activity.id} activity={activity} />
+          ))}
+        </div>
+      )}
+
+      {/* Assistant text content */}
+      {content && (
+        <div className="text-zinc-300">
+          <FormattedContent content={content} />
+        </div>
+      )}
+
+      {/* Streaming indicator */}
+      {isStreaming && !content && (
+        <div className="flex items-center gap-2 text-zinc-500">
+          <span className="text-sm">Thinking</span>
+          <span className="flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+          </span>
+        </div>
+      )}
+
+      {/* Streaming cursor */}
+      {isStreaming && content && (
+        <span className="inline-block w-2 h-4 ml-1 bg-zinc-500 animate-pulse" />
+      )}
     </div>
   );
 });

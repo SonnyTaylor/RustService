@@ -233,8 +233,17 @@ export function AgentPage() {
   const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
   const isConfigured = currentApiKey.length > 0;
 
+  // Message type with activities for the new UI
+  interface Message {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    createdAt: string;
+    activities?: import('@/types/agent-activity').AgentActivity[];
+  }
+
   // Chat state (using local state since we're calling backend directly)
-  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; createdAt: string }>>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
   // HITL tool calls awaiting approval (captured from stream, not polling)
@@ -764,6 +773,7 @@ export function AgentPage() {
                         role={msg.role}
                         content={msg.content}
                         timestamp={msg.createdAt}
+                        activities={msg.activities}
                         isStreaming={isLoading && msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1 && !msg.content}
                       />
                     ))}
