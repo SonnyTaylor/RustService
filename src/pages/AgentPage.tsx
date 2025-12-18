@@ -138,6 +138,93 @@ export function AgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  /**
+   * Validate tool call arguments and return error if invalid
+   */
+  const validateToolCall = (toolName: string, args: Record<string, unknown>): { valid: boolean; error?: string } => {
+    switch (toolName) {
+      case 'execute_command':
+        if (!args.command || typeof args.command !== 'string' || !args.command.trim()) {
+          return { valid: false, error: 'Missing or empty command argument' };
+        }
+        return { valid: true };
+      case 'write_file':
+        if (!args.path || typeof args.path !== 'string') {
+          return { valid: false, error: 'Missing or invalid path argument' };
+        }
+        return { valid: true };
+      case 'read_file':
+        if (!args.path || typeof args.path !== 'string') {
+          return { valid: false, error: 'Missing or invalid path argument' };
+        }
+        return { valid: true };
+      case 'move_file':
+      case 'copy_file':
+        if (!args.src || typeof args.src !== 'string') {
+          return { valid: false, error: 'Missing source path' };
+        }
+        if (!args.dest || typeof args.dest !== 'string') {
+          return { valid: false, error: 'Missing destination path' };
+        }
+        return { valid: true };
+      default:
+        return { valid: true };
+    }
+  };
+
+  const mapToolToActivityType = (toolName: string): ActivityType => {
+    switch(toolName) {
+      case 'execute_command': return 'ran_command';
+      case 'write_file': return 'write_file';
+      case 'read_file': return 'read_file';
+      case 'move_file': return 'move_file';
+      case 'copy_file': return 'copy_file';
+      case 'list_dir': return 'list_dir';
+      case 'list_programs': return 'list_dir';
+      case 'list_instruments': return 'list_dir';
+      case 'run_instrument': return 'ran_command';
+      case 'search_web': return 'web_search';
+      case 'save_to_memory': return 'memory_save';
+      case 'recall_memory': return 'memory_recall';
+      default: return 'ran_command';
+    }
+  };
+
+  const extractActivityDetails = (toolName: string, args: Record<string, unknown>) => {
+    const getPath = (p: unknown) => typeof p === 'string' ? p : '';
+    const getFilename = (p: unknown) => typeof p === 'string' ? p.split(/[/\\]/).pop() || '' : '';
+    
+    switch (toolName) {
+      case 'execute_command':
+        return { command: typeof args.command === 'string' ? args.command : '' };
+      case 'write_file':
+        return { 
+          path: getPath(args.path), 
+          filename: getFilename(args.path),
+          content: typeof args.content === 'string' ? args.content : undefined
+        };
+      case 'read_file':
+        return { path: getPath(args.path), filename: getFilename(args.path) };
+      case 'move_file':
+        return { src: getPath(args.src), dest: getPath(args.dest) };
+      case 'copy_file':
+        return { src: getPath(args.src), dest: getPath(args.dest) };
+      case 'list_dir':
+        return { path: getPath(args.path) };
+      case 'search_web':
+        return { query: typeof args.query === 'string' ? args.query : '' };
+      case 'save_to_memory':
+        return { memoryType: typeof args.type === 'string' ? args.type : 'fact' };
+      case 'recall_memory':
+        return { query: typeof args.query === 'string' ? args.query : '' };
+      case 'run_instrument':
+        return { command: `Running instrument: ${typeof args.name === 'string' ? args.name : 'unknown'}` };
+      default:
+        console.warn('[Agent] Unknown tool for activity details:', toolName);
+        return {};
+    }
+  };
+
   // Core agentic loop - streams response and handles tool calls recursively
   const runAgentLoop = async (currentHistory: CoreMessage[]) => {
     setIsLoading(true);
@@ -188,17 +275,24 @@ export function AgentPage() {
           const isHITL = isHITLTool(part.toolName);
           finalToolCalls.push(part);
           
-          const activityType = mapToolToActivityType(part.toolName);
-          const activityDetails = extractActivityDetails(
-            part.toolName, 
-            (part.args ?? {}) as Record<string, unknown>
-          );
+          const args = ((part as any).args ?? (part as any).input ?? {}) as Record<string, unknown>;
           
+          // Validate tool call args - detect malformed calls
+          const validation = validateToolCall(part.toolName, args);
+          if (!validation.valid) {
+            console.warn('[Agent] Malformed tool call:', part.toolName, 'Args:', args, 'Error:', validation.error);
+          }
+          
+          const activityType = mapToolToActivityType(part.toolName);
+          const activityDetails = extractActivityDetails(part.toolName, args);
+          
+          // If tool call is invalid, show error state immediately
           const newActivity = {
             id: part.toolCallId,
             timestamp: new Date().toISOString(),
             type: activityType,
-            status: isHITL ? 'pending_approval' : 'running',
+            status: validation.valid ? (isHITL ? 'pending_approval' : 'running') : 'error',
+            error: validation.valid ? undefined : validation.error,
             ...activityDetails
           } as AgentActivity;
           
@@ -212,7 +306,7 @@ export function AgentPage() {
           // For server-side tools (like search/memory) that auto-execute
           const activityIndex = turnActivities.findIndex(a => a.id === part.toolCallId);
           if (activityIndex !== -1) {
-             const resultData = part.result;
+             const resultData = (part as any).result ?? (part as any).output;
              let output: string;
              let isError = false;
              
@@ -250,7 +344,7 @@ export function AgentPage() {
             type: 'tool-call' as const,
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            args: tc.args,
+            input: (tc as any).args ?? (tc as any).input,
           }))
         ]
       };
@@ -321,51 +415,62 @@ export function AgentPage() {
     setIsLoading(true);
     let result: string;
     let isError = false;
-    const args = toolCall.args as Record<string, unknown>;
-
-    try {
-      switch (toolCall.toolName) {
-        case 'execute_command': {
-          const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
-            command: String(args.command || ''), 
-            reason: String(args.reason || 'User approved')
-          });
-          result = res.output || res.error || 'Command executed successfully.';
-          isError = !!res.error;
-          break;
-        }
-        case 'write_file': {
-          await invoke('agent_write_file', { 
-            path: String(args.path || ''),
-            content: String(args.content || ''),
-          });
-          result = `Successfully wrote to ${args.path}`;
-          break;
-        }
-        case 'move_file': {
-          await invoke('agent_move_file', { 
-            src: String(args.src || ''), 
-            dest: String(args.dest || '') 
-          });
-          result = `Successfully moved ${args.src} to ${args.dest}`;
-          break;
-        }
-        case 'copy_file': {
-          await invoke('agent_copy_file', { 
-            src: String(args.src || ''), 
-            dest: String(args.dest || '') 
-          });
-          result = `Successfully copied ${args.src} to ${args.dest}`;
-          break;
-        }
-        default: {
-          result = `Unknown tool: ${toolCall.toolName}`;
-          isError = true;
-        }
-      }
-    } catch (err) {
-      result = err instanceof Error ? err.message : String(err);
+    const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
+    
+    // Validate args before execution
+    const validation = validateToolCall(toolCall.toolName, args);
+    if (!validation.valid) {
+      console.error('[Agent] Cannot execute invalid tool call:', toolCall.toolName, 'Error:', validation.error);
+      result = validation.error || 'Invalid tool call - missing required arguments';
       isError = true;
+    } else {
+      try {
+        switch (toolCall.toolName) {
+          case 'execute_command': {
+            const command = String(args.command || '');
+            console.log('[Agent] Executing command:', command);
+            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
+              command, 
+              reason: String(args.reason || 'User approved')
+            });
+            result = res.output || res.error || 'Command executed successfully.';
+            isError = !!res.error;
+            break;
+          }
+          case 'write_file': {
+            await invoke('agent_write_file', { 
+              path: String(args.path || ''),
+              content: String(args.content || ''),
+            });
+            result = `Successfully wrote to ${args.path}`;
+            break;
+          }
+          case 'move_file': {
+            await invoke('agent_move_file', { 
+              src: String(args.src || ''), 
+              dest: String(args.dest || '') 
+            });
+            result = `Successfully moved ${args.src} to ${args.dest}`;
+            break;
+          }
+          case 'copy_file': {
+            await invoke('agent_copy_file', { 
+              src: String(args.src || ''), 
+              dest: String(args.dest || '') 
+            });
+            result = `Successfully copied ${args.src} to ${args.dest}`;
+            break;
+          }
+          default: {
+            result = `Unknown tool: ${toolCall.toolName}`;
+            isError = true;
+          }
+        }
+      } catch (err) {
+        console.error('[Agent] Tool execution error:', err);
+        result = err instanceof Error ? err.message : String(err);
+        isError = true;
+      }
     }
 
     // 4. Update UI Activity with result
@@ -391,9 +496,8 @@ export function AgentPage() {
         type: 'tool-result',
         toolCallId: activityId,
         toolName: toolCall.toolName,
-        result: isError 
-          ? { status: 'error', error: result } 
-          : { status: 'success', output: result }
+        result: result,
+        isError: isError,
       }]
     };
     
@@ -445,7 +549,8 @@ export function AgentPage() {
         type: 'tool-result',
         toolCallId: activityId,
         toolName: toolCall.toolName,
-        result: { status: 'error', error: rejectionMessage }
+        result: rejectionMessage,
+        isError: true,
       }]
     };
 
@@ -457,57 +562,6 @@ export function AgentPage() {
     await runAgentLoop(newHistory);
   };
 
-  const mapToolToActivityType = (toolName: string): ActivityType => {
-      switch(toolName) {
-          case 'execute_command': return 'ran_command';
-          case 'write_file': return 'write_file';
-          case 'read_file': return 'read_file';
-          case 'move_file': return 'move_file';
-          case 'copy_file': return 'copy_file';
-          case 'list_dir': return 'list_dir';
-          case 'list_programs': return 'list_dir';
-          case 'list_instruments': return 'list_dir';
-          case 'run_instrument': return 'ran_command';
-          case 'search_web': return 'web_search';
-          case 'save_to_memory': return 'memory_save';
-          case 'recall_memory': return 'memory_recall';
-          default: return 'ran_command';
-      }
-  };
-
-  const extractActivityDetails = (toolName: string, args: Record<string, unknown>) => {
-     const getPath = (p: unknown) => typeof p === 'string' ? p : '';
-     const getFilename = (p: unknown) => typeof p === 'string' ? p.split(/[/\\]/).pop() || '' : '';
-     
-     switch (toolName) {
-       case 'execute_command':
-         return { command: typeof args.command === 'string' ? args.command : '' };
-       case 'write_file':
-         return { 
-           path: getPath(args.path), 
-           filename: getFilename(args.path),
-           content: typeof args.content === 'string' ? args.content : undefined
-         };
-       case 'read_file':
-         return { path: getPath(args.path), filename: getFilename(args.path) };
-       case 'move_file':
-         return { src: getPath(args.src), dest: getPath(args.dest) };
-       case 'copy_file':
-         return { src: getPath(args.src), dest: getPath(args.dest) };
-       case 'list_dir':
-         return { path: getPath(args.path) };
-       case 'search_web':
-         return { query: typeof args.query === 'string' ? args.query : '' };
-       case 'save_to_memory':
-         return { memoryType: typeof args.type === 'string' ? args.type : 'fact' };
-       case 'recall_memory':
-         return { query: typeof args.query === 'string' ? args.query : '' };
-       case 'run_instrument':
-         return { command: `Running instrument: ${typeof args.name === 'string' ? args.name : 'unknown'}` };
-       default:
-         return {};
-     }
-  };
 
   const executeMessage = async (text: string) => {
     if (!text.trim() || isLoading || !agentSettings) return;

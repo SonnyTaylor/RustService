@@ -188,35 +188,31 @@ User: "Why is my computer slow?"
 - If a command fails, immediately try an alternative approach
 - Save successful solutions to memory for future reference`;
 
-
-
 /**
  * Stream a chat response from the AI provider
  */
 export async function streamChat(
   options: StreamChatOptions,
 ): Promise<StreamChatResult> {
-  const {
-    messages,
-    settings,
-    tools,
-    abortSignal,
-  } = options;
+  const { messages, settings, tools, abortSignal } = options;
 
   let { systemPrompt } = options;
-  if (!systemPrompt) systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  if (!systemPrompt)
+    systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   // Fetch dynamic context (Agent Zero capabilities)
   try {
     const [behaviors, instruments] = await Promise.all([
       // Get latest behavior instruction
-      invoke<Array<{ content: string }>>('search_memories', {
-        query: '',
-        memory_type: 'behavior',
+      invoke<Array<{ content: string }>>("search_memories", {
+        query: "",
+        memory_type: "behavior",
         limit: 1,
       }).catch(() => []),
       // Get available instruments
-      invoke<Array<{ name: string; description: string; extension: string }>>('list_instruments').catch(() => []),
+      invoke<Array<{ name: string; description: string; extension: string }>>(
+        "list_instruments",
+      ).catch(() => []),
     ]);
 
     let dynamicContext = "";
@@ -229,7 +225,7 @@ export async function streamChat(
     // 2. Inject Instruments
     if (instruments && instruments.length > 0) {
       dynamicContext += `\n\n## AVAILABLE CUSTOM INSTRUMENTS\nYou can use these special tools by name using 'run_instrument' or 'execute_command':\n`;
-      instruments.forEach(i => {
+      instruments.forEach((i) => {
         dynamicContext += `- **${i.name}** (.${i.extension}): ${i.description}\n`;
       });
     }
@@ -243,10 +239,14 @@ export async function streamChat(
 
   const model = createProviderModel(settings);
 
+  // Sanitize messages to ensure compatible format:
+  // SDK streams tool-results with input/output but expects result/isError when consuming
+  const sanitizedMessages = sanitizeMessagesForSDK(messages);
+
   const result = streamText({
     model,
     system: systemPrompt,
-    messages,
+    messages: sanitizedMessages,
     // Only pass tools if there are any defined - some models don't support tools
     ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
     // Enable multi-step tool calling - stop after 15 steps max
@@ -260,6 +260,64 @@ export async function streamChat(
     fullStream: result.fullStream,
     fullText: result.text,
   };
+}
+
+/**
+ * Sanitize messages for SDK compatibility
+ * The SDK now uses ModelMessage format with ToolResultPart requiring 'output' field
+ * with LanguageModelV2ToolResultOutput structure
+ */
+function sanitizeMessagesForSDK(messages: CoreMessage[]): CoreMessage[] {
+  return messages.map((msg) => {
+    if (msg.role === "tool" && Array.isArray(msg.content)) {
+      return {
+        ...msg,
+        content: msg.content.map((part: any) => {
+          if (part.type === "tool-result") {
+            // Extract the raw result value
+            const rawOutput = part.output ?? part.result;
+            let resultValue: string;
+            let isError = false;
+
+            if (rawOutput && typeof rawOutput === "object") {
+              // Check for error status or isError flag
+              isError = part.isError ?? rawOutput.status === "error" ?? false;
+
+              if ("output" in rawOutput) {
+                // Unwrap { status, output } format
+                resultValue =
+                  typeof rawOutput.output === "string"
+                    ? rawOutput.output
+                    : JSON.stringify(rawOutput.output);
+              } else if ("error" in rawOutput) {
+                resultValue =
+                  typeof rawOutput.error === "string"
+                    ? rawOutput.error
+                    : JSON.stringify(rawOutput.error);
+                isError = true;
+              } else {
+                resultValue = JSON.stringify(rawOutput);
+              }
+            } else {
+              resultValue = String(rawOutput ?? "");
+            }
+
+            // Return in ModelMessage ToolResultPart format with LanguageModelV2ToolResultOutput
+            return {
+              type: "tool-result",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              output: isError
+                ? { type: "error-text" as const, value: resultValue }
+                : { type: "text" as const, value: resultValue },
+            };
+          }
+          return part;
+        }),
+      };
+    }
+    return msg;
+  });
 }
 
 /**

@@ -117,7 +117,13 @@ export function TerminalOutputBlock({
             <span className="text-zinc-500 shrink-0">
               …\{workingDirectory?.split('\\').slice(-1)[0] || 'shell'} &gt;
             </span>
-            <span className="text-zinc-200 break-all">{command}</span>
+            {command ? (
+              <span className="text-zinc-200 break-all">{command}</span>
+            ) : (
+              <span className="text-red-400 italic text-xs">
+                (no command - malformed tool call)
+              </span>
+            )}
           </div>
         </div>
 
