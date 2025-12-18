@@ -1,18 +1,29 @@
 /**
  * Agent Chat Service
- * 
+ *
  * Handles AI streaming with multi-provider support using Vercel AI SDK.
  * Supports: OpenAI, Anthropic, xAI, Google, Mistral, DeepSeek, Groq, OpenRouter, Ollama, Custom
  */
 
-import { streamText, type CoreMessage, type LanguageModel, type ToolSet } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createMistral } from '@ai-sdk/mistral';
-import { createXai } from '@ai-sdk/xai';
-import { createGroq } from '@ai-sdk/groq';
-import type { AgentSettings, AgentProvider, ProviderApiKeys } from '@/types/agent';
+import {
+  streamText,
+  stepCountIs,
+  type CoreMessage,
+  type LanguageModel,
+  type ToolSet,
+  type TextStreamPart,
+} from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createMistral } from "@ai-sdk/mistral";
+import { createXai } from "@ai-sdk/xai";
+import { createGroq } from "@ai-sdk/groq";
+import type {
+  AgentSettings,
+  AgentProvider,
+  ProviderApiKeys,
+} from "@/types/agent";
 
 // =============================================================================
 // Provider Configuration
@@ -22,8 +33,8 @@ import type { AgentSettings, AgentProvider, ProviderApiKeys } from '@/types/agen
  * Base URLs for OpenAI-compatible providers
  */
 const PROVIDER_BASE_URLS: Partial<Record<AgentProvider, string>> = {
-  deepseek: 'https://api.deepseek.com',
-  openrouter: 'https://openrouter.ai/api/v1',
+  deepseek: "https://api.deepseek.com",
+  openrouter: "https://openrouter.ai/api/v1",
 };
 
 /**
@@ -31,40 +42,40 @@ const PROVIDER_BASE_URLS: Partial<Record<AgentProvider, string>> = {
  */
 export function createProviderModel(settings: AgentSettings): LanguageModel {
   const { provider, model, apiKeys, baseUrl } = settings;
-  const apiKey = apiKeys?.[provider as keyof ProviderApiKeys] || '';
+  const apiKey = apiKeys?.[provider as keyof ProviderApiKeys] || "";
 
   switch (provider) {
-    case 'openai': {
+    case "openai": {
       const openai = createOpenAI({ apiKey });
       return openai(model);
     }
 
-    case 'anthropic': {
+    case "anthropic": {
       const anthropic = createAnthropic({ apiKey });
       return anthropic(model);
     }
 
-    case 'xai': {
+    case "xai": {
       const xai = createXai({ apiKey });
       return xai(model);
     }
 
-    case 'google': {
+    case "google": {
       const google = createGoogleGenerativeAI({ apiKey });
       return google(model);
     }
 
-    case 'mistral': {
+    case "mistral": {
       const mistral = createMistral({ apiKey });
       return mistral(model);
     }
 
-    case 'groq': {
+    case "groq": {
       const groq = createGroq({ apiKey });
       return groq(model);
     }
 
-    case 'deepseek': {
+    case "deepseek": {
       // DeepSeek uses OpenAI-compatible API (Chat Completions)
       const deepseek = createOpenAI({
         apiKey,
@@ -73,7 +84,7 @@ export function createProviderModel(settings: AgentSettings): LanguageModel {
       return deepseek.chat(model);
     }
 
-    case 'openrouter': {
+    case "openrouter": {
       // OpenRouter uses OpenAI-compatible API but doesn't support the Responses API
       // Use .chat() to force Chat Completions API instead
       const openrouter = createOpenAI({
@@ -83,20 +94,20 @@ export function createProviderModel(settings: AgentSettings): LanguageModel {
       return openrouter.chat(model);
     }
 
-    case 'ollama': {
+    case "ollama": {
       // Ollama uses OpenAI-compatible API (Chat Completions)
-      const ollamaUrl = baseUrl || 'http://localhost:11434/v1';
+      const ollamaUrl = baseUrl || "http://localhost:11434/v1";
       const ollama = createOpenAI({
-        apiKey: 'ollama', // Ollama doesn't require a real API key
+        apiKey: "ollama", // Ollama doesn't require a real API key
         baseURL: ollamaUrl,
       });
       return ollama.chat(model);
     }
 
-    case 'custom': {
+    case "custom": {
       // Custom OpenAI-compatible endpoint (Chat Completions)
       if (!baseUrl) {
-        throw new Error('Custom provider requires a base URL');
+        throw new Error("Custom provider requires a base URL");
       }
       const custom = createOpenAI({
         apiKey,
@@ -124,33 +135,66 @@ export interface StreamChatOptions {
 
 export interface StreamChatResult {
   textStream: AsyncIterable<string>;
+  fullStream: AsyncIterable<TextStreamPart<ToolSet>>;
   fullText: Promise<string>;
 }
 
 /**
  * Default system prompt for the agent
  */
-const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant specialized in diagnosing and fixing Windows computer issues. You have access to tools that can:
+const DEFAULT_SYSTEM_PROMPT = `You are an autonomous AI agent specialized in diagnosing and fixing Windows computer issues. You have full capability to execute multi-step tasks and should complete them fully.
 
-1. Execute PowerShell commands to diagnose and fix issues
-2. Search the web for solutions and documentation
-3. Save and recall information from memory
-4. Read and write files
-5. List available CLI programs
+## Core Behavior - IMPORTANT
 
-When helping users:
-- Ask clarifying questions if needed
-- Explain what you're doing and why
-- Use appropriate tools to gather information before suggesting fixes
-- Save successful solutions to memory for future reference
-- Be cautious with system-modifying commands
+You are an AGENTIC assistant. This means:
+- **Complete tasks fully** - Don't stop after one tool call. Keep going until the user's goal is achieved.
+- **Chain tools together** - If a task requires multiple steps (search, then run command, then analyze), do them all.
+- **Be autonomous** - Make decisions and take action. Don't ask "should I proceed?" - just proceed.
+- **Learn from results** - If a command fails, analyze the error and try a different approach immediately.
 
-Commands may require user approval before execution. Always explain what a command does before requesting to run it.`;
+## Available Tools
+
+1. **execute_command** - Execute PowerShell/CMD commands. The user approves commands before they run.
+
+2. **search_web** - Search the web for solutions, documentation, or error fixes.
+
+3. **save_to_memory** / **recall_memory** - Store and retrieve information for future reference.
+
+4. **read_file** / **write_file** - Read and modify files. Write operations require user approval.
+
+5. **list_programs** - List available CLI programs in the programs folder.
+
+## Multi-Step Task Examples
+
+User: "Find a file called resume in downloads and move to USB"
+→ Step 1: execute_command with "Get-ChildItem -Path $env:USERPROFILE\\Downloads -Recurse -Filter '*resume*'"
+→ Step 2: Analyze output to find the file
+→ Step 3: execute_command with "Get-Volume" to find USB drive letter
+→ Step 4: execute_command with "Move-Item -Path '<found-path>' -Destination '<usb-path>'"
+→ Step 5: Confirm success to user
+
+User: "Why is my computer slow?"
+→ Step 1: execute_command with "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10"
+→ Step 2: execute_command with "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 10"
+→ Step 3: execute_command with "(Get-WmiObject Win32_OperatingSystem).FreePhysicalMemory"
+→ Step 4: Analyze all results and provide comprehensive diagnosis with recommendations
+
+## IMPORTANT RULES
+
+- **ALWAYS use tools when asked to perform actions** - don't just describe what you would do
+- **Keep going until the task is DONE** - one tool call is rarely enough
+- Explain what each command does BEFORE calling execute_command
+- If a command fails, immediately try an alternative approach
+- Save successful solutions to memory for future reference`;
+
+
 
 /**
  * Stream a chat response from the AI provider
  */
-export async function streamChat(options: StreamChatOptions): Promise<StreamChatResult> {
+export async function streamChat(
+  options: StreamChatOptions,
+): Promise<StreamChatResult> {
   const {
     messages,
     settings,
@@ -167,11 +211,15 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
     messages,
     // Only pass tools if there are any defined - some models don't support tools
     ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
+    // Enable multi-step tool calling - stop after 15 steps max
+    // This allows the model to call tools, get results, and continue generating
+    stopWhen: stepCountIs(15),
     abortSignal,
   });
 
   return {
     textStream: result.textStream,
+    fullStream: result.fullStream,
     fullText: result.text,
   };
 }
@@ -180,7 +228,7 @@ export async function streamChat(options: StreamChatOptions): Promise<StreamChat
  * Convert local message format to CoreMessage format
  */
 export function convertToCoreMessages(
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
 ): CoreMessage[] {
   return messages.map((msg) => ({
     role: msg.role,

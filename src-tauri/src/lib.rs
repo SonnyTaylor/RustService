@@ -110,7 +110,9 @@ pub fn run() {
             commands::delete_crash_dump,
             // Agent commands
             commands::queue_agent_command,
+            commands::execute_agent_command,
             commands::get_pending_commands,
+            commands::clear_pending_commands,
             commands::approve_command,
             commands::reject_command,
             commands::save_memory,

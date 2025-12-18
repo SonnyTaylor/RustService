@@ -3,70 +3,59 @@
  * 
  * Defines the tools available to the AI agent for system operations,
  * memory management, and web search.
+ * 
+ * Tools without an execute function are "client-side" HITL tools -
+ * they will be rendered on the frontend for user interaction/approval.
  */
 
-import { tool } from 'ai';
+import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
-import type { PendingCommand, Memory, SearchResult } from '@/types/agent';
+import type { Memory, SearchResult } from '@/types/agent';
 
 // =============================================================================
-// Tool Definitions
+// HITL Tool Schemas (Client-Side Tools - No Execute Function)
 // =============================================================================
 
 /**
  * Execute a shell command
- * This tool queues commands for approval based on settings
+ * This is a client-side HITL (Human-in-the-Loop) tool.
+ * The frontend will render approval UI and handle execution.
+ * No execute function = tool call is forwarded to client.
  */
 export const executeCommandTool = tool({
-  description: 'Execute a PowerShell or Command Prompt command on the system. Use this to run diagnostics, fix issues, or gather system information. Commands may require user approval.',
-  parameters: z.object({
-    command: z.string().describe('The command to execute (PowerShell syntax)'),
+  description: 'Execute a PowerShell or Command Prompt command on the system. Use this tool when the user asks you to run commands, diagnose issues, or gather system information. The user will need to approve the command before it runs.',
+  inputSchema: z.object({
+    command: z.string().describe('The PowerShell command to execute'),
     reason: z.string().describe('Brief explanation of why this command is needed'),
   }),
-  execute: async ({ command, reason }) => {
-    try {
-      const result = await invoke<PendingCommand>('queue_agent_command', {
-        command,
-        reason,
-      });
-      
-      if (result.status === 'pending') {
-        return {
-          status: 'pending_approval',
-          message: `Command queued for approval: ${command}`,
-          commandId: result.id,
-        };
-      } else if (result.status === 'executed') {
-        return {
-          status: 'success',
-          output: result.output,
-          error: result.error,
-        };
-      } else if (result.status === 'failed') {
-        return {
-          status: 'failed',
-          output: result.output,
-          error: result.error,
-        };
-      }
-      
-      return result;
-    } catch (error) {
-      return {
-        status: 'error',
-        error: String(error),
-      };
-    }
-  },
+  // No execute function - this is a client-side HITL tool
+  // The frontend renders approval UI and calls the backend when approved
 });
+
+/**
+ * Write to a file
+ * This is a client-side HITL tool - requires user approval.
+ */
+export const writeFileTool = tool({
+  description: 'Write content to a file. Use this to create or modify configuration files, scripts, etc. The user will need to approve this action.',
+  inputSchema: z.object({
+    path: z.string().describe('Full path to the file'),
+    content: z.string().describe('Content to write'),
+  }),
+  // No execute function - this is a client-side HITL tool
+});
+
+// =============================================================================
+// Server-Side Tools (With Execute Functions)
+// =============================================================================
 
 /**
  * Search the web for information
  */
 export const searchWebTool = tool({
   description: 'Search the web for information about errors, solutions, or technical documentation. Use this to find fixes for problems.',
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe('The search query'),
     provider: z.enum(['tavily', 'searxng']).optional().describe('Search provider to use'),
   }),
@@ -116,7 +105,7 @@ export const searchWebTool = tool({
  */
 export const saveToMemoryTool = tool({
   description: 'Save important information to memory for future reference. Use this to remember solutions, facts, or instructions.',
-  parameters: z.object({
+  inputSchema: z.object({
     type: z.enum(['fact', 'solution', 'conversation', 'instruction']).describe('Type of memory'),
     content: z.string().describe('The content to remember'),
     tags: z.array(z.string()).optional().describe('Tags for categorization'),
@@ -127,7 +116,7 @@ export const saveToMemoryTool = tool({
         memory_type: type,
         content,
         metadata: tags ? { tags } : undefined,
-        embedding: undefined, // Embeddings generated on frontend if needed
+        embedding: undefined,
       });
       
       return {
@@ -149,7 +138,7 @@ export const saveToMemoryTool = tool({
  */
 export const recallMemoryTool = tool({
   description: 'Search through saved memories to recall relevant information. Use this to find past solutions or facts.',
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe('What to search for in memories'),
     type: z.enum(['fact', 'solution', 'conversation', 'instruction']).optional().describe('Filter by memory type'),
     limit: z.number().optional().describe('Maximum number of results'),
@@ -185,7 +174,7 @@ export const recallMemoryTool = tool({
  */
 export const listProgramsTool = tool({
   description: 'List all available CLI tools and programs in the programs folder. Use this to see what tools are available.',
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     try {
       const programs = await invoke<Array<Record<string, string>>>('list_agent_programs');
@@ -212,7 +201,7 @@ export const listProgramsTool = tool({
  */
 export const readFileTool = tool({
   description: 'Read the contents of a file. Use this to examine configuration files, logs, or other text files.',
-  parameters: z.object({
+  inputSchema: z.object({
     path: z.string().describe('Full path to the file'),
   }),
   execute: async ({ path }) => {
@@ -222,32 +211,6 @@ export const readFileTool = tool({
       return {
         status: 'success',
         content,
-      };
-    } catch (error) {
-      return {
-        status: 'error',
-        error: String(error),
-      };
-    }
-  },
-});
-
-/**
- * Write to a file
- */
-export const writeFileTool = tool({
-  description: 'Write content to a file. Use this to create or modify configuration files, scripts, etc. This may require approval.',
-  parameters: z.object({
-    path: z.string().describe('Full path to the file'),
-    content: z.string().describe('Content to write'),
-  }),
-  execute: async ({ path, content }) => {
-    try {
-      await invoke('agent_write_file', { path, content });
-      
-      return {
-        status: 'success',
-        message: `Successfully wrote to ${path}`,
       };
     } catch (error) {
       return {
@@ -273,7 +236,19 @@ export const agentTools = {
   list_programs: listProgramsTool,
   read_file: readFileTool,
   write_file: writeFileTool,
-};
+} satisfies ToolSet;
+
+/**
+ * Names of tools that require human-in-the-loop approval (no execute function)
+ */
+export const HITL_TOOLS = ['execute_command', 'write_file'] as const;
+
+/**
+ * Check if a tool name is a HITL tool requiring approval
+ */
+export function isHITLTool(toolName: string): boolean {
+  return HITL_TOOLS.includes(toolName as typeof HITL_TOOLS[number]);
+}
 
 /**
  * Get tools based on what's enabled in settings
@@ -281,8 +256,8 @@ export const agentTools = {
 export function getEnabledTools(settings: {
   searchProvider: string;
   memoryEnabled: boolean;
-}) {
-  const tools: Record<string, typeof executeCommandTool> = {
+}): ToolSet {
+  const tools: ToolSet = {
     execute_command: executeCommandTool,
     list_programs: listProgramsTool,
     read_file: readFileTool,
@@ -302,4 +277,3 @@ export function getEnabledTools(settings: {
 
   return tools;
 }
-

@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { streamChat, convertToCoreMessages } from '@/lib/agent-chat';
-import { getEnabledTools } from '@/lib/agent-tools';
+import { getEnabledTools, isHITLTool } from '@/lib/agent-tools';
 import {
   Bot,
   Send,
@@ -24,6 +24,10 @@ import {
   Shield,
   ShieldAlert,
   ShieldOff,
+  Play,
+  Ban,
+  Square,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,7 +39,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSettings } from '@/components/settings-context';
 import { useAnimation, motion } from '@/components/animation-context';
 import { ChatMessage } from '@/components/agent/ChatMessage';
-import { CommandApprovalPanel, PendingApprovalBadge } from '@/components/agent/CommandApproval';
+import { PendingApprovalBadge } from '@/components/agent/CommandApproval';
+import { InlineCommandApproval } from '@/components/agent/InlineCommandApproval';
 import { MemoryBrowser } from '@/components/agent/MemoryBrowser';
 import type { PendingCommand, AgentSettings, ApprovalMode, ProviderApiKeys } from '@/types/agent';
 
@@ -231,6 +236,30 @@ export function AgentPage() {
   // Chat state (using local state since we're calling backend directly)
   const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; createdAt: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // HITL tool calls awaiting approval (captured from stream, not polling)
+  interface HITLToolCall {
+    id: string;
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
+    result?: { output?: string; error?: string };
+  }
+  const [pendingToolCalls, setPendingToolCalls] = useState<HITLToolCall[]>([]);
+  
+  // Agentic loop state - tracks autonomous multi-step execution
+  interface AgentLoopState {
+    isRunning: boolean;
+    stepCount: number;
+    maxSteps: number; // High limit - modern models handle this well
+  }
+  const [agentLoop, setAgentLoop] = useState<AgentLoopState>({
+    isRunning: false,
+    stepCount: 0,
+    maxSteps: 100, // Effectively unlimited - can be stopped manually
+  });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Poll for pending commands
   useEffect(() => {
@@ -280,6 +309,258 @@ export function AgentPage() {
     }]);
   }, []);
 
+  // Core agentic loop - streams response and handles tool calls recursively
+  // Returns true if there are pending HITL tools that need user approval
+  const runAgentLoop = async (
+    currentMessages: typeof messages,
+    toolResultContext?: string
+  ): Promise<{ pendingHITL: boolean }> => {
+    if (!agentSettings) return { pendingHITL: false };
+    
+    // Check abort signal
+    if (abortControllerRef.current?.signal.aborted) {
+      setAgentLoop(prev => ({ ...prev, isRunning: false }));
+      return { pendingHITL: false };
+    }
+    
+    // Increment step count
+    setAgentLoop(prev => {
+      const newStep = prev.stepCount + 1;
+      // Check max steps (shouldn't hit this with high limit, but safety net)
+      if (newStep > prev.maxSteps) {
+        console.log('Max agent steps reached');
+        return { ...prev, isRunning: false };
+      }
+      return { ...prev, stepCount: newStep };
+    });
+    
+    setIsLoading(true);
+    const assistantId = crypto.randomUUID();
+    
+    // If we have tool result context, create messages for AI with it included
+    // BUT don't update the visible messages - this is internal context only
+    let messagesForAI = currentMessages;
+    if (toolResultContext) {
+      // Add as a hidden "user" message for AI context only - not shown in UI
+      messagesForAI = [
+        ...currentMessages,
+        { 
+          role: 'user' as const, 
+          content: `[Tool executed. Result below - analyze and continue with the task]\n\n${toolResultContext}`, 
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString()
+        }
+      ];
+    }
+    
+    // Add placeholder for AI response (only to visible messages, not messagesForAI)
+    setMessages(prev => [...prev, {
+      id: assistantId,
+      role: 'assistant' as const,
+      content: '',
+      createdAt: new Date().toISOString(),
+    }]);
+    
+    try {
+      const tools = getEnabledTools({
+        searchProvider: agentSettings.searchProvider || 'none',
+        memoryEnabled: agentSettings.memoryEnabled ?? true,
+      });
+      
+      const coreMessages = convertToCoreMessages(
+        messagesForAI.map(m => ({ role: m.role, content: m.content }))
+      );
+      
+      const result = await streamChat({
+        messages: coreMessages,
+        settings: agentSettings,
+        tools,
+        abortSignal: abortControllerRef.current?.signal,
+      });
+      
+      let fullText = '';
+      let hitlToolCalls: HITLToolCall[] = [];
+      let hasServerSideToolCalls = false;
+      
+      for await (const part of result.fullStream) {
+        // Check abort between chunks
+        if (abortControllerRef.current?.signal.aborted) {
+          break;
+        }
+        
+        switch (part.type) {
+          case 'text-delta': {
+            fullText += part.text;
+            setMessages(prev => prev.map(msg =>
+              msg.id === assistantId
+                ? { ...msg, content: fullText }
+                : msg
+            ));
+            break;
+          }
+          case 'tool-call': {
+            if (isHITLTool(part.toolName)) {
+              // HITL tool - needs user approval
+              const toolCall: HITLToolCall = {
+                id: crypto.randomUUID(),
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                args: part.input as Record<string, unknown>,
+                status: 'pending',
+              };
+              hitlToolCalls.push(toolCall);
+              setPendingToolCalls(prev => [...prev, toolCall]);
+            } else {
+              // Server-side tool - will be auto-executed by streamText
+              hasServerSideToolCalls = true;
+            }
+            break;
+          }
+          case 'tool-result': {
+            // Server-side tools auto-executed - the AI continues after these
+            // No action needed here as streamText handles continuation
+            break;
+          }
+          case 'error': {
+            console.error('Stream error:', part.error);
+            break;
+          }
+        }
+      }
+      
+      // Update message with final content
+      if (fullText.trim()) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: fullText }
+            : msg
+        ));
+      } else if (hitlToolCalls.length === 0 && !hasServerSideToolCalls) {
+        // No text, no tool calls - remove placeholder
+        setMessages(prev => prev.filter(msg => msg.id !== assistantId));
+      } else if (hitlToolCalls.length > 0) {
+        // HITL tools pending - remove empty assistant placeholder
+        setMessages(prev => prev.filter(msg => msg.id !== assistantId));
+      }
+      
+      // If there are HITL tools pending, pause the loop and wait for approval
+      if (hitlToolCalls.length > 0) {
+        setIsLoading(false);
+        return { pendingHITL: true };
+      }
+      
+      // If the model finished with text (no pending tool calls), task is complete
+      if (fullText.trim() && !hasServerSideToolCalls) {
+        setAgentLoop(prev => ({ ...prev, isRunning: false }));
+        setIsLoading(false);
+        return { pendingHITL: false };
+      }
+      
+      // Server-side tools were executed and model continued - stream is done
+      setIsLoading(false);
+      return { pendingHITL: false };
+      
+    } catch (err) {
+      // Check if this is an abort error
+      if (err instanceof Error && err.name === 'AbortError') {
+        setMessages(prev => prev.filter(msg => msg.id !== assistantId));
+        setAgentLoop(prev => ({ ...prev, isRunning: false }));
+        setIsLoading(false);
+        return { pendingHITL: false };
+      }
+      
+      console.error('Agent loop error:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantId
+          ? { ...msg, content: `Sorry, I encountered an error: ${errorMessage}` }
+          : msg
+      ));
+      setAgentLoop(prev => ({ ...prev, isRunning: false }));
+      setIsLoading(false);
+      return { pendingHITL: false };
+    }
+  };
+  
+  // Stop the agentic loop
+  const stopAgentLoop = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setAgentLoop(prev => ({ ...prev, isRunning: false }));
+    setIsLoading(false);
+  }, []);
+
+  // HITL tool call handlers (for tools captured from stream, not polling)
+  // Use a ref to track current messages for continuation without race conditions
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const handleHITLToolApproved = useCallback(async (toolCall: typeof pendingToolCalls[0]) => {
+    setPendingToolCalls(prev => prev.map(tc => 
+      tc.id === toolCall.id ? { ...tc, status: 'approved' as const } : tc
+    ));
+    
+    try {
+      let toolResultContext = '';
+      
+      if (toolCall.toolName === 'execute_command') {
+        // Call backend to execute the command directly
+        const result = await invoke<PendingCommand>('execute_agent_command', {
+          command: toolCall.args.command as string,
+          reason: toolCall.args.reason as string,
+        });
+        
+        // Clear this tool call from pending
+        setPendingToolCalls(prev => prev.filter(tc => tc.id !== toolCall.id));
+        
+        // Format the result for AI context (not shown to user directly)
+        const outputText = result.output?.trim() || 'Command completed with no output.';
+        const errorText = result.error?.trim() ? `\nStderr: ${result.error}` : '';
+        toolResultContext = `Command executed: ${toolCall.args.command}\nOutput:\n${outputText}${errorText}`;
+        
+      } else if (toolCall.toolName === 'write_file') {
+        // Call backend to write file
+        await invoke('agent_write_file', {
+          path: toolCall.args.path as string,
+          content: toolCall.args.content as string,
+        });
+        
+        setPendingToolCalls(prev => prev.filter(tc => tc.id !== toolCall.id));
+        toolResultContext = `File successfully written to: ${toolCall.args.path}`;
+      }
+      
+      // Continue the agentic loop with the current messages
+      // The AI will naturally describe what it found in its response
+      await runAgentLoop(messagesRef.current, toolResultContext);
+      
+    } catch (error) {
+      setPendingToolCalls(prev => prev.map(tc => 
+        tc.id === toolCall.id ? { ...tc, status: 'failed' as const, result: { error: String(error) } } : tc
+      ));
+      
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: `❌ Tool execution failed: ${String(error)}`,
+        createdAt: new Date().toISOString(),
+      }]);
+      
+      setAgentLoop(prev => ({ ...prev, isRunning: false }));
+    }
+  }, [agentSettings]);
+
+  const handleHITLToolRejected = useCallback(async (toolCall: typeof pendingToolCalls[0]) => {
+    setPendingToolCalls(prev => prev.filter(tc => tc.id !== toolCall.id));
+    
+    const rejectionContext = toolCall.toolName === 'execute_command' 
+      ? `User rejected the command: ${toolCall.args.command}. Please try a different approach or ask what the user would prefer.`
+      : `User rejected writing to file: ${toolCall.args.path}. Please try a different approach or ask what the user would prefer.`;
+    
+    // Continue the agentic loop - AI will respond to the rejection
+    await runAgentLoop(messagesRef.current, rejectionContext);
+  }, [agentSettings]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !agentSettings) return;
@@ -291,70 +572,21 @@ export function AgentPage() {
       createdAt: new Date().toISOString(),
     };
 
-    // Add user message and create placeholder for assistant
-    const assistantId = crypto.randomUUID();
-    setMessages(prev => [...prev, userMessage]);
+    // Add user message
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
-    setIsLoading(true);
-
-    // Create assistant message placeholder
-    setMessages(prev => [...prev, {
-      id: assistantId,
-      role: 'assistant' as const,
-      content: '',
-      createdAt: new Date().toISOString(),
-    }]);
-
-    try {
-      // Get enabled tools based on settings
-      const tools = getEnabledTools({
-        searchProvider: agentSettings.searchProvider || 'none',
-        memoryEnabled: agentSettings.memoryEnabled ?? true,
-      });
-
-      // Convert messages to CoreMessage format for the AI SDK
-      const allMessages = [...messages, userMessage];
-      const coreMessages = convertToCoreMessages(
-        allMessages.map(m => ({ role: m.role, content: m.content }))
-      );
-
-      // Stream the response
-      const result = await streamChat({
-        messages: coreMessages,
-        settings: agentSettings,
-        tools,
-      });
-
-      // Stream text tokens into the message
-      let fullText = '';
-      for await (const chunk of result.textStream) {
-        fullText += chunk;
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantId
-            ? { ...msg, content: fullText }
-            : msg
-        ));
-      }
-
-      // Handle case where no content was streamed
-      if (!fullText.trim()) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantId
-            ? { ...msg, content: 'I received your message but couldn\'t generate a response. Please try again.' }
-            : msg
-        ));
-      }
-    } catch (err) {
-      console.error('Chat error:', err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setMessages(prev => prev.map(msg =>
-        msg.id === assistantId
-          ? { ...msg, content: `Sorry, I encountered an error: ${errorMessage}` }
-          : msg
-      ));
-    } finally {
-      setIsLoading(false);
-    }
+    
+    // Initialize agentic loop state
+    abortControllerRef.current = new AbortController();
+    setAgentLoop({
+      isRunning: true,
+      stepCount: 0,
+      maxSteps: 100, // Effectively unlimited
+    });
+    
+    // Start the agentic loop
+    await runAgentLoop(newMessages);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -364,9 +596,22 @@ export function AgentPage() {
     }
   };
 
-  const clearChat = () => {
+  const clearChat = async () => {
+    // Abort any running agent loop
+    abortControllerRef.current?.abort();
+    setAgentLoop({ isRunning: false, stepCount: 0, maxSteps: 100 });
+    setIsLoading(false);
+    
     setMessages([]);
     setPendingCommands([]);
+    setPendingToolCalls([]);
+    
+    // Also clear pending commands in the backend
+    try {
+      await invoke('clear_pending_commands');
+    } catch (err) {
+      console.error('Failed to clear pending commands:', err);
+    }
   };
 
   if (!isConfigured) {
@@ -400,6 +645,26 @@ export function AgentPage() {
           {agentSettings && (
             <ApprovalModeIndicator mode={agentSettings.approvalMode} />
           )}
+          
+          {/* Agentic execution indicator */}
+          {agentLoop.isRunning && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="gap-1.5 text-blue-500 bg-blue-500/10 border-blue-500/30 animate-pulse">
+                <Zap className="h-3 w-3" />
+                Step {agentLoop.stepCount}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={stopAgentLoop}
+                className="gap-1.5 text-red-500 border-red-500/30 hover:bg-red-500/10"
+              >
+                <Square className="h-3 w-3" />
+                Stop
+              </Button>
+            </div>
+          )}
+          
           <PendingApprovalBadge count={pendingCommands.length} />
         </div>
       </div>
@@ -426,21 +691,10 @@ export function AgentPage() {
           </div>
 
           <TabsContent value="chat" className="flex-1 flex flex-col m-0 min-h-0 overflow-hidden">
-            {/* Pending Approvals */}
-            {pendingCommands.length > 0 && (
-              <div className="p-4 border-b shrink-0">
-                <CommandApprovalPanel
-                  pendingCommands={pendingCommands}
-                  onCommandApproved={handleCommandApproved}
-                  onCommandRejected={handleCommandRejected}
-                />
-              </div>
-            )}
-
             {/* Messages - scrollable area */}
             <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
               <div className="p-4">
-                {messages.length === 0 ? (
+                {messages.length === 0 && pendingCommands.length === 0 ? (
                   <div className="flex items-center justify-center min-h-[300px]">
                     <Card className="max-w-md">
                       <CardContent className="p-6 text-center">
@@ -463,6 +717,69 @@ export function AgentPage() {
                         timestamp={msg.createdAt}
                         isStreaming={isLoading && msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1 && !msg.content}
                       />
+                    ))}
+                    
+                    {/* Inline Command Approvals from polling (legacy, for auto-execute modes) */}
+                    {pendingCommands.map((cmd) => (
+                      <InlineCommandApproval
+                        key={cmd.id}
+                        command={cmd}
+                        onApproved={handleCommandApproved}
+                        onRejected={handleCommandRejected}
+                      />
+                    ))}
+                    
+                    {/* HITL Tool Approvals (captured from stream - immediate, no polling) */}
+                    {pendingToolCalls.filter(tc => tc.status === 'pending').map((toolCall) => (
+                      <div key={toolCall.id} className="my-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-yellow-500/20 bg-yellow-500/10">
+                          <Terminal className="h-4 w-4 text-yellow-500" />
+                          <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                            {toolCall.toolName === 'execute_command' ? 'Command requires approval' : 'File write requires approval'}
+                          </span>
+                        </div>
+                        <div className="p-3">
+                          {toolCall.toolName === 'execute_command' ? (
+                            <>
+                              <code className="block text-sm font-mono bg-muted/50 rounded p-2 break-all whitespace-pre-wrap">
+                                {toolCall.args.command as string}
+                              </code>
+                              {toolCall.args.reason && (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  {toolCall.args.reason as string}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm text-muted-foreground mb-2">Write to: <code className="font-mono">{toolCall.args.path as string}</code></p>
+                              <pre className="text-xs font-mono bg-muted/50 rounded p-2 max-h-32 overflow-auto">
+                                {(toolCall.args.content as string).slice(0, 500)}
+                                {(toolCall.args.content as string).length > 500 && '...'}
+                              </pre>
+                            </>
+                          )}
+                          <div className="flex items-center gap-2 mt-3">
+                            <Button
+                              size="sm"
+                              className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleHITLToolApproved(toolCall)}
+                            >
+                              <Play className="h-3.5 w-3.5" />
+                              Run
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 gap-2 border-red-500/50 text-red-500 hover:bg-red-500/10"
+                              onClick={() => handleHITLToolRejected(toolCall)}
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              Deny
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}

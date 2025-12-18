@@ -18,8 +18,8 @@ use uuid::Uuid;
 use super::data_dir::get_data_dir_path;
 use super::settings::get_settings;
 use crate::types::{
-    AgentSettings, ApprovalMode, CommandExecutionResult, CommandStatus, Memory,
-    MemoryType, PendingCommand, SearchResult,
+    AgentSettings, ApprovalMode, CommandExecutionResult, CommandStatus, Memory, MemoryType,
+    PendingCommand, SearchResult,
 };
 
 // =============================================================================
@@ -137,6 +137,36 @@ fn execute_shell_command(command: &str) -> Result<CommandExecutionResult, String
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
+}
+
+/// Execute a command directly (bypasses approval mode check)
+/// Used by the frontend HITL flow after user has already approved
+#[tauri::command]
+pub fn execute_agent_command(command: String, reason: String) -> Result<PendingCommand, String> {
+    let result = execute_shell_command(&command)?;
+
+    let pending = PendingCommand {
+        id: Uuid::new_v4().to_string(),
+        command,
+        reason,
+        created_at: Utc::now().to_rfc3339(),
+        status: if result.exit_code == 0 {
+            CommandStatus::Executed
+        } else {
+            CommandStatus::Failed
+        },
+        output: Some(result.stdout),
+        error: if result.stderr.is_empty() {
+            None
+        } else {
+            Some(result.stderr)
+        },
+    };
+
+    // Log to history
+    log_command_to_history(&pending)?;
+
+    Ok(pending)
 }
 
 /// Queue a command for approval
@@ -266,8 +296,18 @@ pub fn get_pending_commands() -> Result<Vec<PendingCommand>, String> {
     Ok(commands.clone())
 }
 
-/// Approve a pending command and execute it
+/// Clear all pending commands
 #[tauri::command]
+pub fn clear_pending_commands() -> Result<(), String> {
+    let mut commands = PENDING_COMMANDS
+        .lock()
+        .map_err(|e| format!("Failed to lock pending commands: {}", e))?;
+    commands.clear();
+    Ok(())
+}
+
+/// Approve a pending command and execute it
+#[tauri::command(rename_all = "snake_case")]
 pub fn approve_command(command_id: String) -> Result<PendingCommand, String> {
     let mut commands = PENDING_COMMANDS
         .lock()
@@ -302,7 +342,7 @@ pub fn approve_command(command_id: String) -> Result<PendingCommand, String> {
 }
 
 /// Reject a pending command
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn reject_command(command_id: String) -> Result<PendingCommand, String> {
     let mut commands = PENDING_COMMANDS
         .lock()
@@ -338,25 +378,30 @@ pub fn save_memory(
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    
+
     // Clone metadata for later use
     let metadata_for_return = metadata.clone().unwrap_or(json!({}));
-    
+
     let meta_str = metadata
         .map(|m| serde_json::to_string(&m).unwrap_or_default())
         .unwrap_or_else(|| "{}".to_string());
 
     // Convert embedding to bytes if provided
-    let embedding_bytes: Option<Vec<u8>> = embedding.map(|e| {
-        e.iter()
-            .flat_map(|f| f.to_le_bytes().to_vec())
-            .collect()
-    });
+    let embedding_bytes: Option<Vec<u8>> =
+        embedding.map(|e| e.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect());
 
     conn.execute(
         "INSERT INTO memories (id, type, content, embedding, metadata, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![id, memory_type, content, embedding_bytes, meta_str, now, now],
+        params![
+            id,
+            memory_type,
+            content,
+            embedding_bytes,
+            meta_str,
+            now,
+            now
+        ],
     )
     .map_err(|e| format!("Failed to save memory: {}", e))?;
 
@@ -448,7 +493,9 @@ pub fn search_memories(
         for row in rows {
             let (id, type_str, content, meta_str, created_at, updated_at) =
                 row.map_err(|e| format!("Failed to read row: {}", e))?;
-            memories.push(row_to_memory(id, type_str, content, meta_str, created_at, updated_at));
+            memories.push(row_to_memory(
+                id, type_str, content, meta_str, created_at, updated_at,
+            ));
         }
     } else {
         let mut stmt = conn
@@ -477,7 +524,9 @@ pub fn search_memories(
         for row in rows {
             let (id, type_str, content, meta_str, created_at, updated_at) =
                 row.map_err(|e| format!("Failed to read row: {}", e))?;
-            memories.push(row_to_memory(id, type_str, content, meta_str, created_at, updated_at));
+            memories.push(row_to_memory(
+                id, type_str, content, meta_str, created_at, updated_at,
+            ));
         }
     }
 
@@ -486,7 +535,10 @@ pub fn search_memories(
 
 /// Get all memories
 #[tauri::command]
-pub fn get_all_memories(memory_type: Option<String>, limit: Option<usize>) -> Result<Vec<Memory>, String> {
+pub fn get_all_memories(
+    memory_type: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<Memory>, String> {
     let conn = get_db_connection()?;
     let limit_val = limit.unwrap_or(100) as i64;
 
@@ -519,7 +571,9 @@ pub fn get_all_memories(memory_type: Option<String>, limit: Option<usize>) -> Re
         for row in rows {
             let (id, type_str, content, meta_str, created_at, updated_at) =
                 row.map_err(|e| format!("Failed to read row: {}", e))?;
-            memories.push(row_to_memory(id, type_str, content, meta_str, created_at, updated_at));
+            memories.push(row_to_memory(
+                id, type_str, content, meta_str, created_at, updated_at,
+            ));
         }
     } else {
         let mut stmt = conn
@@ -547,7 +601,9 @@ pub fn get_all_memories(memory_type: Option<String>, limit: Option<usize>) -> Re
         for row in rows {
             let (id, type_str, content, meta_str, created_at, updated_at) =
                 row.map_err(|e| format!("Failed to read row: {}", e))?;
-            memories.push(row_to_memory(id, type_str, content, meta_str, created_at, updated_at));
+            memories.push(row_to_memory(
+                id, type_str, content, meta_str, created_at, updated_at,
+            ));
         }
     }
 
@@ -626,7 +682,10 @@ pub async fn search_tavily(query: String, api_key: String) -> Result<Vec<SearchR
 
 /// Search the web using SearXNG
 #[tauri::command]
-pub async fn search_searxng(query: String, instance_url: String) -> Result<Vec<SearchResult>, String> {
+pub async fn search_searxng(
+    query: String,
+    instance_url: String,
+) -> Result<Vec<SearchResult>, String> {
     let client = reqwest::Client::new();
 
     let url = format!(
@@ -762,7 +821,9 @@ pub fn list_agent_programs() -> Result<Vec<HashMap<String, String>>, String> {
 
     let mut programs = Vec::new();
 
-    for entry in fs::read_dir(&programs_dir).map_err(|e| format!("Failed to read programs dir: {}", e))? {
+    for entry in
+        fs::read_dir(&programs_dir).map_err(|e| format!("Failed to read programs dir: {}", e))?
+    {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
 
@@ -797,4 +858,3 @@ pub fn list_agent_programs() -> Result<Vec<HashMap<String, String>>, String> {
 
     Ok(programs)
 }
-
