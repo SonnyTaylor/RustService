@@ -148,6 +148,7 @@ pub enum MemoryType {
     Solution,
     Conversation,
     Instruction,
+    Behavior,
 }
 
 impl Default for MemoryType {
@@ -326,3 +327,14 @@ pub struct CommandExecutionResult {
     pub stdout: String,
     pub stderr: String,
 }
+
+/// Represents a custom instrument script
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Instrument {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+    pub extension: String,
+}
+

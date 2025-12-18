@@ -11,7 +11,35 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
-import type { Memory, SearchResult } from '@/types/agent';
+import type { Memory, SearchResult, FileEntry, Instrument } from '@/types/agent';
+import { generateEmbedding } from './agent-memory';
+
+// =============================================================================
+// Common Output Schemas
+// =============================================================================
+
+/** Standard result schema for tool outputs */
+const toolResultSchema = z.object({
+  status: z.enum(['success', 'error']),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+/** Command execution result schema */
+const commandResultSchema = z.object({
+  status: z.enum(['success', 'error']),
+  output: z.string().optional(),
+  error: z.string().optional(),
+  exitCode: z.number().optional(),
+});
+
+/** File operation result schema */
+const fileResultSchema = z.object({
+  status: z.enum(['success', 'error']),
+  output: z.string().optional(),
+  error: z.string().optional(),
+  path: z.string().optional(),
+});
 
 // =============================================================================
 // HITL Tool Schemas (Client-Side Tools - No Execute Function)
@@ -29,6 +57,7 @@ export const executeCommandTool = tool({
     command: z.string().describe('The PowerShell command to execute'),
     reason: z.string().describe('Brief explanation of why this command is needed'),
   }),
+  outputSchema: commandResultSchema,
   // No execute function - this is a client-side HITL tool
   // The frontend renders approval UI and calls the backend when approved
 });
@@ -43,6 +72,7 @@ export const writeFileTool = tool({
     path: z.string().describe('Full path to the file'),
     content: z.string().describe('Content to write'),
   }),
+  outputSchema: fileResultSchema,
   // No execute function - this is a client-side HITL tool
 });
 
@@ -112,11 +142,14 @@ export const saveToMemoryTool = tool({
   }),
   execute: async ({ type, content, tags }) => {
     try {
+      // Generate embedding for "Agent Zero" RAG
+      const embedding = await generateEmbedding(content);
+
       const memory = await invoke<Memory>('save_memory', {
         memory_type: type,
         content,
         metadata: tags ? { tags } : undefined,
-        embedding: undefined,
+        embedding: embedding.length > 0 ? embedding : undefined,
       });
       
       return {
@@ -145,11 +178,27 @@ export const recallMemoryTool = tool({
   }),
   execute: async ({ query, type, limit = 5 }) => {
     try {
-      const memories = await invoke<Memory[]>('search_memories', {
-        query,
-        memory_type: type,
-        limit,
-      });
+      // Try semantic search if embedding generation works
+      const embedding = await generateEmbedding(query);
+      let memories: Memory[];
+
+      if (embedding.length > 0) {
+        memories = await invoke<Memory[]>('search_memories_vector', {
+          embedding,
+          limit,
+        });
+        // Client-side filter for type if needed (imperfect but functional)
+        if (type) {
+            memories = memories.filter(m => m.type === type);
+        }
+      } else {
+        // Fallback to keyword search
+        memories = await invoke<Memory[]>('search_memories', {
+            query,
+            memory_type: type,
+            limit,
+        });
+      }
       
       return {
         status: 'success',
@@ -221,6 +270,152 @@ export const readFileTool = tool({
   },
 });
 
+/**
+ * List files in a directory
+ */
+export const listDirTool = tool({
+  description: 'List files and directories in a specific path. Use this to explore the file system.',
+  inputSchema: z.object({
+    path: z.string().describe('Path to list content for'),
+  }),
+  execute: async ({ path }) => {
+    try {
+      const entries = await invoke<FileEntry[]>('agent_list_dir', { path });
+      return {
+        status: 'success',
+        entries: entries.map(e => ({
+          name: e.name,
+          path: e.path,
+          type: e.is_dir ? 'dir' : 'file',
+          size: e.size
+        }))
+      };
+    } catch (error) {
+        return { status: 'error', error: String(error) };
+    }
+  }
+});
+
+/**
+ * Move a file
+ * Client-side HITL tool
+ */
+export const moveFileTool = tool({
+  description: 'Move or rename a file. Requires user approval.',
+  inputSchema: z.object({
+    src: z.string().describe('Source path'),
+    dest: z.string().describe('Destination path'),
+  }),
+  outputSchema: z.object({
+    status: z.enum(['success', 'error']),
+    output: z.string().optional(),
+    error: z.string().optional(),
+    src: z.string().optional(),
+    dest: z.string().optional(),
+  }),
+  // No execute function - HITL tool
+});
+
+/**
+ * Copy a file
+ * Client-side HITL tool
+ */
+export const copyFileTool = tool({
+  description: 'Copy a file. Requires user approval.',
+  inputSchema: z.object({
+    src: z.string().describe('Source path'),
+    dest: z.string().describe('Destination path'),
+  }),
+  outputSchema: z.object({
+    status: z.enum(['success', 'error']),
+    output: z.string().optional(),
+    error: z.string().optional(),
+    src: z.string().optional(),
+    dest: z.string().optional(),
+  }),
+  // No execute function - HITL tool
+});
+
+/**
+ * List available instruments (custom scripts)
+ */
+export const listInstrumentsTool = tool({
+  description: 'List available custom instruments (scripts) that can be run.',
+  inputSchema: z.object({}),
+  execute: async () => {
+    try {
+      const instruments = await invoke<Instrument[]>('list_instruments');
+      return {
+        status: 'success',
+        instruments: instruments.map(i => ({
+            name: i.name,
+            description: i.description,
+            extension: i.extension
+        }))
+      };
+    } catch (error) {
+        return { status: 'error', error: String(error) };
+    }
+  }
+});
+
+/**
+ * Run an instrument
+ * Wraps execute_command but validates against instrument list first? 
+ * Actually, let's just use executeCommandTool for now but finding the path via listAlgorithms is better step.
+ * But we can make a specific tool for it.
+ */
+export const runInstrumentTool = tool({
+  description: 'Run a specific instrument by name. This looks up the path and executes it.',
+  inputSchema: z.object({
+    name: z.string().describe('Name of the instrument to run'),
+    args: z.string().optional().describe('Arguments to pass to the instrument'),
+  }),
+  execute: async ({ name, args }) => {
+    try {
+        // First find the instrument
+        const instruments = await invoke<Instrument[]>('list_instruments');
+        const instrument = instruments.find(i => i.name.toLowerCase() === name.toLowerCase());
+        
+        if (!instrument) {
+            return { status: 'error', error: `Instrument '${name}' not found.` };
+        }
+
+        // Construct command based on extension
+        let command = '';
+        if (instrument.extension === 'ps1') {
+            command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${args || ''}`;
+        } else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) {
+            command = `"${instrument.path}" ${args || ''}`;
+        } else if (instrument.extension === 'py') {
+            command = `python "${instrument.path}" ${args || ''}`;
+        } else if (instrument.extension === 'js') {
+            command = `node "${instrument.path}" ${args || ''}`;
+        }
+
+        // Queue it!
+        // Wait, tools with execute functions run immediately server side usually, 
+        // OR we can make this a HITL tool wrapper.
+        // But `queue_agent_command` handles whitelist/approval logic in backend.
+        // So we can just call `queue_agent_command` here and return the pending ID.
+        
+        const result = await invoke<{id: string, status: string, output?: string}>('queue_agent_command', {
+            command,
+            reason: `Running instrument: ${name}`
+        });
+
+        if (result.status === 'executed') {
+            return { status: 'success', output: result.output || 'Executed successfully' };
+        } else {
+            return { status: 'pending', commandId: result.id, message: 'Waiting for approval' };
+        }
+
+    } catch (error) {
+        return { status: 'error', error: String(error) };
+    }
+  }
+});
+
 // =============================================================================
 // Tool Collection
 // =============================================================================
@@ -234,14 +429,19 @@ export const agentTools = {
   save_to_memory: saveToMemoryTool,
   recall_memory: recallMemoryTool,
   list_programs: listProgramsTool,
+  list_instruments: listInstrumentsTool,
+  run_instrument: runInstrumentTool,
   read_file: readFileTool,
   write_file: writeFileTool,
+  list_dir: listDirTool,
+  move_file: moveFileTool,
+  copy_file: copyFileTool,
 } satisfies ToolSet;
 
 /**
  * Names of tools that require human-in-the-loop approval (no execute function)
  */
-export const HITL_TOOLS = ['execute_command', 'write_file'] as const;
+export const HITL_TOOLS = ['execute_command', 'write_file', 'move_file', 'copy_file'] as const;
 
 /**
  * Check if a tool name is a HITL tool requiring approval
@@ -262,6 +462,11 @@ export function getEnabledTools(settings: {
     list_programs: listProgramsTool,
     read_file: readFileTool,
     write_file: writeFileTool,
+    list_dir: listDirTool,
+    move_file: moveFileTool,
+    copy_file: copyFileTool,
+    list_instruments: listInstrumentsTool,
+    run_instrument: runInstrumentTool,
   };
 
   // Add search if configured

@@ -22,6 +22,22 @@ use crate::types::{
     PendingCommand, SearchResult,
 };
 
+#[derive(serde::Serialize)]
+pub struct FileEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+}
+
+#[derive(serde::Serialize)]
+pub struct Instrument {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+    pub extension: String,
+}
+
 // =============================================================================
 // Global State
 // =============================================================================
@@ -410,6 +426,7 @@ pub fn save_memory(
         "solution" => MemoryType::Solution,
         "conversation" => MemoryType::Conversation,
         "instruction" => MemoryType::Instruction,
+        "behavior" => MemoryType::Behavior,
         _ => MemoryType::Fact,
     };
 
@@ -437,6 +454,7 @@ fn row_to_memory(
         "solution" => MemoryType::Solution,
         "conversation" => MemoryType::Conversation,
         "instruction" => MemoryType::Instruction,
+        "behavior" => MemoryType::Behavior,
         _ => MemoryType::Fact,
     };
 
@@ -633,6 +651,85 @@ pub fn clear_all_memories() -> Result<(), String> {
 }
 
 // =============================================================================
+// Vector Search
+// =============================================================================
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let dot_product: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        0.0
+    } else {
+        dot_product / (norm_a * norm_b)
+    }
+}
+
+/// Search memories using vector similarity
+#[tauri::command]
+pub fn search_memories_vector(
+    embedding: Vec<f32>,
+    limit: Option<usize>,
+) -> Result<Vec<Memory>, String> {
+    let conn = get_db_connection()?;
+    let limit_val = limit.unwrap_or(5);
+
+    // Fetch all memories with embeddings
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, type, content, metadata, created_at, updated_at, embedding 
+             FROM memories 
+             WHERE embedding IS NOT NULL",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Vec<u8>>(6)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to execute query: {}", e))?;
+
+    let mut scored_memories = Vec::new();
+
+    for row in rows {
+        let (id, type_str, content, meta_str, created_at, updated_at, embedding_bytes) =
+            row.map_err(|e| format!("Failed to read row: {}", e))?;
+
+        // Convert bytes back to Vec<f32>
+        let stored_embedding: Vec<f32> = embedding_bytes
+            .chunks(4)
+            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
+
+        if stored_embedding.len() == embedding.len() {
+            let score = cosine_similarity(&embedding, &stored_embedding);
+            scored_memories.push((
+                score,
+                row_to_memory(id, type_str, content, meta_str, created_at, updated_at),
+            ));
+        }
+    }
+
+    // Sort by score descending
+    scored_memories.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Return top K
+    Ok(scored_memories
+        .into_iter()
+        .take(limit_val)
+        .map(|(_, m)| m)
+        .collect())
+}
+
+// =============================================================================
 // Search Operations
 // =============================================================================
 
@@ -799,6 +896,7 @@ pub fn get_command_history(limit: Option<usize>) -> Result<Vec<PendingCommand>, 
 // =============================================================================
 
 /// Read a file's contents
+/// Read a file's contents
 #[tauri::command]
 pub fn agent_read_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
@@ -808,6 +906,78 @@ pub fn agent_read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn agent_write_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
+}
+
+#[tauri::command]
+pub fn agent_list_dir(path: String) -> Result<Vec<FileEntry>, String> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(&path).map_err(|e| format!("Failed to read dir: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Failed to get metadata: {}", e))?;
+
+        entries.push(FileEntry {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            path: path.to_string_lossy().to_string(),
+            is_dir: path.is_dir(),
+            size: metadata.len(),
+        });
+    }
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn agent_move_file(src: String, dest: String) -> Result<(), String> {
+    fs::rename(src, dest).map_err(|e| format!("Failed to move file: {}", e))
+}
+
+#[tauri::command]
+pub fn agent_copy_file(src: String, dest: String) -> Result<(), String> {
+    fs::copy(src, dest)
+        .map(|_| ())
+        .map_err(|e| format!("Failed to copy file: {}", e))
+}
+
+/// List instruments (custom scripts)
+#[tauri::command]
+pub fn list_instruments() -> Result<Vec<Instrument>, String> {
+    let instruments_dir = get_data_dir_path().join("instruments");
+    if !instruments_dir.exists() {
+        // Create if it doesn't exist
+        fs::create_dir_all(&instruments_dir).ok();
+        return Ok(vec![]);
+    }
+
+    let mut instruments = Vec::new();
+    if let Ok(entries) = fs::read_dir(instruments_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ["ps1", "bat", "cmd", "exe", "py", "js"].contains(&ext) {
+                        let name = path
+                            .file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        instruments.push(Instrument {
+                            name,
+                            description: format!("Custom instrument ({})", ext),
+                            path: path.to_string_lossy().to_string(),
+                            extension: ext.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(instruments)
 }
 
 /// List programs in the programs folder

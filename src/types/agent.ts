@@ -258,7 +258,7 @@ export interface SearchResult {
 /**
  * Types of memories the agent can store
  */
-export type MemoryType = "fact" | "solution" | "conversation" | "instruction";
+export type MemoryType = "fact" | "solution" | "conversation" | "instruction" | "behavior";
 
 /**
  * A memory entry stored in the database
@@ -391,6 +391,94 @@ export interface ToolResult {
 }
 
 // =============================================================================
+// Parts-Based Message Types (AI SDK Compatible)
+// =============================================================================
+
+/**
+ * Text content part
+ */
+export interface TextPart {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * Tool call part - represents a tool invocation by the AI
+ */
+export interface ToolCallPart {
+  type: 'tool-call';
+  toolCallId: string;
+  toolName: AgentToolName;
+  args: Record<string, unknown>;
+  /** State of the tool call */
+  state: 'pending' | 'running' | 'complete' | 'error';
+}
+
+/**
+ * Tool result part - represents the result of a tool execution
+ */
+export interface ToolResultPart {
+  type: 'tool-result';
+  toolCallId: string;
+  toolName: AgentToolName;
+  result: {
+    status: 'success' | 'error';
+    output?: string;
+    error?: string;
+  };
+}
+
+/**
+ * Union of all message part types
+ */
+export type MessagePart = TextPart | ToolCallPart | ToolResultPart;
+
+/**
+ * Parts-based agent message (compatible with AI SDK UIMessage pattern)
+ * This is the new recommended message format
+ */
+export interface AgentMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  /** Raw text content (for backward compatibility) */
+  content: string;
+  /** Structured parts of the message */
+  parts: MessagePart[];
+  /** Timestamp */
+  createdAt: string;
+  /** Activities for UI display (derived from tool parts) */
+  activities?: import('./agent-activity').AgentActivity[];
+}
+
+/**
+ * Helper to check if a message has pending HITL tool calls
+ */
+export function hasPendingToolCalls(message: AgentMessage): boolean {
+  return message.parts.some(
+    part => part.type === 'tool-call' && part.state === 'pending'
+  );
+}
+
+/**
+ * Helper to get all tool call parts from a message
+ */
+export function getToolCallParts(message: AgentMessage): ToolCallPart[] {
+  return message.parts.filter(
+    (part): part is ToolCallPart => part.type === 'tool-call'
+  );
+}
+
+/**
+ * Helper to get text content from a message
+ */
+export function getTextContent(message: AgentMessage): string {
+  return message.parts
+    .filter((part): part is TextPart => part.type === 'text')
+    .map(part => part.text)
+    .join('');
+}
+
+// =============================================================================
 // Agent State
 // =============================================================================
 
@@ -410,6 +498,24 @@ export interface AgentRuntimeState {
 }
 
 // =============================================================================
+// File System Types
+// =============================================================================
+
+export interface FileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+}
+
+export interface Instrument {
+  name: string;
+  description: string;
+  path: string;
+  extension: string;
+}
+
+// =============================================================================
 // Tool Definitions
 // =============================================================================
 
@@ -422,8 +528,13 @@ export type AgentToolName =
   | "save_to_memory"
   | "recall_memory"
   | "list_programs"
+  | "list_instruments"
+  | "run_instrument"
   | "read_file"
-  | "write_file";
+  | "write_file"
+  | "list_dir"
+  | "move_file"
+  | "copy_file";
 
 /**
  * Tool execution request from frontend
@@ -443,3 +554,4 @@ export interface ToolExecutionResponse {
   requiresApproval?: boolean;
   pendingCommandId?: string;
 }
+

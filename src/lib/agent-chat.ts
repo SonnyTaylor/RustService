@@ -24,6 +24,7 @@ import type {
   AgentProvider,
   ProviderApiKeys,
 } from "@/types/agent";
+import { invoke } from "@tauri-apps/api/core";
 
 // =============================================================================
 // Provider Configuration
@@ -199,9 +200,46 @@ export async function streamChat(
     messages,
     settings,
     tools,
-    systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT,
     abortSignal,
   } = options;
+
+  let { systemPrompt } = options;
+  if (!systemPrompt) systemPrompt = settings.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+
+  // Fetch dynamic context (Agent Zero capabilities)
+  try {
+    const [behaviors, instruments] = await Promise.all([
+      // Get latest behavior instruction
+      invoke<Array<{ content: string }>>('search_memories', {
+        query: '',
+        memory_type: 'behavior',
+        limit: 1,
+      }).catch(() => []),
+      // Get available instruments
+      invoke<Array<{ name: string; description: string; extension: string }>>('list_instruments').catch(() => []),
+    ]);
+
+    let dynamicContext = "";
+
+    // 1. Inject Behavior
+    if (behaviors && behaviors.length > 0) {
+      dynamicContext += `\n\n## CURRENT BEHAVIOR MODE (Override)\n${behaviors[0].content}\n`;
+    }
+
+    // 2. Inject Instruments
+    if (instruments && instruments.length > 0) {
+      dynamicContext += `\n\n## AVAILABLE CUSTOM INSTRUMENTS\nYou can use these special tools by name using 'run_instrument' or 'execute_command':\n`;
+      instruments.forEach(i => {
+        dynamicContext += `- **${i.name}** (.${i.extension}): ${i.description}\n`;
+      });
+    }
+
+    if (dynamicContext) {
+      systemPrompt = (systemPrompt || DEFAULT_SYSTEM_PROMPT) + dynamicContext;
+    }
+  } catch (error) {
+    console.warn("Failed to load dynamic agent context:", error);
+  }
 
   const model = createProviderModel(settings);
 

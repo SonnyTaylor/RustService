@@ -403,3 +403,4 @@ Configure search provider in Settings → Agent:
 4. **API keys** are stored in plaintext in settings.json
 5. **Commands run as the app user** - they have your permissions
 
+

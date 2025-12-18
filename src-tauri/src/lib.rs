@@ -126,7 +126,12 @@ pub fn run() {
             commands::get_command_history,
             commands::agent_read_file,
             commands::agent_write_file,
-            commands::list_agent_programs
+            commands::agent_list_dir,
+            commands::agent_move_file,
+            commands::agent_copy_file,
+            commands::list_instruments,
+            commands::list_agent_programs,
+            commands::search_memories_vector
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

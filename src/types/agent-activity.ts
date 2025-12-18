@@ -14,17 +14,31 @@ export type ActivityType =
   | 'ran_command'
   | 'read_file'
   | 'write_file'
+  | 'move_file'
+  | 'copy_file'
+  | 'list_dir'
   | 'web_search'
   | 'memory_save'
   | 'memory_recall';
 
 /**
- * Base activity interface
+ * Status of an activity
+ */
+export type ActivityStatus = 'pending_approval' | 'running' | 'success' | 'error';
+
+/**
+ * Base activity interface - all activities have these fields
  */
 export interface BaseActivity {
   id: string;
   type: ActivityType;
   timestamp: string;
+  /** Current status of this activity */
+  status: ActivityStatus;
+  /** Output/result of the activity (populated after completion) */
+  output?: string;
+  /** Error message if status is 'error' */
+  error?: string;
 }
 
 /**
@@ -61,9 +75,7 @@ export interface RanCommandActivity extends BaseActivity {
   type: 'ran_command';
   command: string;
   workingDirectory?: string;
-  output?: string;
   exitCode?: number;
-  status: 'running' | 'success' | 'error';
 }
 
 /**
@@ -77,12 +89,40 @@ export interface ReadFileActivity extends BaseActivity {
 }
 
 /**
- * File write activity
+ * File write activity (HITL - requires approval)
  */
 export interface WriteFileActivity extends BaseActivity {
   type: 'write_file';
   path: string;
   filename: string;
+  content?: string;
+}
+
+/**
+ * File move activity (HITL - requires approval)
+ */
+export interface MoveFileActivity extends BaseActivity {
+  type: 'move_file';
+  src: string;
+  dest: string;
+}
+
+/**
+ * File copy activity (HITL - requires approval)
+ */
+export interface CopyFileActivity extends BaseActivity {
+  type: 'copy_file';
+  src: string;
+  dest: string;
+}
+
+/**
+ * List directory activity
+ */
+export interface ListDirActivity extends BaseActivity {
+  type: 'list_dir';
+  path: string;
+  entryCount?: number;
 }
 
 /**
@@ -95,13 +135,16 @@ export interface WebSearchActivity extends BaseActivity {
 }
 
 /**
- * Memory operations
+ * Memory save activity
  */
 export interface MemorySaveActivity extends BaseActivity {
   type: 'memory_save';
   memoryType: string;
 }
 
+/**
+ * Memory recall activity
+ */
 export interface MemoryRecallActivity extends BaseActivity {
   type: 'memory_recall';
   query: string;
@@ -118,6 +161,23 @@ export type AgentActivity =
   | RanCommandActivity
   | ReadFileActivity
   | WriteFileActivity
+  | MoveFileActivity
+  | CopyFileActivity
+  | ListDirActivity
   | WebSearchActivity
   | MemorySaveActivity
   | MemoryRecallActivity;
+
+/**
+ * Helper to check if an activity requires approval
+ */
+export function isHITLActivity(activity: AgentActivity): boolean {
+  return ['ran_command', 'write_file', 'move_file', 'copy_file'].includes(activity.type);
+}
+
+/**
+ * Helper to check if an activity is pending approval
+ */
+export function isPendingApproval(activity: AgentActivity): boolean {
+  return activity.status === 'pending_approval';
+}
