@@ -444,10 +444,32 @@ export const agentTools = {
 export const HITL_TOOLS = ['execute_command', 'write_file', 'move_file', 'copy_file'] as const;
 
 /**
- * Check if a tool name is a HITL tool requiring approval
+ * Check if a tool name is a HITL tool (has no server-side execute function)
  */
 export function isHITLTool(toolName: string): boolean {
   return HITL_TOOLS.includes(toolName as typeof HITL_TOOLS[number]);
+}
+
+/**
+ * Check if a tool actually requires user approval based on tool type and approval mode.
+ * - YOLO mode: never require approval (execute immediately)
+ * - Whitelist mode: require approval only if command doesn't match whitelist (handled backend)
+ * - Always mode: always require approval for HITL tools
+ */
+export function shouldRequireApproval(toolName: string, approvalMode: string): boolean {
+  // Not a HITL tool - no approval needed
+  if (!isHITLTool(toolName)) {
+    return false;
+  }
+  
+  // YOLO mode - never require frontend approval
+  if (approvalMode === 'yolo') {
+    return false;
+  }
+  
+  // For 'always' and 'whitelist' modes, the frontend shows approval UI
+  // (In whitelist mode, the backend will auto-execute if whitelisted)
+  return true;
 }
 
 /**

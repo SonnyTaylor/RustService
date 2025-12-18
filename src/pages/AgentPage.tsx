@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { streamChat } from '@/lib/agent-chat';
-import { getEnabledTools, isHITLTool } from '@/lib/agent-tools';
+import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
@@ -312,6 +312,104 @@ export function AgentPage() {
     }
   };
 
+  // Auto-execute HITL tool in YOLO mode (bypasses approval UI)
+  const autoExecuteHITLTool = async (
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    assistantMsgId: string,
+    turnActivities: AgentActivity[]
+  ) => {
+    // Update UI to show running state
+    const actIdx = turnActivities.findIndex(a => a.id === toolCallId);
+    if (actIdx !== -1) {
+      turnActivities[actIdx] = { ...turnActivities[actIdx], status: 'running' as ActivityStatus } as AgentActivity;
+      setMessages(prev => prev.map(m => 
+        m.id === assistantMsgId ? { ...m, activities: [...turnActivities] } : m
+      ));
+    }
+
+    let result: string;
+    let isError = false;
+    
+    try {
+      switch (toolName) {
+        case 'execute_command': {
+          const command = String(args.command || '');
+          console.log('[Agent YOLO] Auto-executing command:', command);
+          const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
+            command, 
+            reason: String(args.reason || 'YOLO mode - auto-approved')
+          });
+          result = res.output || res.error || 'Command executed successfully.';
+          isError = !!res.error;
+          break;
+        }
+        case 'write_file': {
+          await invoke('agent_write_file', { 
+            path: String(args.path || ''),
+            content: String(args.content || ''),
+          });
+          result = `Successfully wrote to ${args.path}`;
+          break;
+        }
+        case 'move_file': {
+          await invoke('agent_move_file', { 
+            src: String(args.src || ''), 
+            dest: String(args.dest || '') 
+          });
+          result = `Moved ${args.src} to ${args.dest}`;
+          break;
+        }
+        case 'copy_file': {
+          await invoke('agent_copy_file', { 
+            src: String(args.src || ''), 
+            dest: String(args.dest || '') 
+          });
+          result = `Copied ${args.src} to ${args.dest}`;
+          break;
+        }
+        default:
+          result = `Unknown HITL tool: ${toolName}`;
+          isError = true;
+      }
+    } catch (error) {
+      result = String(error);
+      isError = true;
+    }
+
+    // Update UI with result
+    if (actIdx !== -1) {
+      turnActivities[actIdx] = {
+        ...turnActivities[actIdx],
+        status: isError ? 'error' : 'success',
+        output: result,
+        error: isError ? result : undefined,
+      } as AgentActivity;
+      setMessages(prev => prev.map(m => 
+        m.id === assistantMsgId ? { ...m, activities: [...turnActivities] } : m
+      ));
+    }
+
+    // Add tool result to history and continue loop
+    const toolResultMsg: CoreMessage = {
+      role: 'tool',
+      content: [{
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        result: result,
+        isError: isError,
+      }]
+    };
+    
+    const newHistory = [...agentHistoryRef.current, toolResultMsg];
+    agentHistoryRef.current = newHistory;
+
+    // Continue the agent loop
+    await runAgentLoop(newHistory);
+  };
+
   // Core agentic loop - streams response and handles tool calls recursively
   const runAgentLoop = async (currentHistory: CoreMessage[]) => {
     setIsLoading(true);
@@ -358,8 +456,7 @@ export function AgentPage() {
           ));
         } 
         else if (part.type === 'tool-call') {
-          // Identify tool call
-          const isHITL = isHITLTool(part.toolName);
+          // Track tool call
           finalToolCalls.push(part);
           
           const args = ((part as any).args ?? (part as any).input ?? {}) as Record<string, unknown>;
@@ -373,12 +470,16 @@ export function AgentPage() {
           const activityType = mapToolToActivityType(part.toolName);
           const activityDetails = extractActivityDetails(part.toolName, args);
           
+          // Check if this tool requires approval based on approval mode
+          const approvalMode = agentSettings?.approvalMode || 'always';
+          const requiresApproval = shouldRequireApproval(part.toolName, approvalMode);
+          
           // If tool call is invalid, show error state immediately
           const newActivity = {
             id: part.toolCallId,
             timestamp: new Date().toISOString(),
             type: activityType,
-            status: validation.valid ? (isHITL ? 'pending_approval' : 'running') : 'error',
+            status: validation.valid ? (requiresApproval ? 'pending_approval' : 'running') : 'error',
             error: validation.valid ? undefined : validation.error,
             ...activityDetails
           } as AgentActivity;
@@ -438,12 +539,20 @@ export function AgentPage() {
       
       agentHistoryRef.current = [...currentHistory, assistantMessage];
       
-      const pendingCalls = finalToolCalls.filter(tc => isHITLTool(tc.toolName));
+      // Check for HITL tool calls that need handling
+      const hitlCalls = finalToolCalls.filter(tc => isHITLTool(tc.toolName));
+      const approvalMode = agentSettings?.approvalMode || 'always';
       
-      if (pendingCalls.length === 0) {
+      if (hitlCalls.length === 0) {
         setIsLoading(false);
+      } else if (approvalMode === 'yolo') {
+        // YOLO mode: auto-execute all HITL tools
+        for (const tc of hitlCalls) {
+          const args = (tc as any).args ?? (tc as any).input ?? {};
+          await autoExecuteHITLTool(tc.toolCallId, tc.toolName, args, assistantMsgId, turnActivities);
+        }
       } else {
-        setIsLoading(false); // Paused for HITL
+        setIsLoading(false); // Paused for manual HITL approval
       }
 
     } catch (error) {
