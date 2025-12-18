@@ -381,6 +381,7 @@ export function AgentPage() {
       let fullText = '';
       let hitlToolCalls: HITLToolCall[] = [];
       let hasServerSideToolCalls = false;
+      let yoloToolResults: string[] = []; // Collect YOLO mode tool results for loop continuation
       
       for await (const part of result.fullStream) {
         // Check abort between chunks
@@ -400,16 +401,50 @@ export function AgentPage() {
           }
           case 'tool-call': {
             if (isHITLTool(part.toolName)) {
-              // HITL tool - needs user approval
-              const toolCall: HITLToolCall = {
-                id: crypto.randomUUID(),
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                args: part.input as Record<string, unknown>,
-                status: 'pending',
-              };
-              hitlToolCalls.push(toolCall);
-              setPendingToolCalls(prev => [...prev, toolCall]);
+              // Check approval mode - in YOLO mode, auto-execute HITL tools
+              if (agentSettings.approvalMode === 'yolo') {
+                // Auto-execute the tool without waiting for approval
+                try {
+                  const toolInput = part.input as Record<string, unknown>;
+                  let toolResult = '';
+                  
+                  if (part.toolName === 'execute_command') {
+                    const cmdResult = await invoke<PendingCommand>('execute_agent_command', {
+                      command: toolInput.command as string,
+                      reason: toolInput.reason as string,
+                    });
+                    const outputText = cmdResult.output?.trim() || 'Command completed with no output.';
+                    const errorText = cmdResult.error?.trim() ? `\nStderr: ${cmdResult.error}` : '';
+                    toolResult = `Command executed: ${toolInput.command}\nOutput:\n${outputText}${errorText}`;
+                  } else if (part.toolName === 'write_file') {
+                    await invoke('agent_write_file', {
+                      path: toolInput.path as string,
+                      content: toolInput.content as string,
+                    });
+                    toolResult = `File successfully written to: ${toolInput.path}`;
+                  }
+                  
+                  // Collect results for continuation
+                  if (toolResult) {
+                    yoloToolResults.push(toolResult);
+                  }
+                  hasServerSideToolCalls = true;
+                } catch (error) {
+                  console.error('YOLO mode tool execution failed:', error);
+                  yoloToolResults.push(`Tool execution failed: ${error}`);
+                }
+              } else {
+                // Normal mode - HITL tool needs user approval
+                const toolCall: HITLToolCall = {
+                  id: crypto.randomUUID(),
+                  toolCallId: part.toolCallId,
+                  toolName: part.toolName,
+                  args: part.input as Record<string, unknown>,
+                  status: 'pending',
+                };
+                hitlToolCalls.push(toolCall);
+                setPendingToolCalls(prev => [...prev, toolCall]);
+              }
             } else {
               // Server-side tool - will be auto-executed by streamText
               hasServerSideToolCalls = true;
@@ -441,12 +476,26 @@ export function AgentPage() {
       } else if (hitlToolCalls.length > 0) {
         // HITL tools pending - remove empty assistant placeholder
         setMessages(prev => prev.filter(msg => msg.id !== assistantId));
+      } else if (yoloToolResults.length > 0 && !fullText.trim()) {
+        // YOLO tools executed but no text yet - remove placeholder, we'll continue the loop
+        setMessages(prev => prev.filter(msg => msg.id !== assistantId));
       }
       
       // If there are HITL tools pending, pause the loop and wait for approval
       if (hitlToolCalls.length > 0) {
         setIsLoading(false);
         return { pendingHITL: true };
+      }
+      
+      // If YOLO mode executed tools, continue the loop with the results
+      if (yoloToolResults.length > 0) {
+        const combinedResults = yoloToolResults.join('\n\n---\n\n');
+        // Update messages ref and continue loop
+        const updatedMessages = messagesRef.current;
+        setIsLoading(false);
+        // Continue the agentic loop with tool results as context
+        await runAgentLoop(updatedMessages, combinedResults);
+        return { pendingHITL: false };
       }
       
       // If the model finished with text (no pending tool calls), task is complete
