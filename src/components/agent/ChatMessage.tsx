@@ -80,9 +80,16 @@ export const ChatMessage = memo(function ChatMessage({
   // Assistant messages - use memoized markdown for performance
   return (
     <div className="py-3">
-      {/* Activities (shown before content) */}
+      {/* Assistant text content - shown first */}
+      {content && (
+        <div className="text-zinc-300">
+          <MemoizedMarkdown content={content} id={messageId} />
+        </div>
+      )}
+
+      {/* Activities (shown after content) */}
       {activities && activities.length > 0 && (
-        <div className="space-y-0.5 mb-3">
+        <div className="space-y-0.5 mt-3">
           {activities.map((activity) => (
             <AgentActivityItem 
               key={activity.id} 
@@ -91,13 +98,6 @@ export const ChatMessage = memo(function ChatMessage({
               onReject={onActivityReject}
             />
           ))}
-        </div>
-      )}
-
-      {/* Assistant text content - memoized for streaming performance */}
-      {content && (
-        <div className="text-zinc-300">
-          <MemoizedMarkdown content={content} id={messageId} />
         </div>
       )}
 
