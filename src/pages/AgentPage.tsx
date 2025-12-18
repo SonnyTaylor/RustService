@@ -12,7 +12,8 @@ import { getEnabledTools, isHITLTool } from '@/lib/agent-tools';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
-import type { AgentSettings, ApprovalMode, ProviderApiKeys } from '@/types/agent';
+import { ConversationSelector } from '@/components/agent/ConversationSelector';
+import type { AgentSettings, ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages } from '@/types/agent';
 import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
 import {
   Bot,
@@ -123,10 +124,13 @@ export function AgentPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [conversationTitle, setConversationTitle] = useState<string>('New Chat');
 
   const agentHistoryRef = useRef<CoreMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isFirstMessageRef = useRef(true);
 
   const agentSettings = settings.agent as AgentSettings | undefined;
   const currentProvider = agentSettings?.provider || 'openai';
@@ -137,6 +141,89 @@ export function AgentPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Save conversation to backend
+  const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
+    if (!currentConversationId || msgs.length === 0) return;
+
+    try {
+      // Convert messages to ConversationMessage format
+      const conversationMessages: ConversationMessage[] = history.map((msg, index) => ({
+        id: generateId(),
+        conversationId: currentConversationId,
+        role: msg.role,
+        content: JSON.stringify(msg.content),
+        createdAt: msgs[Math.floor(index / 2)]?.createdAt || new Date().toISOString(),
+      }));
+
+      await invoke('save_conversation_messages', {
+        conversationId: currentConversationId,
+        messages: conversationMessages,
+      });
+    } catch (err) {
+      console.error('Failed to save conversation:', err);
+    }
+  }, [currentConversationId]);
+
+  // Load a conversation
+  const loadConversation = useCallback(async (conversation: Conversation) => {
+    try {
+      const data = await invoke<ConversationWithMessages>('get_conversation', {
+        conversationId: conversation.id,
+      });
+
+      // Convert stored messages back to CoreMessage format for history
+      const history: CoreMessage[] = data.messages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant' | 'tool',
+        content: JSON.parse(msg.content),
+      }));
+
+      // Convert to UI Message format
+      const uiMessages: Message[] = [];
+      for (const msg of data.messages) {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          const content = JSON.parse(msg.content);
+          uiMessages.push({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: typeof content === 'string' ? content : 
+              (Array.isArray(content) ? content.find((p: any) => p.type === 'text')?.text || '' : ''),
+            createdAt: msg.createdAt,
+            activities: [],
+          });
+        }
+      }
+
+      setCurrentConversationId(conversation.id);
+      setConversationTitle(conversation.title);
+      setMessages(uiMessages);
+      agentHistoryRef.current = history;
+      isFirstMessageRef.current = uiMessages.length === 0;
+    } catch (err) {
+      console.error('Failed to load conversation:', err);
+    }
+  }, []);
+
+  // Start a new conversation
+  const startNewConversation = useCallback(async () => {
+    try {
+      const conversation = await invoke<Conversation>('create_conversation', { title: null });
+      setCurrentConversationId(conversation.id);
+      setConversationTitle('New Chat');
+      setMessages([]);
+      agentHistoryRef.current = [];
+      isFirstMessageRef.current = true;
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
+    }
+  }, []);
+
+  // Create initial conversation on mount if none exists
+  useEffect(() => {
+    if (!currentConversationId && isConfigured) {
+      startNewConversation();
+    }
+  }, [currentConversationId, isConfigured, startNewConversation]);
 
   /**
    * Validate tool call arguments and return error if invalid
@@ -580,8 +667,23 @@ export function AgentPage() {
     const newHistory = [...agentHistoryRef.current, userMsg];
     agentHistoryRef.current = newHistory;
 
+    // Update title on first message
+    if (isFirstMessageRef.current && currentConversationId) {
+      isFirstMessageRef.current = false;
+      const title = text.length > 50 ? text.substring(0, 50) + '...' : text;
+      setConversationTitle(title);
+      invoke('update_conversation_title', {
+        conversationId: currentConversationId,
+        title,
+      }).catch(err => console.error('Failed to update title:', err));
+    }
+
     // Start loop
     await runAgentLoop(newHistory);
+
+    // Auto-save after loop completes
+    const updatedMessages = [...messages, newMessage];
+    saveConversation(updatedMessages, agentHistoryRef.current);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -610,10 +712,13 @@ export function AgentPage() {
     setIsLoading(false);
     setMessages([]);
     agentHistoryRef.current = [];
+    isFirstMessageRef.current = true;
     try {
       await invoke('clear_pending_commands');
+      // Start a fresh conversation
+      await startNewConversation();
     } catch (err) {
-      console.error('Failed to clear pending commands:', err);
+      console.error('Failed to clear chat:', err);
     }
   };
 
@@ -644,6 +749,13 @@ export function AgentPage() {
             <p className="text-[10px] text-muted-foreground leading-none">
               {agentSettings?.model || 'gpt-4o-mini'}
             </p>
+          </div>
+          <div className="hidden sm:block border-l pl-3 ml-1">
+            <ConversationSelector
+              currentConversationId={currentConversationId}
+              onSelect={loadConversation}
+              onNew={startNewConversation}
+            />
           </div>
         </div>
 

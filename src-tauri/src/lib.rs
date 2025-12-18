@@ -131,7 +131,14 @@ pub fn run() {
             commands::agent_copy_file,
             commands::list_instruments,
             commands::list_agent_programs,
-            commands::search_memories_vector
+            commands::search_memories_vector,
+            // Conversation commands
+            commands::create_conversation,
+            commands::list_conversations,
+            commands::get_conversation,
+            commands::save_conversation_messages,
+            commands::update_conversation_title,
+            commands::delete_conversation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

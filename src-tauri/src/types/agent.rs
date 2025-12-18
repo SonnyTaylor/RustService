@@ -180,6 +180,42 @@ pub struct MemorySearchResult {
 }
 
 // =============================================================================
+// Conversation Types
+// =============================================================================
+
+/// A saved agent conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversation {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A message within a conversation (serialized CoreMessage content)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationMessage {
+    pub id: String,
+    pub conversation_id: String,
+    /// Role: "user", "assistant", or "tool"
+    pub role: String,
+    /// JSON-serialized message content
+    pub content: String,
+    pub created_at: String,
+}
+
+/// Conversation with its messages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationWithMessages {
+    #[serde(flatten)]
+    pub conversation: Conversation,
+    pub messages: Vec<ConversationMessage>,
+}
+
+// =============================================================================
 // Agent Settings
 // =============================================================================
 
@@ -337,4 +373,3 @@ pub struct Instrument {
     pub path: String,
     pub extension: String,
 }
-

@@ -290,6 +290,40 @@ export interface MemorySearchResult extends Memory {
 }
 
 // =============================================================================
+// Conversation Types
+// =============================================================================
+
+/**
+ * A saved agent conversation
+ */
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A message within a conversation (serialized CoreMessage content)
+ */
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  /** Role: "user", "assistant", or "tool" */
+  role: string;
+  /** JSON-serialized message content */
+  content: string;
+  createdAt: string;
+}
+
+/**
+ * Conversation with its messages
+ */
+export interface ConversationWithMessages extends Conversation {
+  messages: ConversationMessage[];
+}
+
+// =============================================================================
 // Agent Settings
 // =============================================================================
 
