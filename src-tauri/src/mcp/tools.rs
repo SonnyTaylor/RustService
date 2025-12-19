@@ -8,6 +8,7 @@ use rmcp::tool;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use sysinfo::System;
 
 // =============================================================================
 // Types
@@ -23,6 +24,19 @@ struct FileEntry {
     name: String,
     is_dir: bool,
     size: Option<u64>,
+}
+
+struct ProgramInfo {
+    name: String,
+    path: String,
+    executables: Vec<String>,
+}
+
+struct InstrumentInfo {
+    name: String,
+    path: String,
+    extension: String,
+    description: String,
 }
 
 // =============================================================================
@@ -118,6 +132,123 @@ fn list_directory(path: &str) -> Result<Vec<FileEntry>, String> {
     Ok(result)
 }
 
+fn get_data_dir() -> std::path::PathBuf {
+    // In development, data folder is in src-tauri/data
+    // In production, it's next to the executable
+    if cfg!(debug_assertions) {
+        std::path::PathBuf::from("data")
+    } else {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("data")
+    }
+}
+
+fn list_programs_in_folder() -> Result<Vec<ProgramInfo>, String> {
+    let programs_dir = get_data_dir().join("programs");
+    if !programs_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut programs = Vec::new();
+
+    // Iterate over top-level folders in programs/
+    if let Ok(entries) = fs::read_dir(&programs_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Find executables in this folder
+                let mut executables = Vec::new();
+                if let Ok(sub_entries) = fs::read_dir(&path) {
+                    for sub_entry in sub_entries.flatten() {
+                        let sub_path = sub_entry.path();
+                        if sub_path.is_file() {
+                            if let Some(ext) = sub_path.extension() {
+                                if ext == "exe" {
+                                    executables.push(
+                                        sub_path
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_default(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                programs.push(ProgramInfo {
+                    name,
+                    path: path.to_string_lossy().to_string(),
+                    executables,
+                });
+            }
+        }
+    }
+
+    Ok(programs)
+}
+
+fn list_instruments_in_folder() -> Result<Vec<InstrumentInfo>, String> {
+    let instruments_dir = get_data_dir().join("instruments");
+    if !instruments_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut instruments = Vec::new();
+    let valid_extensions = ["ps1", "bat", "cmd", "py", "js", "exe"];
+
+    if let Ok(entries) = fs::read_dir(&instruments_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if valid_extensions.contains(&ext_str.as_str()) {
+                        let name = path
+                            .file_stem()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+
+                        let description = format!("Custom {} instrument", ext_str.to_uppercase());
+                        instruments.push(InstrumentInfo {
+                            name,
+                            path: path.to_string_lossy().to_string(),
+                            extension: ext_str,
+                            description,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(instruments)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 // =============================================================================
 // MCP Tools
 // =============================================================================
@@ -185,6 +316,18 @@ impl RustServiceTools {
     ) -> Result<CallToolResult, rmcp::Error> {
         eprintln!("MCP write_file: {}", path);
 
+        // Create parent directories if they don't exist
+        if let Some(parent) = Path::new(&path).parent() {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    return Ok(CallToolResult::error(vec![Content::text(format!(
+                        "Error creating directories: {}",
+                        e
+                    ))]));
+                }
+            }
+        }
+
         match fs::write(&path, &content) {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text(format!(
                 "Successfully wrote {} bytes to {}",
@@ -216,7 +359,7 @@ impl RustServiceTools {
                         let type_indicator = if e.is_dir { "DIR" } else { "FILE" };
                         let size = e
                             .size
-                            .map(|s| format!(" ({} bytes)", s))
+                            .map(|s| format!(" ({})", format_bytes(s)))
                             .unwrap_or_default();
                         format!("[{}] {}{}", type_indicator, e.name, size)
                     })
@@ -225,7 +368,12 @@ impl RustServiceTools {
                 let output = if listing.is_empty() {
                     format!("Directory {} is empty", path)
                 } else {
-                    format!("Contents of {}:\n{}", path, listing.join("\n"))
+                    format!(
+                        "Contents of {} ({} items):\n{}",
+                        path,
+                        listing.len(),
+                        listing.join("\n")
+                    )
                 };
 
                 Ok(CallToolResult::success(vec![Content::text(output)]))
@@ -269,8 +417,10 @@ impl RustServiceTools {
 
         match fs::copy(&src, &dest) {
             Ok(bytes) => Ok(CallToolResult::success(vec![Content::text(format!(
-                "Copied {} ({} bytes) to {}",
-                src, bytes, dest
+                "Copied {} ({}) to {}",
+                src,
+                format_bytes(bytes),
+                dest
             ))])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Error copying file: {}",
@@ -281,21 +431,75 @@ impl RustServiceTools {
 
     /// Get system information
     #[tool(
-        description = "Get system information including OS version, hostname, and basic system details."
+        description = "Get detailed system information including OS version, CPU, memory, disks, and hostname."
     )]
     pub async fn get_system_info(&self) -> Result<CallToolResult, rmcp::Error> {
         eprintln!("MCP get_system_info");
 
-        // Get basic system info via commands
-        let hostname = std::env::var("COMPUTERNAME")
-            .or_else(|_| std::env::var("HOSTNAME"))
-            .unwrap_or_else(|_| "unknown".to_string());
+        // Get comprehensive system info using sysinfo crate
+        let mut sys = System::new_all();
+        sys.refresh_all();
 
-        let os_info = execute_shell_command("systeminfo | findstr /B /C:\"OS\"")
-            .map(|r| r.stdout)
-            .unwrap_or_else(|_| "Unknown OS".to_string());
+        let hostname = System::host_name().unwrap_or_else(|| "unknown".to_string());
+        let os_name = System::name().unwrap_or_else(|| "unknown".to_string());
+        let os_version = System::os_version().unwrap_or_else(|| "unknown".to_string());
+        let kernel_version = System::kernel_version().unwrap_or_else(|| "unknown".to_string());
 
-        let info = format!("Hostname: {}\n\n{}", hostname, os_info.trim());
+        // CPU info
+        let cpu_count = sys.cpus().len();
+        let cpu_name = sys
+            .cpus()
+            .first()
+            .map(|c| c.brand().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Memory info
+        let total_memory = sys.total_memory();
+        let used_memory = sys.used_memory();
+        let available_memory = sys.available_memory();
+
+        // Disk info
+        let mut disk_info = Vec::new();
+        for disk in sysinfo::Disks::new_with_refreshed_list().iter() {
+            let name = disk.name().to_string_lossy().to_string();
+            let mount = disk.mount_point().to_string_lossy().to_string();
+            let total = disk.total_space();
+            let available = disk.available_space();
+            let used = total - available;
+            disk_info.push(format!(
+                "  {} ({}): {} used of {} ({} available)",
+                mount,
+                name,
+                format_bytes(used),
+                format_bytes(total),
+                format_bytes(available)
+            ));
+        }
+
+        let info = format!(
+            "=== System Information ===\n\n\
+            Hostname: {}\n\
+            OS: {} {}\n\
+            Kernel: {}\n\n\
+            === CPU ===\n\
+            Processor: {}\n\
+            Cores: {}\n\n\
+            === Memory ===\n\
+            Total: {}\n\
+            Used: {}\n\
+            Available: {}\n\n\
+            === Disks ===\n{}",
+            hostname,
+            os_name,
+            os_version,
+            kernel_version,
+            cpu_name,
+            cpu_count,
+            format_bytes(total_memory),
+            format_bytes(used_memory),
+            format_bytes(available_memory),
+            disk_info.join("\n")
+        );
 
         Ok(CallToolResult::success(vec![Content::text(info)]))
     }
@@ -310,18 +514,333 @@ impl RustServiceTools {
     ) -> Result<CallToolResult, rmcp::Error> {
         eprintln!("MCP search_web: {}", query);
 
-        // For now, return a message about configuration needed
-        // Full implementation would call Tavily/SearXNG APIs
-        if self.tavily_api_key.is_some() || self.searxng_url.is_some() {
-            // Would implement actual search here
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Search for '{}' would be performed. Search provider configured but full implementation pending.",
-                query
-            ))]))
-        } else {
-            Ok(CallToolResult::error(vec![Content::text(
-                "No search provider configured. Set up Tavily API key or SearXNG URL in settings.",
-            )]))
+        // Try Tavily first
+        if let Some(api_key) = &self.tavily_api_key {
+            if !api_key.is_empty() {
+                match search_tavily(&query, api_key).await {
+                    Ok(results) => {
+                        if results.is_empty() {
+                            return Ok(CallToolResult::success(vec![Content::text(format!(
+                                "No search results found for '{}'",
+                                query
+                            ))]));
+                        }
+
+                        let formatted: Vec<String> = results
+                            .iter()
+                            .enumerate()
+                            .map(|(i, r)| {
+                                format!(
+                                    "{}. {}\n   URL: {}\n   {}",
+                                    i + 1,
+                                    r.title,
+                                    r.url,
+                                    r.snippet
+                                )
+                            })
+                            .collect();
+
+                        return Ok(CallToolResult::success(vec![Content::text(format!(
+                            "Search results for '{}':\n\n{}",
+                            query,
+                            formatted.join("\n\n")
+                        ))]));
+                    }
+                    Err(e) => {
+                        eprintln!("Tavily search failed: {}", e);
+                        // Fall through to try SearXNG
+                    }
+                }
+            }
+        }
+
+        // Try SearXNG
+        if let Some(url) = &self.searxng_url {
+            if !url.is_empty() {
+                match search_searxng(&query, url).await {
+                    Ok(results) => {
+                        if results.is_empty() {
+                            return Ok(CallToolResult::success(vec![Content::text(format!(
+                                "No search results found for '{}'",
+                                query
+                            ))]));
+                        }
+
+                        let formatted: Vec<String> = results
+                            .iter()
+                            .enumerate()
+                            .map(|(i, r)| {
+                                format!(
+                                    "{}. {}\n   URL: {}\n   {}",
+                                    i + 1,
+                                    r.title,
+                                    r.url,
+                                    r.snippet
+                                )
+                            })
+                            .collect();
+
+                        return Ok(CallToolResult::success(vec![Content::text(format!(
+                            "Search results for '{}':\n\n{}",
+                            query,
+                            formatted.join("\n\n")
+                        ))]));
+                    }
+                    Err(e) => {
+                        return Ok(CallToolResult::error(vec![Content::text(format!(
+                            "Search failed: {}",
+                            e
+                        ))]));
+                    }
+                }
+            }
+        }
+
+        Ok(CallToolResult::error(vec![Content::text(
+            "No search provider configured. Set up Tavily API key or SearXNG URL in settings.",
+        )]))
+    }
+
+    /// List portable programs
+    #[tool(description = "List all portable programs available in the data/programs folder.")]
+    pub async fn list_programs(&self) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP list_programs");
+
+        match list_programs_in_folder() {
+            Ok(programs) => {
+                if programs.is_empty() {
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        "No programs found in data/programs folder.",
+                    )]));
+                }
+
+                let formatted: Vec<String> = programs
+                    .iter()
+                    .map(|p| {
+                        let exes = if p.executables.is_empty() {
+                            "No executables found".to_string()
+                        } else {
+                            p.executables.join(", ")
+                        };
+                        format!("- {}\n  Path: {}\n  Executables: {}", p.name, p.path, exes)
+                    })
+                    .collect();
+
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Available programs ({}):\n\n{}",
+                    programs.len(),
+                    formatted.join("\n\n")
+                ))]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error listing programs: {}",
+                e
+            ))])),
         }
     }
+
+    /// List custom instruments
+    #[tool(description = "List available custom instruments (scripts) that can be run.")]
+    pub async fn list_instruments(&self) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP list_instruments");
+
+        match list_instruments_in_folder() {
+            Ok(instruments) => {
+                if instruments.is_empty() {
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        "No instruments found in data/instruments folder.",
+                    )]));
+                }
+
+                let formatted: Vec<String> = instruments
+                    .iter()
+                    .map(|i| {
+                        format!(
+                            "- {} ({})\n  Path: {}\n  {}",
+                            i.name, i.extension, i.path, i.description
+                        )
+                    })
+                    .collect();
+
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Available instruments ({}):\n\n{}",
+                    instruments.len(),
+                    formatted.join("\n\n")
+                ))]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error listing instruments: {}",
+                e
+            ))])),
+        }
+    }
+
+    /// Run a custom instrument
+    #[tool(description = "Run a custom instrument (script) by name.")]
+    pub async fn run_instrument(
+        &self,
+        #[tool(param)] name: String,
+        #[tool(param)] args: Option<String>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP run_instrument: {} args={:?}", name, args);
+
+        // Find the instrument
+        let instruments = match list_instruments_in_folder() {
+            Ok(list) => list,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Error finding instruments: {}",
+                    e
+                ))]));
+            }
+        };
+
+        let instrument = instruments
+            .iter()
+            .find(|i| i.name.to_lowercase() == name.to_lowercase());
+
+        let instrument = match instrument {
+            Some(i) => i,
+            None => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Instrument '{}' not found. Use list_instruments to see available options.",
+                    name
+                ))]));
+            }
+        };
+
+        // Construct command based on extension
+        let args_str = args.unwrap_or_default();
+        let command = match instrument.extension.as_str() {
+            "ps1" => format!(
+                "powershell -ExecutionPolicy Bypass -File \"{}\" {}",
+                instrument.path, args_str
+            ),
+            "bat" | "cmd" => format!("\"{}\" {}", instrument.path, args_str),
+            "exe" => format!("\"{}\" {}", instrument.path, args_str),
+            "py" => format!("python \"{}\" {}", instrument.path, args_str),
+            "js" => format!("node \"{}\" {}", instrument.path, args_str),
+            _ => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Unsupported instrument extension: {}",
+                    instrument.extension
+                ))]));
+            }
+        };
+
+        // Execute the instrument
+        match execute_shell_command(&command) {
+            Ok(result) => {
+                let output = if result.exit_code == 0 {
+                    format!(
+                        "Instrument '{}' completed successfully.\n\nOutput:\n{}",
+                        name, result.stdout
+                    )
+                } else {
+                    format!(
+                        "Instrument '{}' failed (exit code {}).\n\nStdout:\n{}\n\nStderr:\n{}",
+                        name, result.exit_code, result.stdout, result.stderr
+                    )
+                };
+                Ok(CallToolResult::success(vec![Content::text(output)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error running instrument '{}': {}",
+                name, e
+            ))])),
+        }
+    }
+}
+
+// =============================================================================
+// Search Implementation
+// =============================================================================
+
+struct SearchResult {
+    title: String,
+    url: String,
+    snippet: String,
+}
+
+async fn search_tavily(query: &str, api_key: &str) -> Result<Vec<SearchResult>, String> {
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post("https://api.tavily.com/search")
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "api_key": api_key,
+            "query": query,
+            "search_depth": "basic",
+            "max_results": 5
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Tavily API error: {}", response.status()));
+    }
+
+    let data: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let results = data["results"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|r| SearchResult {
+                    title: r["title"].as_str().unwrap_or("").to_string(),
+                    url: r["url"].as_str().unwrap_or("").to_string(),
+                    snippet: r["content"].as_str().unwrap_or("").to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(results)
+}
+
+async fn search_searxng(query: &str, instance_url: &str) -> Result<Vec<SearchResult>, String> {
+    let client = reqwest::Client::new();
+    let encoded_query = urlencoding::encode(query);
+    let url = format!(
+        "{}/search?q={}&format=json&categories=general",
+        instance_url.trim_end_matches('/'),
+        encoded_query
+    );
+
+    let response = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("SearXNG API error: {}", response.status()));
+    }
+
+    let data: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let results = data["results"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .take(5)
+                .map(|r| SearchResult {
+                    title: r["title"].as_str().unwrap_or("").to_string(),
+                    url: r["url"].as_str().unwrap_or("").to_string(),
+                    snippet: r["content"].as_str().unwrap_or("").to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(results)
 }

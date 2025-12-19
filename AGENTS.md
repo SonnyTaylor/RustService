@@ -483,6 +483,7 @@ Model Context Protocol (MCP) server for remote LLM control. Allows external AI s
 ### Architecture
 - **HTTP Server**: Runs on configurable port (default: 8377)
 - **Authentication**: Bearer token in Authorization header
+- **Protocol**: JSON-RPC 2.0 over HTTP
 - **Backend**: Rust module at `src-tauri/src/mcp/`
 - **Settings**: `mcpServerEnabled`, `mcpApiKey`, `mcpPort` in AgentSettings
 
@@ -490,11 +491,11 @@ Model Context Protocol (MCP) server for remote LLM control. Allows external AI s
 | File | Purpose |
 |------|---------|
 | `src-tauri/src/mcp/mod.rs` | Module exports |
-| `src-tauri/src/mcp/server.rs` | HTTP server with bearer auth |
+| `src-tauri/src/mcp/server.rs` | HTTP server with JSON-RPC handling |
 | `src-tauri/src/mcp/tools.rs` | MCP tool definitions |
 | `src/pages/SettingsPage.tsx` | MCP settings UI in Agent panel |
 
-### Available Tools
+### Available Tools (11)
 | Tool | Description |
 |------|-------------|
 | `execute_command` | Run PowerShell commands |
@@ -503,8 +504,18 @@ Model Context Protocol (MCP) server for remote LLM control. Allows external AI s
 | `list_dir` | List directory contents |
 | `move_file` | Move/rename files |
 | `copy_file` | Copy files |
-| `get_system_info` | Get system information |
+| `get_system_info` | Get system info (CPU, memory, disks) |
 | `search_web` | Web search (Tavily/SearXNG) |
+| `list_programs` | List portable programs |
+| `list_instruments` | List custom scripts |
+| `run_instrument` | Run a custom script |
+
+### JSON-RPC Methods
+| Method | Description |
+|--------|-------------|
+| `initialize` | Initialize connection, get capabilities |
+| `tools/list` | Get list of available tools |
+| `tools/call` | Execute a tool by name |
 
 ### Endpoints
 | Endpoint | Method | Auth | Description |
@@ -524,18 +535,38 @@ Model Context Protocol (MCP) server for remote LLM control. Allows external AI s
 # Health check
 curl http://localhost:8377/
 
-# MCP endpoint
+# Initialize (get capabilities)
 curl -X POST \
   -H "Authorization: Bearer <API_KEY>" \
   -H "Content-Type: application/json" \
-  -d '{}' \
+  -d '{"jsonrpc":"2.0","method":"initialize","id":1}' \
+  http://localhost:8377/mcp
+
+# List tools
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}' \
+  http://localhost:8377/mcp
+
+# Execute command
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_command","arguments":{"command":"whoami","reason":"testing"}},"id":3}' \
+  http://localhost:8377/mcp
+
+# Get system info
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_system_info","arguments":{}},"id":4}' \
   http://localhost:8377/mcp
 ```
 
 ### Security
 - Always use a strong API key
 - For remote access, use HTTPS via a reverse proxy
-- Commands execute based on approval mode settings
 - Requires app restart after configuration changes
 
 ## Dependencies to Know
