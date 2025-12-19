@@ -256,9 +256,97 @@ export interface SearchResult {
 // =============================================================================
 
 /**
- * Types of memories the agent can store
+ * Memory scope determines portability across machines
+ * - global: Portable across all machines (solutions, knowledge, behaviors, technician preferences)
+ * - machine: Specific to the current machine (system state, local context)
+ * 
+ * This is critical for computer repair technicians who use the tool on multiple client machines.
+ * Global memories travel with the USB drive, while machine memories are only relevant locally.
  */
-export type MemoryType = "fact" | "solution" | "conversation" | "instruction" | "behavior";
+export type MemoryScope = "global" | "machine";
+
+/**
+ * Get the default scope for a memory type
+ * - System memories are machine-specific
+ * - Solutions, knowledge, behaviors, instructions, facts are global/portable
+ * - Conversations and summaries default to machine (can be overridden)
+ */
+export function getDefaultScopeForType(type: MemoryType): MemoryScope {
+  switch (type) {
+    case "system":
+    case "conversation":
+    case "summary":
+      return "machine";
+    // Solutions, knowledge, behaviors, instructions, facts are portable
+    default:
+      return "global";
+  }
+}
+
+/**
+ * Human-readable labels for memory scopes
+ */
+export const MEMORY_SCOPE_LABELS: Record<MemoryScope, string> = {
+  global: "Global (Portable)",
+  machine: "This Machine Only",
+};
+
+/**
+ * Descriptions for memory scopes
+ */
+export const MEMORY_SCOPE_DESCRIPTIONS: Record<MemoryScope, string> = {
+  global: "Travels with you to other machines - solutions, knowledge, and preferences",
+  machine: "Specific to this computer - system info and local context",
+};
+
+/**
+ * Types of memories the agent can store
+ * - fact: User-provided facts and information
+ * - solution: Successful problem solutions
+ * - conversation: Conversation fragments and context
+ * - instruction: Behavioral instructions for the agent
+ * - behavior: Agent behavior adjustments
+ * - knowledge: Knowledge base documents (RAG)
+ * - summary: Conversation summaries for context compression
+ * - system: System state snapshots (computer info the agent learns)
+ */
+export type MemoryType = 
+  | "fact" 
+  | "solution" 
+  | "conversation" 
+  | "instruction" 
+  | "behavior"
+  | "knowledge"
+  | "summary"
+  | "system";
+
+/**
+ * Human-readable labels for memory types
+ */
+export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
+  fact: "Fact",
+  solution: "Solution",
+  conversation: "Conversation",
+  instruction: "Instruction",
+  behavior: "Behavior",
+  knowledge: "Knowledge",
+  summary: "Summary",
+  system: "System",
+};
+
+/**
+ * Descriptions for memory types
+ */
+export const MEMORY_TYPE_DESCRIPTIONS: Record<MemoryType, string> = {
+  fact: "User-provided facts and information",
+  solution: "Successful problem solutions",
+  conversation: "Conversation fragments and context",
+  instruction: "Behavioral instructions for the agent",
+  behavior: "Agent behavior adjustments",
+  knowledge: "Knowledge base documents (RAG)",
+  summary: "Conversation summaries for context compression",
+  system: "System state snapshots",
+};
 
 /**
  * A memory entry stored in the database
@@ -270,6 +358,18 @@ export interface Memory {
   metadata: MemoryMetadata;
   createdAt: string;
   updatedAt: string;
+  /** Importance score (0-100) for memory prioritization */
+  importance: number;
+  /** Number of times this memory has been accessed */
+  accessCount: number;
+  /** Last time this memory was accessed */
+  lastAccessed?: string;
+  /** Source conversation ID for linking memories to conversations */
+  sourceConversationId?: string;
+  /** Memory scope: global (portable) or machine (local) */
+  scope: MemoryScope;
+  /** Machine identifier for machine-scoped memories */
+  machineId?: string;
 }
 
 /**
@@ -279,6 +379,20 @@ export interface MemoryMetadata {
   tags?: string[];
   source?: string;
   relevanceScore?: number;
+  /** Whether this memory is from the knowledge base */
+  isKnowledgeBase?: boolean;
+  /** Chunk index for knowledge base entries */
+  chunkIndex?: number;
+  /** Total chunks for knowledge base entries */
+  totalChunks?: number;
+  /** Problem description for solution memories */
+  problem?: string;
+  /** Command that solved the problem */
+  solutionCommand?: string;
+  /** Conversation ID this summary is for */
+  summarizedConversationId?: string;
+  /** Message range this summary covers */
+  messageRange?: { start: number; end: number };
   [key: string]: unknown;
 }
 
@@ -287,6 +401,15 @@ export interface MemoryMetadata {
  */
 export interface MemorySearchResult extends Memory {
   similarity: number;
+}
+
+/**
+ * Memory statistics
+ */
+export interface MemoryStats {
+  totalCount: number;
+  byType: Record<string, number>;
+  totalSizeBytes: number;
 }
 
 // =============================================================================
@@ -355,6 +478,22 @@ export interface AgentSettings {
 
   // System prompt customization
   systemPrompt?: string;
+
+  // Agent Zero-like Memory Features
+  /** Auto-save successful solutions to memory */
+  autoMemorySolutions: boolean;
+  /** Automatically extract facts from conversations */
+  autoExtractFacts: boolean;
+  /** Enable conversation summarization for context compression */
+  contextCompressionEnabled: boolean;
+  /** Message count before compressing conversation context */
+  contextCompressionThreshold: number;
+  /** Automatically inject relevant knowledge base entries on each message */
+  autoRagEnabled: boolean;
+  /** Number of days to retain memories (0 = forever) */
+  memoryRetentionDays: number;
+  /** Maximum number of memories to inject into context */
+  maxContextMemories: number;
 }
 
 /**
@@ -382,6 +521,14 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   embeddingModel: 'text-embedding-3-small',
   cohereApiKey: undefined,
   systemPrompt: undefined,
+  // Agent Zero-like Memory Features
+  autoMemorySolutions: true,
+  autoExtractFacts: false,
+  contextCompressionEnabled: false,
+  contextCompressionThreshold: 20,
+  autoRagEnabled: true,
+  memoryRetentionDays: 0,
+  maxContextMemories: 5,
 };
 
 
@@ -568,7 +715,18 @@ export type AgentToolName =
   | "write_file"
   | "list_dir"
   | "move_file"
-  | "copy_file";
+  | "copy_file"
+  // Agent Zero-like Memory Tools
+  | "save_solution"
+  | "query_knowledge"
+  | "get_system_context"
+  | "save_system_state"
+  | "adjust_behavior"
+  | "get_behaviors"
+  | "extract_facts"
+  | "save_conversation_context"
+  | "summarize_conversation"
+  | "get_context";
 
 /**
  * Tool execution request from frontend
@@ -588,4 +746,5 @@ export interface ToolExecutionResponse {
   requiresApproval?: boolean;
   pendingCommandId?: string;
 }
+
 

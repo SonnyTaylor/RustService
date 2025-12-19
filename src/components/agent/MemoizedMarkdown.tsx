@@ -174,3 +174,4 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
 MemoizedMarkdown.displayName = 'MemoizedMarkdown';
 
 export default MemoizedMarkdown;
+

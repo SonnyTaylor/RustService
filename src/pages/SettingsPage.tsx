@@ -39,6 +39,9 @@ import {
   RefreshCw,
   Globe,
   AlertTriangle,
+  Brain,
+  Lightbulb,
+  Search,
   // Icon picker icons
   Folder,
   Database,
@@ -74,6 +77,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 import { useSettings } from '@/components/settings-context';
 import { useTheme } from '@/components/theme-provider';
 import type { SettingsCategory, ThemeMode, LogLevel, BusinessSettings, TechnicianTab } from '@/types/settings';
@@ -2510,6 +2514,148 @@ function AgentPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* Advanced Memory Settings - Agent Zero Features */}
+      {agentSettings?.memoryEnabled && (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Brain className="h-5 w-5 text-purple-500" />
+              Smart Memory
+            </CardTitle>
+            <CardDescription>Agent Zero-inspired memory features</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Auto-save solutions */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <Lightbulb className={`h-5 w-5 ${agentSettings?.autoMemorySolutions !== false ? 'text-green-500' : 'text-muted-foreground'}`} />
+                <div>
+                  <Label className="text-sm font-medium">Auto-Save Solutions</Label>
+                  <p className="text-xs text-muted-foreground">Automatically save successful fixes to memory</p>
+                </div>
+              </div>
+              <Switch
+                checked={agentSettings?.autoMemorySolutions !== false}
+                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoMemorySolutions: v } as any)}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Auto-extract facts */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <FileText className={`h-5 w-5 ${agentSettings?.autoExtractFacts ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                <div>
+                  <Label className="text-sm font-medium">Auto-Extract Facts</Label>
+                  <p className="text-xs text-muted-foreground">Extract and save key facts from conversations</p>
+                </div>
+              </div>
+              <Switch
+                checked={agentSettings?.autoExtractFacts ?? false}
+                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoExtractFacts: v } as any)}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Auto-RAG */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <Search className={`h-5 w-5 ${agentSettings?.autoRagEnabled !== false ? 'text-cyan-500' : 'text-muted-foreground'}`} />
+                <div>
+                  <Label className="text-sm font-medium">Auto-RAG Injection</Label>
+                  <p className="text-xs text-muted-foreground">Auto-inject relevant knowledge into context</p>
+                </div>
+              </div>
+              <Switch
+                checked={agentSettings?.autoRagEnabled !== false}
+                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoRagEnabled: v } as any)}
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Context Compression */}
+            <div className="space-y-3 p-3 rounded-lg border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <RefreshCw className={`h-5 w-5 ${agentSettings?.contextCompressionEnabled ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                  <div>
+                    <Label className="text-sm font-medium">Context Compression</Label>
+                    <p className="text-xs text-muted-foreground">Summarize old messages to save context space</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={agentSettings?.contextCompressionEnabled ?? false}
+                  onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, contextCompressionEnabled: v } as any)}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              {agentSettings?.contextCompressionEnabled && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">Compression Threshold</Label>
+                    <span className="text-sm text-muted-foreground">{agentSettings?.contextCompressionThreshold || 20} messages</span>
+                  </div>
+                  <Slider
+                    value={[agentSettings?.contextCompressionThreshold || 20]}
+                    onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, contextCompressionThreshold: v } as any)}
+                    min={10}
+                    max={50}
+                    step={5}
+                    disabled={isLoading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Start summarizing after this many messages
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Max Context Memories */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Max Context Memories</Label>
+                <span className="text-sm text-muted-foreground">{agentSettings?.maxContextMemories || 5}</span>
+              </div>
+              <Slider
+                value={[agentSettings?.maxContextMemories || 5]}
+                onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, maxContextMemories: v } as any)}
+                min={1}
+                max={15}
+                step={1}
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Number of relevant memories to inject into each response
+              </p>
+            </div>
+
+            {/* Memory Retention */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Memory Retention</Label>
+                <span className="text-sm text-muted-foreground">
+                  {(agentSettings?.memoryRetentionDays || 0) === 0 
+                    ? 'Forever' 
+                    : `${agentSettings?.memoryRetentionDays} days`}
+                </span>
+              </div>
+              <Slider
+                value={[agentSettings?.memoryRetentionDays || 0]}
+                onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, memoryRetentionDays: v } as any)}
+                min={0}
+                max={365}
+                step={7}
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Auto-delete old memories (0 = keep forever)
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

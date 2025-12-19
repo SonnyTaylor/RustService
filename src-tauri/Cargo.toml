@@ -22,7 +22,12 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sysinfo = { version = "0.37", features = ["serde", "component", "user", "network"] }
+sysinfo = { version = "0.37", features = [
+    "serde",
+    "component",
+    "user",
+    "network",
+] }
 gfxinfo = "0.1"
 battery = "0.7"
 reqwest = { version = "0.12", features = ["json"] }
@@ -37,9 +42,16 @@ dirs = "5"
 
 # Agent memory database
 rusqlite = { version = "0.32", features = ["bundled"] }
-zerocopy = "0.8"  # For efficient vector serialization
-urlencoding = "2"  # For URL encoding in search queries
+zerocopy = "0.8"                                        # For efficient vector serialization
+urlencoding = "2"                                       # For URL encoding in search queries
+gethostname = "0.4"                                     # For machine identification in portable memory system
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "libloaderapi", "winbase"] }
+winapi = { version = "0.3", features = [
+    "shellapi",
+    "winuser",
+    "wingdi",
+    "libloaderapi",
+    "winbase",
+] }
 widestring = "1.0"

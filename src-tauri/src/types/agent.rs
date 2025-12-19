@@ -140,20 +140,107 @@ pub struct SearchResult {
 // Memory Types
 // =============================================================================
 
+/// Memory scope determines portability across machines
+/// - Global: Portable knowledge that works on any machine (solutions, knowledge, behaviors)
+/// - Machine: Specific to the current machine (system state, local context)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryScope {
+    /// Portable across all machines - for solutions, knowledge, technician preferences
+    #[default]
+    Global,
+    /// Specific to the current machine - for system state, local diagnostics
+    Machine,
+}
+
+impl MemoryScope {
+    /// Convert from string to MemoryScope
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "machine" => MemoryScope::Machine,
+            _ => MemoryScope::Global, // Default to global for portability
+        }
+    }
+
+    /// Convert to string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MemoryScope::Global => "global",
+            MemoryScope::Machine => "machine",
+        }
+    }
+
+    /// Get the default scope for a memory type
+    /// - System memories are machine-specific
+    /// - Solutions, knowledge, behaviors, instructions, facts are global/portable
+    /// - Conversations and summaries default to machine (can be overridden)
+    pub fn default_for_type(memory_type: &MemoryType) -> Self {
+        match memory_type {
+            MemoryType::System => MemoryScope::Machine,
+            MemoryType::Conversation => MemoryScope::Machine,
+            MemoryType::Summary => MemoryScope::Machine,
+            // Solutions, knowledge, behaviors, instructions, facts are portable
+            _ => MemoryScope::Global,
+        }
+    }
+}
+
 /// Types of memories the agent can store
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryType {
+    /// User-provided facts and information
     Fact,
+    /// Successful problem solutions
     Solution,
+    /// Conversation fragments and context
     Conversation,
+    /// Behavioral instructions for the agent
     Instruction,
+    /// Agent behavior adjustments
     Behavior,
+    /// Knowledge base documents (RAG)
+    Knowledge,
+    /// Conversation summaries for context compression
+    Summary,
+    /// System state snapshots (computer info the agent learns)
+    System,
 }
 
 impl Default for MemoryType {
     fn default() -> Self {
         Self::Fact
+    }
+}
+
+impl MemoryType {
+    /// Convert from string to MemoryType
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "fact" => MemoryType::Fact,
+            "solution" => MemoryType::Solution,
+            "conversation" => MemoryType::Conversation,
+            "instruction" => MemoryType::Instruction,
+            "behavior" => MemoryType::Behavior,
+            "knowledge" => MemoryType::Knowledge,
+            "summary" => MemoryType::Summary,
+            "system" => MemoryType::System,
+            _ => MemoryType::Fact,
+        }
+    }
+
+    /// Convert to string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MemoryType::Fact => "fact",
+            MemoryType::Solution => "solution",
+            MemoryType::Conversation => "conversation",
+            MemoryType::Instruction => "instruction",
+            MemoryType::Behavior => "behavior",
+            MemoryType::Knowledge => "knowledge",
+            MemoryType::Summary => "summary",
+            MemoryType::System => "system",
+        }
     }
 }
 
@@ -168,6 +255,25 @@ pub struct Memory {
     pub metadata: serde_json::Value,
     pub created_at: String,
     pub updated_at: String,
+    /// Importance score (0-100) for memory prioritization
+    #[serde(default)]
+    pub importance: i32,
+    /// Number of times this memory has been accessed
+    #[serde(default)]
+    pub access_count: i32,
+    /// Last time this memory was accessed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_accessed: Option<String>,
+    /// Source conversation ID for linking memories to conversations
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_conversation_id: Option<String>,
+    /// Memory scope: global (portable) or machine (local)
+    #[serde(default)]
+    pub scope: MemoryScope,
+    /// Machine identifier for machine-scoped memories
+    /// Only set when scope is Machine, used for filtering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub machine_id: Option<String>,
 }
 
 /// Memory search result with similarity score
@@ -177,6 +283,15 @@ pub struct MemorySearchResult {
     #[serde(flatten)]
     pub memory: Memory,
     pub similarity: f64,
+}
+
+/// Memory statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryStats {
+    pub total_count: i64,
+    pub by_type: std::collections::HashMap<String, i64>,
+    pub total_size_bytes: i64,
 }
 
 // =============================================================================
@@ -290,6 +405,37 @@ pub struct AgentSettings {
     /// Custom system prompt
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+
+    // ==========================================================================
+    // Agent Zero-like Memory Features
+    // ==========================================================================
+    /// Auto-save successful solutions to memory
+    #[serde(default = "default_true")]
+    pub auto_memory_solutions: bool,
+
+    /// Automatically extract facts from conversations
+    #[serde(default)]
+    pub auto_extract_facts: bool,
+
+    /// Enable conversation summarization for context compression
+    #[serde(default)]
+    pub context_compression_enabled: bool,
+
+    /// Message count before compressing conversation context
+    #[serde(default = "default_compression_threshold")]
+    pub context_compression_threshold: i32,
+
+    /// Automatically inject relevant knowledge base entries on each message
+    #[serde(default = "default_true")]
+    pub auto_rag_enabled: bool,
+
+    /// Number of days to retain memories (0 = forever)
+    #[serde(default)]
+    pub memory_retention_days: i32,
+
+    /// Maximum number of memories to inject into context
+    #[serde(default = "default_max_context_memories")]
+    pub max_context_memories: i32,
 }
 
 fn default_model() -> String {
@@ -315,6 +461,18 @@ fn default_embedding_model() -> String {
     "text-embedding-3-small".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_compression_threshold() -> i32 {
+    20
+}
+
+fn default_max_context_memories() -> i32 {
+    5
+}
+
 impl Default for AgentSettings {
     fn default() -> Self {
         Self {
@@ -332,6 +490,14 @@ impl Default for AgentSettings {
             embedding_model: default_embedding_model(),
             cohere_api_key: None,
             system_prompt: None,
+            // Agent Zero-like Memory Features
+            auto_memory_solutions: true,
+            auto_extract_facts: false,
+            context_compression_enabled: false,
+            context_compression_threshold: default_compression_threshold(),
+            auto_rag_enabled: true,
+            memory_retention_days: 0,
+            max_context_memories: default_max_context_memories(),
         }
     }
 }

@@ -1,15 +1,24 @@
 # Agent System Documentation
 
-The Agent tab provides an agentic AI assistant with human-in-the-loop command execution, persistent memory, and web search capabilities. Inspired by Agent Zero, it enables the AI to help fix computer issues while maintaining user control.
+The Agent tab provides an agentic AI assistant with human-in-the-loop command execution, persistent memory, and web search capabilities. Inspired by Agent Zero, it features smart memory management, auto-solution saving, context compression, and behavior learning.
+
+**Designed for Computer Repair Technicians**: The memory system is portable-first, distinguishing between knowledge that travels with you (solutions, preferences) and information specific to the current client's machine (system state, diagnostics).
 
 ## Overview
 
 The Agent is a conversational AI that can:
 - Execute shell commands (with approval)
 - Search the web for solutions
-- Remember information across sessions
+- Remember information across sessions using vector embeddings
+- **Portable memory** - Solutions and knowledge travel with your USB drive
+- **Machine-specific context** - System state stays tied to each client's computer
 - Access CLI tools in the programs folder
 - Read and write files
+- Automatically save successful solutions
+- Extract and remember facts from conversations
+- Adjust its own behavior based on feedback
+- Compress conversation context for long discussions
+- Query knowledge base documents
 
 **Architecture**: Frontend (React + Vercel AI SDK) ↔ Tauri Commands (Rust) ↔ System
 
@@ -20,11 +29,89 @@ The Agent is a conversational AI that can:
 | `src/pages/AgentPage.tsx` | Main chat interface and state management |
 | `src/components/agent/ChatMessage.tsx` | Message rendering with tool call display |
 | `src/components/agent/CommandApproval.tsx` | Pending command approval UI |
-| `src/components/agent/MemoryBrowser.tsx` | Memory viewing and search |
+| `src/components/agent/MemoryBrowser.tsx` | Memory dashboard with edit, bulk delete, stats |
+| `src/components/agent/KnowledgeBase.tsx` | Document upload for RAG |
+| `src/components/agent/BehaviorSettings.tsx` | Behavior rules management |
 | `src/lib/agent-tools.ts` | Vercel AI SDK tool definitions |
+| `src/lib/agent-memory.ts` | Memory utilities and context injection |
 | `src/types/agent.ts` | TypeScript type definitions |
 | `src-tauri/src/commands/agent.rs` | Rust backend commands |
 | `src-tauri/src/types/agent.rs` | Rust type definitions |
+
+---
+
+## Memory System (Agent Zero-Inspired)
+
+### Portable Memory Design
+
+Since RustService is designed for computer repair technicians who run the tool on multiple client machines, the memory system distinguishes between:
+
+| Scope | Description | Use Case |
+|-------|-------------|----------|
+| **Global** | Travels with you on USB | Solutions, knowledge, technician preferences, behaviors |
+| **Machine** | Stays with current computer | System state, diagnostics, local conversation context |
+
+When you plug your USB into a new client's computer:
+- ✅ Your learned solutions, knowledge base, and preferences are available
+- ✅ You can recall fixes that worked on other machines
+- ❌ You won't see system info from other clients (privacy + relevance)
+- ❌ Old conversation context stays with the machine it was about
+
+### Memory Types
+
+| Type | Default Scope | Purpose |
+|------|---------------|---------|
+| `fact` | **Global** | User-provided information (names, API keys, technician preferences) |
+| `solution` | **Global** | Successful solutions from past interactions (portable!) |
+| `knowledge` | **Global** | Knowledge base documents (RAG) |
+| `behavior` | **Global** | Agent behavior adjustments and personality rules |
+| `instruction` | **Global** | Behavioral rules and user instructions |
+| `conversation` | Machine | Context fragments from chats (about current computer) |
+| `summary` | Machine | Conversation summaries for context compression |
+| `system` | Machine | System state snapshots (this computer's info) |
+
+### Memory Metadata
+
+Each memory can include:
+- `importance` (0-100): Priority score for retrieval
+- `accessCount`: How often the memory has been used
+- `lastAccessed`: Timestamp of last access
+- `sourceConversationId`: Link to originating conversation
+- `tags`: Array of categorization tags
+- `scope`: "global" or "machine" (portability)
+- `machineId`: Computer name (for machine-scoped memories)
+
+### Smart Memory Features
+
+#### Auto-Solution Memorization
+When enabled, the agent automatically saves successful fixes:
+1. Agent runs a command to fix an issue
+2. If the command succeeds (exit code 0)
+3. The problem + solution is saved as a `solution` memory
+4. Future similar issues can recall this solution
+
+#### Auto-Fact Extraction
+Extract key facts from conversations:
+- User preferences and requirements
+- System information mentioned
+- Important context for future reference
+
+#### System State Learning
+When the agent runs system info commands:
+- Results are saved as `system` memories
+- Future queries can recall without re-running commands
+- Reduces need for repeated diagnostic commands
+
+### Storage
+
+- **Location**: `data/agent/memory.db` (SQLite database)
+- **Schema**: Enhanced with importance, access tracking, embeddings, scope
+- **Vector Search**: Cosine similarity for semantic search
+- **Portability**: Single file, copies with USB drive
+- **Machine ID**: Uses computer name (COMPUTERNAME env var) to identify machines
+- **Scope Filtering**: Queries automatically filter machine-scoped memories to current computer
+
+---
 
 ## Tauri Command Reference
 
@@ -33,20 +120,28 @@ The Agent is a conversational AI that can:
 | Command | Parameters | Description |
 |---------|------------|-------------|
 | `queue_agent_command` | `command`, `reason` | Queue a command for approval |
+| `execute_agent_command` | `command`, `reason` | Execute directly (bypasses approval) |
 | `get_pending_commands` | - | Get all pending commands |
 | `approve_command` | `command_id` | Approve and execute command |
 | `reject_command` | `command_id` | Reject a pending command |
 | `get_command_history` | `limit?` | Get executed command history |
 
-### Memory System
+### Memory Operations
 
 | Command | Parameters | Description |
 |---------|------------|-------------|
-| `save_memory` | `memory_type`, `content`, `metadata?`, `embedding?` | Save to memory |
-| `search_memories` | `query`, `memory_type?`, `limit?` | Search memories by content |
-| `get_all_memories` | `memory_type?`, `limit?` | Get all memories |
+| `save_memory` | `memory_type`, `content`, `metadata?`, `embedding?`, `importance?`, `source_conversation_id?`, `scope?` | Save to memory (scope: "global" or "machine") |
+| `search_memories` | `query`, `memory_type?`, `limit?` | Search memories by content (auto-filters by scope) |
+| `search_memories_vector` | `embedding`, `memory_type?`, `limit?` | Semantic search by vector (auto-filters by scope) |
+| `get_all_memories` | `memory_type?`, `limit?` | Get all memories (auto-filters by scope) |
+| `update_memory` | `memory_id`, `content?`, `metadata?`, `importance?` | Update existing memory |
 | `delete_memory` | `memory_id` | Delete a memory |
+| `bulk_delete_memories` | `memory_ids` | Delete multiple memories |
 | `clear_all_memories` | - | Clear all memories |
+| `get_memory_stats` | - | Get memory statistics |
+| `increment_memory_access` | `memory_id` | Track memory usage |
+| `get_recent_memories` | `limit?` | Get recently accessed memories (auto-filters by scope) |
+| `get_machine_id` | - | Get current computer's identifier |
 
 ### Search
 
@@ -61,66 +156,105 @@ The Agent is a conversational AI that can:
 |---------|------------|-------------|
 | `agent_read_file` | `path` | Read file contents |
 | `agent_write_file` | `path`, `content` | Write file contents |
+| `agent_list_dir` | `path` | List directory contents |
+| `agent_move_file` | `src`, `dest` | Move/rename file |
+| `agent_copy_file` | `src`, `dest` | Copy file |
 | `list_agent_programs` | - | List programs in data/programs/ |
+| `list_instruments` | - | List custom scripts in data/instruments/ |
 
-### Settings
+### Conversations
 
 | Command | Parameters | Description |
 |---------|------------|-------------|
-| `get_agent_settings` | - | Get agent configuration |
+| `create_conversation` | `title?` | Create new conversation |
+| `list_conversations` | `limit?` | List all conversations |
+| `get_conversation` | `conversation_id` | Get conversation with messages |
+| `save_conversation_messages` | `conversation_id`, `messages` | Save messages to conversation |
+| `update_conversation_title` | `conversation_id`, `title` | Update conversation title |
+| `delete_conversation` | `conversation_id` | Delete conversation |
 
 ---
 
-## ⚠️ Critical: Tauri Parameter Naming Convention
+## AI SDK Tools
 
-**Tauri does NOT automatically convert between JavaScript camelCase and Rust snake_case for command parameters.**
+### Core Tools
 
-When calling Tauri commands from TypeScript/JavaScript, you **MUST** use snake_case parameter names to match the Rust function signature.
+| Tool | Description |
+|------|-------------|
+| `execute_command` | Queue shell command (HITL) |
+| `search_web` | Search web via Tavily/SearXNG |
+| `read_file` | Read file contents |
+| `write_file` | Write to file (HITL) |
+| `list_dir` | List directory contents |
+| `move_file` | Move/rename file (HITL) |
+| `copy_file` | Copy file (HITL) |
+| `list_programs` | List available CLI tools |
+| `list_instruments` | List custom scripts |
+| `run_instrument` | Run a custom instrument |
 
-### ❌ Wrong (will fail silently or with undefined values)
+### Memory Tools
 
-```typescript
-// Frontend - INCORRECT
-const result = await invoke('approve_command', {
-  commandId: command.id,  // ❌ camelCase won't match Rust
-});
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `save_to_memory` | Configurable | Save information to memory (can specify scope) |
+| `recall_memory` | Auto-filtered | Search through saved memories |
+| `save_solution` | **Global** | Save a successful solution (portable!) |
+| `query_knowledge` | **Global** | Search knowledge base |
+| `get_system_context` | **Machine** | Get stored system info (this computer only) |
+| `save_system_state` | **Machine** | Save system information (this computer) |
+| `extract_facts` | **Global** | Extract and save facts from conversation |
+| `save_conversation_context` | **Machine** | Save conversation fragment |
+| `summarize_conversation` | **Machine** | Save conversation summary |
+| `get_context` | Auto-filtered | Get relevant context for current topic |
+
+### Behavior Tools
+
+| Tool | Description |
+|------|-------------|
+| `adjust_behavior` | Modify agent behavior rules |
+| `get_behaviors` | Get active behavior rules |
+
+---
+
+## Settings
+
+### Agent Settings
+
+```json
+{
+  "agent": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKeys": { "openai": "sk-..." },
+    "approvalMode": "always",
+    "whitelistedCommands": ["^ipconfig", "^ping "],
+    "searchProvider": "tavily",
+    "tavilyApiKey": "tvly-...",
+    "memoryEnabled": true,
+    "embeddingProvider": "openai",
+    "embeddingModel": "text-embedding-3-small",
+    "autoMemorySolutions": true,
+    "autoExtractFacts": false,
+    "contextCompressionEnabled": false,
+    "contextCompressionThreshold": 20,
+    "autoRagEnabled": true,
+    "memoryRetentionDays": 0,
+    "maxContextMemories": 5
+  }
+}
 ```
 
-### ✅ Correct
+### Smart Memory Settings
 
-```typescript
-// Frontend - CORRECT
-const result = await invoke('approve_command', {
-  command_id: command.id,  // ✅ snake_case matches Rust parameter
-});
-```
-
-### Rust Function Signature Reference
-
-```rust
-// The parameter name IS the key you must use in invoke()
-#[tauri::command]
-pub fn approve_command(command_id: String) -> Result<PendingCommand, String>
-                       ^^^^^^^^^^
-                       // Use this exact name in frontend invoke calls
-```
-
-### All Agent Command Parameters
-
-| Command | Frontend Parameter Names (snake_case) |
-|---------|--------------------------------------|
-| `queue_agent_command` | `command`, `reason` |
-| `approve_command` | `command_id` |
-| `reject_command` | `command_id` |
-| `save_memory` | `memory_type`, `content`, `metadata`, `embedding` |
-| `search_memories` | `query`, `memory_type`, `limit` |
-| `get_all_memories` | `memory_type`, `limit` |
-| `delete_memory` | `memory_id` |
-| `search_tavily` | `query`, `api_key` |
-| `search_searxng` | `query`, `instance_url` |
-| `agent_read_file` | `path` |
-| `agent_write_file` | `path`, `content` |
-| `get_command_history` | `limit` |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `autoMemorySolutions` | `true` | Auto-save successful fixes |
+| `autoExtractFacts` | `false` | Extract facts from conversations |
+| `contextCompressionEnabled` | `false` | Enable conversation summarization |
+| `contextCompressionThreshold` | `20` | Messages before compressing |
+| `autoRagEnabled` | `true` | Auto-inject knowledge on messages |
+| `memoryRetentionDays` | `0` | Days to keep memories (0 = forever) |
+| `maxContextMemories` | `5` | Max memories to inject per response |
 
 ---
 
@@ -131,8 +265,8 @@ pub fn approve_command(command_id: String) -> Result<PendingCommand, String>
 | Mode | Behavior |
 |------|----------|
 | `always` | Every command requires manual approval (default, safest) |
-| `whitelist` | Commands matching whitelist patterns auto-execute, others need approval |
-| `yolo` | All commands auto-execute (⚠️ dangerous, use with caution) |
+| `whitelist` | Commands matching whitelist patterns auto-execute |
+| `yolo` | All commands auto-execute (⚠️ dangerous) |
 
 ### Whitelist Patterns
 
@@ -142,231 +276,134 @@ whitelistedCommands: [
   '^ipconfig',        // Commands starting with "ipconfig"
   '^ping ',           // Commands starting with "ping "
   '^systeminfo$',     // Exact match "systeminfo"
-  '^tasklist$',       // Exact match "tasklist"
 ]
 ```
 
-### Flow
+---
 
-1. AI decides to run a command
-2. `queue_agent_command` is called
-3. Backend checks approval mode:
-   - **YOLO mode**: Execute immediately
-   - **Whitelist mode**: Check pattern match, execute if match, queue if not
-   - **Always mode**: Queue for approval
-4. If queued, command appears in `CommandApprovalPanel`
-5. User approves or rejects
-6. On approval, command executes and result returns
+## Knowledge Base (RAG)
 
-### Frontend Usage
+### Uploading Documents
 
-```tsx
-import { CommandApprovalPanel } from '@/components/agent/CommandApproval';
+1. Navigate to Agent → Knowledge tab
+2. Drag and drop files or click to upload
+3. Supported formats: `.txt`, `.md`, `.json`, `.csv`, `.xml`, `.log`, `.yaml`, `.html`
+4. Documents are chunked and embedded for semantic search
 
-<CommandApprovalPanel
-  pendingCommands={pendingCommands}
-  onCommandApproved={(result) => {
-    // Handle approved command result
-    console.log('Output:', result.output);
-  }}
-  onCommandRejected={(result) => {
-    // Handle rejection
-  }}
-/>
-```
+### Chunking Strategy
+
+- Smart paragraph-aware chunking
+- Respects semantic boundaries (sentences, paragraphs)
+- Configurable chunk size with overlap
+- Prevents context loss at chunk boundaries
+
+### Auto-RAG Injection
+
+When enabled (`autoRagEnabled: true`):
+1. On each user message, knowledge base is searched
+2. Relevant chunks are injected into context
+3. Agent uses this information in responses
 
 ---
 
-## Memory System
+## Behavior System
 
-### Memory Types
+### Managing Behaviors
 
-| Type | Purpose |
-|------|---------|
-| `fact` | User-provided information (names, API keys, preferences) |
-| `solution` | Successful solutions from past interactions |
-| `conversation` | Context fragments from chats |
-| `instruction` | Behavioral rules and user instructions |
+- Access via Agent → Behavior tab
+- Add rules to guide agent personality and responses
+- Rules are stored as `behavior` type memories
+- High importance rules take priority
 
-### Storage
+### Agent Self-Adjustment
 
-- **Location**: `data/agent.db` (SQLite database)
-- **Schema**: `memories` table with id, type, content, metadata, timestamps
-- **Portability**: Single file, copies with USB drive
+The agent can adjust its own behavior using `adjust_behavior` tool:
+- Learns from user feedback
+- Remembers preferences
+- Corrects repeated mistakes
 
-### Frontend Usage
+### Behavior Injection
 
-```tsx
-import { invoke } from '@tauri-apps/api/core';
-
-// Save a memory
-await invoke('save_memory', {
-  memory_type: 'solution',
-  content: 'To fix DNS issues, run: ipconfig /flushdns',
-  metadata: { tags: ['networking', 'dns'] },
-});
-
-// Search memories
-const memories = await invoke('search_memories', {
-  query: 'dns issues',
-  memory_type: 'solution',  // optional filter
-  limit: 10,
-});
-
-// Get all memories of a type
-const facts = await invoke('get_all_memories', {
-  memory_type: 'fact',
-  limit: 100,
-});
-```
-
----
-
-## Vercel AI SDK Tools
-
-The agent uses Vercel AI SDK tools defined in `src/lib/agent-tools.ts`:
-
-### Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `executeCommandTool` | Queue shell command for execution |
-| `searchWebTool` | Search web via Tavily/SearXNG |
-| `saveToMemoryTool` | Save information to memory |
-| `recallMemoryTool` | Search through saved memories |
-| `listProgramsTool` | List available CLI tools |
-| `readFileTool` | Read file contents |
-| `writeFileTool` | Write content to file |
-
-### Tool Definition Pattern
-
-```typescript
-import { tool } from 'ai';
-import { z } from 'zod';
-import { invoke } from '@tauri-apps/api/core';
-
-export const myTool = tool({
-  description: 'Description for the AI',
-  parameters: z.object({
-    param1: z.string().describe('What this parameter is for'),
-    param2: z.number().optional(),
-  }),
-  execute: async ({ param1, param2 }) => {
-    try {
-      const result = await invoke('my_tauri_command', {
-        param_1: param1,  // Remember: snake_case for Tauri!
-        param_2: param2,
-      });
-      return { status: 'success', data: result };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
-  },
-});
-```
-
----
-
-## Settings
-
-Settings are stored in `data/settings.json` under the `agent` key:
-
-```json
-{
-  "agent": {
-    "provider": "openai",
-    "model": "gpt-4o-mini",
-    "apiKey": "sk-...",
-    "approvalMode": "always",
-    "whitelistedCommands": ["^ipconfig", "^ping "],
-    "searchProvider": "tavily",
-    "tavilyApiKey": "tvly-...",
-    "memoryEnabled": true,
-    "embeddingModel": "text-embedding-3-small"
-  }
-}
-```
-
-### Provider Options
-
-| Provider | Requirements |
-|----------|--------------|
-| `openai` | API key |
-| `anthropic` | API key |
-| `ollama` | Base URL (local) |
-| `custom` | API key + Base URL (OpenAI-compatible) |
-
-### Settings UI Location
-
-**Settings → Agent** panel contains all configuration options.
-
----
-
-## Adding New Agent Tools
-
-1. **Define Rust Command** in `src-tauri/src/commands/agent.rs`:
-   ```rust
-   #[tauri::command]
-   pub fn my_new_tool(some_param: String) -> Result<MyResult, String> {
-       // Implementation
-   }
-   ```
-
-2. **Register in** `src-tauri/src/lib.rs`:
-   ```rust
-   .invoke_handler(tauri::generate_handler![
-       // ... existing commands
-       commands::my_new_tool,
-   ])
-   ```
-
-3. **Add TypeScript Type** if needed in `src/types/agent.ts`
-
-4. **Create AI SDK Tool** in `src/lib/agent-tools.ts`:
-   ```typescript
-   export const myNewTool = tool({
-     description: 'Tool description for the AI',
-     parameters: z.object({ /* ... */ }),
-     execute: async (args) => {
-       // Call Tauri command with snake_case params
-     },
-   });
-   ```
-
-5. **Register Tool** in `AgentPage.tsx` tools array
+Active behaviors are automatically:
+- Injected into system prompt
+- Prioritized by importance score
+- Applied to all responses
 
 ---
 
 ## Database Schema
 
-The agent uses SQLite (`data/agent.db`) with these tables:
-
-### memories
+### memories table
 
 ```sql
 CREATE TABLE memories (
   id TEXT PRIMARY KEY,
-  type TEXT NOT NULL,        -- 'fact', 'solution', 'conversation', 'instruction'
+  type TEXT NOT NULL,
   content TEXT NOT NULL,
-  metadata TEXT,             -- JSON
-  embedding BLOB,            -- Vector embedding (optional)
+  embedding BLOB,
+  metadata TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  importance INTEGER DEFAULT 50,
+  access_count INTEGER DEFAULT 0,
+  last_accessed TEXT,
+  source_conversation_id TEXT,
+  scope TEXT DEFAULT 'global',    -- 'global' or 'machine'
+  machine_id TEXT                  -- Computer name for machine-scoped memories
 )
 ```
 
-### command_history
+### command_history table
 
 ```sql
 CREATE TABLE command_history (
   id TEXT PRIMARY KEY,
   command TEXT NOT NULL,
   reason TEXT,
-  status TEXT NOT NULL,      -- 'pending', 'approved', 'rejected', 'executed', 'failed'
+  status TEXT NOT NULL,
   output TEXT,
   error TEXT,
   created_at TEXT NOT NULL
 )
+```
+
+### conversations table
+
+```sql
+CREATE TABLE conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+```
+
+### conversation_messages table
+
+```sql
+CREATE TABLE conversation_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+---
+
+## ⚠️ Critical: Tauri Parameter Naming
+
+**Tauri does NOT auto-convert between camelCase and snake_case.**
+
+When calling Tauri commands from TypeScript, use **snake_case** parameter names:
+
+```typescript
+// ❌ WRONG
+await invoke('approve_command', { commandId: id });
+
+// ✅ CORRECT
+await invoke('approve_command', { command_id: id });
 ```
 
 ---
@@ -374,24 +411,31 @@ CREATE TABLE command_history (
 ## Troubleshooting
 
 ### Commands fail silently
-
 Check that frontend invoke calls use **snake_case** parameter names.
 
-### Commands always pending
-
-Check approval mode in Settings → Agent. If set to `always`, all commands queue.
+### Memory not persisting
+1. Check that `data/agent/memory.db` exists
+2. Check `memoryEnabled` is true in settings
+3. Check file permissions on data folder
 
 ### Search not working
-
 Configure search provider in Settings → Agent:
 - **Tavily**: Set API key from [tavily.com](https://tavily.com)
 - **SearXNG**: Set instance URL of your SearXNG deployment
 
-### Memory not persisting
+### Auto-solution not saving
+Check that `autoMemorySolutions` is enabled in Settings → Agent → Smart Memory.
 
-1. Check that `data/agent.db` exists
-2. Check `memoryEnabled` is true in settings
-3. Check file permissions on data folder
+### Knowledge base not being used
+1. Check that documents are uploaded in Agent → Knowledge tab
+2. Verify `autoRagEnabled` is true in settings
+3. Ensure embeddings are configured correctly
+
+### System info not recalled on different machine
+This is expected! System memories are machine-scoped. They're only visible on the computer they were recorded on. This prevents confusion between different clients' computers.
+
+### Solutions not showing on new machine
+Check that solutions were saved with global scope. New solutions should automatically use global scope. If you have old solutions from before the scope system, they default to global and should still work.
 
 ---
 
@@ -400,7 +444,8 @@ Configure search provider in Settings → Agent:
 1. **Never use YOLO mode** on untrusted systems
 2. **Review commands** before approving - the AI can make mistakes
 3. **Whitelist carefully** - regex patterns can match more than expected
-4. **API keys** are stored in plaintext in settings.json
+4. **API keys** are stored in settings.json (consider encryption)
 5. **Commands run as the app user** - they have your permissions
-
-
+6. **Memory contains sensitive data** - protect the data folder
+7. **Machine-scoped memories provide client privacy** - System info from one client won't leak to another
+8. **The memory database travels with USB** - All memories (global and machine) are in the same file, but machine-scoped queries are filtered by computer name
