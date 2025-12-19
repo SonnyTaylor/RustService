@@ -39,9 +39,7 @@ import {
   RefreshCw,
   Globe,
   AlertTriangle,
-  Brain,
-  Lightbulb,
-  Search,
+
   // Icon picker icons
   Folder,
   Database,
@@ -77,7 +75,6 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
-import { Slider } from '@/components/ui/slider';
 import { useSettings } from '@/components/settings-context';
 import { useTheme } from '@/components/theme-provider';
 import type { SettingsCategory, ThemeMode, LogLevel, BusinessSettings, TechnicianTab } from '@/types/settings';
@@ -85,7 +82,7 @@ import type { RequiredProgramStatus } from '@/types/required-programs';
 import type { ServicePreset } from '@/types/service';
 import { COLOR_SCHEMES, DEFAULT_BUSINESS, DEFAULT_TECHNICIAN_TABS, TECHNICIAN_TAB_ICONS } from '@/types/settings';
 import { ServiceMetricsPanel } from '@/components/ServiceMetricsPanel';
-import { AGENT_PROVIDERS, type ProviderApiKeys, EMBEDDING_PROVIDERS, EMBEDDING_MODELS, type EmbeddingProvider } from '@/types/agent';
+import { AGENT_PROVIDERS, type ProviderApiKeys } from '@/types/agent';
 
 // =============================================================================
 // Icon Helper
@@ -2124,10 +2121,7 @@ function AgentPanel() {
     await updateSetting('agent' as any, newSettings as any);
   };
 
-  const handleMemoryToggle = async (checked: boolean) => {
-    const newSettings = { ...agentSettings, memoryEnabled: checked };
-    await updateSetting('agent' as any, newSettings as any);
-  };
+
 
   const handleApiKeyChange = async (value: string) => {
     // Update the API key for the current provider
@@ -2177,7 +2171,7 @@ function AgentPanel() {
       <div>
         <h3 className="text-2xl font-semibold mb-1">AI Agent</h3>
         <p className="text-muted-foreground">
-          Configure the AI provider, execution settings, and memory
+          Configure the AI provider and execution settings
         </p>
       </div>
 
@@ -2397,265 +2391,6 @@ function AgentPanel() {
           )}
         </CardContent>
       </Card>
-
-      {/* Memory Settings */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Database className="h-5 w-5 text-green-500" />
-            Memory & Embeddings
-          </CardTitle>
-          <CardDescription>Agent memory storage and vector embeddings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-            <div className="flex items-center gap-3">
-              <Database className={`h-5 w-5 ${agentSettings?.memoryEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
-              <div>
-                <Label className="text-sm font-medium">Enable Memory</Label>
-                <p className="text-xs text-muted-foreground">Allow the agent to save and recall information</p>
-              </div>
-            </div>
-            <Switch
-              checked={agentSettings?.memoryEnabled ?? true}
-              onCheckedChange={handleMemoryToggle}
-              disabled={isLoading}
-            />
-          </div>
-
-          {agentSettings?.memoryEnabled && (
-            <>
-              {/* Warning about changing embedding models */}
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-amber-600 dark:text-amber-400">Embedding model compatibility</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Changing the embedding model or provider will make old memories incompatible. 
-                    Previously stored memories won't match new searches. Consider clearing memory if you switch models.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Embedding Provider</Label>
-                  <Select 
-                    value={agentSettings?.embeddingProvider || 'openai'} 
-                    onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingProvider: v, embeddingModel: EMBEDDING_MODELS.find(m => m.provider === v)?.id || '' } as any)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EMBEDDING_PROVIDERS.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>
-                          {provider.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Embedding Model</Label>
-                  <Select 
-                    value={agentSettings?.embeddingModel || 'text-embedding-3-small'} 
-                    onValueChange={(v) => updateSetting('agent' as any, { ...agentSettings, embeddingModel: v } as any)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EMBEDDING_MODELS
-                        .filter(m => m.provider === (agentSettings?.embeddingProvider || 'openai'))
-                        .map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.name} ({model.dimensions}d)
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Info about API keys */}
-              {(agentSettings?.embeddingProvider === 'openai' || 
-                agentSettings?.embeddingProvider === 'google' || 
-                agentSettings?.embeddingProvider === 'mistral') && (
-                <p className="text-xs text-muted-foreground p-2 rounded bg-muted/50">
-                  💡 Uses the same API key as your chat provider (configured above). Make sure you have a {agentSettings?.embeddingProvider === 'openai' ? 'OpenAI' : agentSettings?.embeddingProvider === 'google' ? 'Google' : 'Mistral'} API key set in the Provider section.
-                </p>
-              )}
-
-              {/* Cohere API key (only shown when Cohere is selected) */}
-              {agentSettings?.embeddingProvider === 'cohere' && (
-                <div className="space-y-2">
-                  <Label>Cohere API Key</Label>
-                  <Input
-                    type="password"
-                    value={agentSettings?.cohereApiKey || ''}
-                    onChange={(e) => updateSetting('agent' as any, { ...agentSettings, cohereApiKey: e.target.value || undefined } as any)}
-                    placeholder="Enter Cohere API key..."
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Get your API key from <a href="https://dashboard.cohere.com/api-keys" target="_blank" rel="noopener" className="text-primary hover:underline">dashboard.cohere.com</a>
-                  </p>
-                </div>
-              )}
-
-              {/* Ollama info */}
-              {agentSettings?.embeddingProvider === 'ollama' && (
-                <p className="text-xs text-muted-foreground p-2 rounded bg-muted/50">
-                  💡 Ollama embeddings run locally. Make sure you have the embedding model pulled (e.g., <code className="bg-muted px-1 rounded">ollama pull nomic-embed-text</code>).
-                </p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Advanced Memory Settings - Agent Zero Features */}
-      {agentSettings?.memoryEnabled && (
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Brain className="h-5 w-5 text-purple-500" />
-              Smart Memory
-            </CardTitle>
-            <CardDescription>Agent Zero-inspired memory features</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Auto-save solutions */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-3">
-                <Lightbulb className={`h-5 w-5 ${agentSettings?.autoMemorySolutions !== false ? 'text-green-500' : 'text-muted-foreground'}`} />
-                <div>
-                  <Label className="text-sm font-medium">Auto-Save Solutions</Label>
-                  <p className="text-xs text-muted-foreground">Automatically save successful fixes to memory</p>
-                </div>
-              </div>
-              <Switch
-                checked={agentSettings?.autoMemorySolutions !== false}
-                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoMemorySolutions: v } as any)}
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Auto-extract facts */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-3">
-                <FileText className={`h-5 w-5 ${agentSettings?.autoExtractFacts ? 'text-blue-500' : 'text-muted-foreground'}`} />
-                <div>
-                  <Label className="text-sm font-medium">Auto-Extract Facts</Label>
-                  <p className="text-xs text-muted-foreground">Extract and save key facts from conversations</p>
-                </div>
-              </div>
-              <Switch
-                checked={agentSettings?.autoExtractFacts ?? false}
-                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoExtractFacts: v } as any)}
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Auto-RAG */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-3">
-                <Search className={`h-5 w-5 ${agentSettings?.autoRagEnabled !== false ? 'text-cyan-500' : 'text-muted-foreground'}`} />
-                <div>
-                  <Label className="text-sm font-medium">Auto-RAG Injection</Label>
-                  <p className="text-xs text-muted-foreground">Auto-inject relevant knowledge into context</p>
-                </div>
-              </div>
-              <Switch
-                checked={agentSettings?.autoRagEnabled !== false}
-                onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, autoRagEnabled: v } as any)}
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Context Compression */}
-            <div className="space-y-3 p-3 rounded-lg border">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <RefreshCw className={`h-5 w-5 ${agentSettings?.contextCompressionEnabled ? 'text-orange-500' : 'text-muted-foreground'}`} />
-                  <div>
-                    <Label className="text-sm font-medium">Context Compression</Label>
-                    <p className="text-xs text-muted-foreground">Summarize old messages to save context space</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={agentSettings?.contextCompressionEnabled ?? false}
-                  onCheckedChange={(v) => updateSetting('agent' as any, { ...agentSettings, contextCompressionEnabled: v } as any)}
-                  disabled={isLoading}
-                />
-              </div>
-              
-              {agentSettings?.contextCompressionEnabled && (
-                <div className="space-y-2 pt-2 border-t">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Compression Threshold</Label>
-                    <span className="text-sm text-muted-foreground">{agentSettings?.contextCompressionThreshold || 20} messages</span>
-                  </div>
-                  <Slider
-                    value={[agentSettings?.contextCompressionThreshold || 20]}
-                    onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, contextCompressionThreshold: v } as any)}
-                    min={10}
-                    max={50}
-                    step={5}
-                    disabled={isLoading}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Start summarizing after this many messages
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Max Context Memories */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Max Context Memories</Label>
-                <span className="text-sm text-muted-foreground">{agentSettings?.maxContextMemories || 5}</span>
-              </div>
-              <Slider
-                value={[agentSettings?.maxContextMemories || 5]}
-                onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, maxContextMemories: v } as any)}
-                min={1}
-                max={15}
-                step={1}
-                disabled={isLoading}
-              />
-              <p className="text-xs text-muted-foreground">
-                Number of relevant memories to inject into each response
-              </p>
-            </div>
-
-            {/* Memory Retention */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Memory Retention</Label>
-                <span className="text-sm text-muted-foreground">
-                  {(agentSettings?.memoryRetentionDays || 0) === 0 
-                    ? 'Forever' 
-                    : `${agentSettings?.memoryRetentionDays} days`}
-                </span>
-              </div>
-              <Slider
-                value={[agentSettings?.memoryRetentionDays || 0]}
-                onValueChange={([v]) => updateSetting('agent' as any, { ...agentSettings, memoryRetentionDays: v } as any)}
-                min={0}
-                max={365}
-                step={7}
-                disabled={isLoading}
-              />
-              <p className="text-xs text-muted-foreground">
-                Auto-delete old memories (0 = keep forever)
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

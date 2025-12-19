@@ -428,7 +428,6 @@ export function AgentPage() {
     try {
       const tools = getEnabledTools({
         searchProvider: settings.agent.searchProvider || 'none',
-        memoryEnabled: settings.agent.memoryEnabled ?? true,
       });
 
       const result = await streamChat({

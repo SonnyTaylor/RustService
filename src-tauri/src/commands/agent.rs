@@ -637,24 +637,18 @@ pub fn search_memories(
 
     let mut memories = Vec::new();
 
-    // Scope filter: global memories OR machine-scoped with matching machine_id
-    let scope_filter =
-        "(COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?))";
-
     if let Some(mem_type) = memory_type {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at, 
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
-                    scope, machine_id
-             FROM memories 
-             WHERE LOWER(content) LIKE ?1 AND type = ?2 AND {}
-             ORDER BY importance DESC, updated_at DESC
-             LIMIT ?3",
-            scope_filter
-        );
-
+        // With memory type filter: ?1 = pattern, ?2 = type, ?3 = machine_id, ?4 = limit
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at,
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
+                        scope, machine_id
+                 FROM memories
+                 WHERE LOWER(content) LIKE ?1 AND type = ?2 AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?3))
+                 ORDER BY importance DESC, updated_at DESC
+                 LIMIT ?4",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -710,19 +704,17 @@ pub fn search_memories(
             ));
         }
     } else {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at,
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
-                    scope, machine_id
-             FROM memories 
-             WHERE LOWER(content) LIKE ?1 AND {}
-             ORDER BY importance DESC, updated_at DESC
-             LIMIT ?2",
-            scope_filter
-        );
-
+        // Without memory type filter: ?1 = pattern, ?2 = machine_id, ?3 = limit
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at,
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
+                        scope, machine_id
+                 FROM memories 
+                 WHERE LOWER(content) LIKE ?1 AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?2))
+                 ORDER BY importance DESC, updated_at DESC
+                 LIMIT ?3",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -795,24 +787,18 @@ pub fn get_all_memories(
 
     let mut memories = Vec::new();
 
-    // Scope filter: global memories OR machine-scoped with matching machine_id
-    let scope_filter =
-        "(COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?))";
-
     if let Some(mem_type) = memory_type {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at,
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
-                    scope, machine_id
-             FROM memories 
-             WHERE type = ?1 AND {}
-             ORDER BY importance DESC, updated_at DESC
-             LIMIT ?2",
-            scope_filter
-        );
-
+        // With memory type filter: ?1 = type, ?2 = machine_id, ?3 = limit
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at,
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
+                        scope, machine_id
+                 FROM memories
+                 WHERE type = ?1 AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?2))
+                 ORDER BY importance DESC, updated_at DESC
+                 LIMIT ?3",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -865,19 +851,17 @@ pub fn get_all_memories(
             ));
         }
     } else {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at,
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
-                    scope, machine_id
-             FROM memories 
-             WHERE {}
-             ORDER BY importance DESC, updated_at DESC
-             LIMIT ?1",
-            scope_filter
-        );
-
+        // Without memory type filter: ?1 = machine_id, ?2 = limit
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at,
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
+                        scope, machine_id
+                 FROM memories
+                 WHERE (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?1))
+                 ORDER BY importance DESC, updated_at DESC
+                 LIMIT ?2",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -1133,23 +1117,17 @@ pub fn get_recent_memories(limit: Option<usize>) -> Result<Vec<Memory>, String> 
     let current_machine = get_current_machine_id();
     let limit_val = limit.unwrap_or(10) as i64;
 
-    // Scope filter: global memories OR machine-scoped with matching machine_id
-    let scope_filter =
-        "(COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?))";
-
-    let query_str = format!(
-        "SELECT id, type, content, metadata, created_at, updated_at,
-                COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
-                scope, machine_id
-         FROM memories 
-         WHERE last_accessed IS NOT NULL AND {}
-         ORDER BY last_accessed DESC
-         LIMIT ?1",
-        scope_filter
-    );
-
+    // ?1 = machine_id, ?2 = limit
     let mut stmt = conn
-        .prepare(&query_str)
+        .prepare(
+            "SELECT id, type, content, metadata, created_at, updated_at,
+                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id,
+                    scope, machine_id
+             FROM memories
+             WHERE last_accessed IS NOT NULL AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?1))
+             ORDER BY last_accessed DESC
+             LIMIT ?2",
+        )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let rows = stmt
@@ -1238,23 +1216,17 @@ pub fn search_memories_vector(
 
     let mut scored_memories = Vec::new();
 
-    // Scope filter: global memories OR machine-scoped with matching machine_id
-    let scope_filter =
-        "(COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?1))";
-
     // Fetch all memories with embeddings based on type filter
     if let Some(ref mem_type) = memory_type {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at, 
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id, 
-                    embedding, scope, machine_id 
-             FROM memories 
-             WHERE embedding IS NOT NULL AND type = ?2 AND {}",
-            scope_filter
-        );
-
+        // With memory type filter: ?1 = machine_id, ?2 = type
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at, 
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id, 
+                        embedding, scope, machine_id 
+                 FROM memories 
+                 WHERE embedding IS NOT NULL AND type = ?2 AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?1))",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -1321,17 +1293,15 @@ pub fn search_memories_vector(
             }
         }
     } else {
-        let query_str = format!(
-            "SELECT id, type, content, metadata, created_at, updated_at, 
-                    COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id, 
-                    embedding, scope, machine_id 
-             FROM memories 
-             WHERE embedding IS NOT NULL AND {}",
-            scope_filter
-        );
-
+        // Without memory type filter: ?1 = machine_id
         let mut stmt = conn
-            .prepare(&query_str)
+            .prepare(
+                "SELECT id, type, content, metadata, created_at, updated_at, 
+                        COALESCE(importance, 50), COALESCE(access_count, 0), last_accessed, source_conversation_id, 
+                        embedding, scope, machine_id 
+                 FROM memories 
+                 WHERE embedding IS NOT NULL AND (COALESCE(scope, 'global') = 'global' OR (scope = 'machine' AND machine_id = ?1))",
+            )
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
