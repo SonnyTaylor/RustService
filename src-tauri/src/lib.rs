@@ -8,8 +8,10 @@
 //!
 //! - `types` - Data structures for settings and system information
 //! - `commands` - Tauri command handlers exposed to the frontend
+//! - `mcp` - Model Context Protocol server for remote LLM access
 
 mod commands;
+mod mcp;
 mod services;
 mod types;
 
@@ -26,6 +28,23 @@ pub use commands::*;
 /// Tauri application entry point
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load settings and start MCP server in background if enabled
+    if let Ok(settings) = get_settings() {
+        if settings.agent.mcp_server_enabled {
+            if let Some(api_key) = settings.agent.mcp_api_key {
+                eprintln!("[MCP] Starting server on port {}", settings.agent.mcp_port);
+                mcp::start_mcp_server_background(
+                    settings.agent.mcp_port,
+                    api_key,
+                    settings.agent.tavily_api_key,
+                    settings.agent.searxng_url,
+                );
+            } else {
+                eprintln!("[MCP] Server enabled but no API key configured");
+            }
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

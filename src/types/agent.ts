@@ -494,6 +494,14 @@ export interface AgentSettings {
   memoryRetentionDays: number;
   /** Maximum number of memories to inject into context */
   maxContextMemories: number;
+
+  // MCP Server Settings
+  /** Whether the MCP HTTP server is enabled */
+  mcpServerEnabled: boolean;
+  /** API key for MCP server authentication (auto-generated) */
+  mcpApiKey?: string;
+  /** Port for the MCP HTTP server */
+  mcpPort: number;
 }
 
 /**
@@ -529,6 +537,10 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   autoRagEnabled: true,
   memoryRetentionDays: 0,
   maxContextMemories: 5,
+  // MCP Server Settings
+  mcpServerEnabled: false,
+  mcpApiKey: undefined,
+  mcpPort: 8377,
 };
 
 

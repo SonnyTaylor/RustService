@@ -2391,6 +2391,123 @@ function AgentPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* MCP Server Settings */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Globe className="h-5 w-5 text-emerald-500" />
+            MCP Server
+            {agentSettings?.mcpServerEnabled && (
+              <Badge variant="default" className="ml-2 bg-emerald-500">
+                Active
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Enable remote control via Model Context Protocol (MCP)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+            <div>
+              <Label htmlFor="mcp-enabled" className="text-sm font-medium">Enable MCP Server</Label>
+              <p className="text-xs text-muted-foreground">
+                Allow external LLMs like Agent Zero or Claude Desktop to control this machine
+              </p>
+            </div>
+            <Switch
+              id="mcp-enabled"
+              checked={agentSettings?.mcpServerEnabled || false}
+              onCheckedChange={async (checked) => {
+                // Auto-generate API key if enabling and none exists
+                let newSettings = { ...agentSettings, mcpServerEnabled: checked };
+                if (checked && !agentSettings?.mcpApiKey) {
+                  const apiKey = crypto.randomUUID().replace(/-/g, '');
+                  newSettings = { ...newSettings, mcpApiKey: apiKey };
+                }
+                await updateSetting('agent' as any, newSettings as any);
+              }}
+              disabled={isLoading}
+            />
+          </div>
+
+          {agentSettings?.mcpServerEnabled && (
+            <>
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={agentSettings?.mcpApiKey || ''}
+                    readOnly
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(agentSettings?.mcpApiKey || '');
+                    }}
+                    title="Copy to clipboard"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={async () => {
+                      const newKey = crypto.randomUUID().replace(/-/g, '');
+                      const newSettings = { ...agentSettings, mcpApiKey: newKey };
+                      await updateSetting('agent' as any, newSettings as any);
+                    }}
+                    title="Generate new key"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use this key in the Authorization header: Bearer {'<API_KEY>'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Port</Label>
+                <Input
+                  type="number"
+                  value={agentSettings?.mcpPort || 8377}
+                  onChange={async (e) => {
+                    const port = parseInt(e.target.value) || 8377;
+                    const newSettings = { ...agentSettings, mcpPort: port };
+                    await updateSetting('agent' as any, newSettings as any);
+                  }}
+                  min={1024}
+                  max={65535}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Server URL: http://localhost:{agentSettings?.mcpPort || 8377}/mcp
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                      Security Note
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Requires app restart to apply changes. For remote access, use HTTPS via a reverse proxy.
+                      Commands execute based on your approval mode settings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

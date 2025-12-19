@@ -476,6 +476,68 @@ await invoke('approve_command', { command_id: id });
 
 See `docs/agent-system.md` for complete documentation.
 
+## MCP Server (Remote Control)
+
+Model Context Protocol (MCP) server for remote LLM control. Allows external AI systems (Agent Zero, Claude Desktop, etc.) to control this machine via HTTP.
+
+### Architecture
+- **HTTP Server**: Runs on configurable port (default: 8377)
+- **Authentication**: Bearer token in Authorization header
+- **Backend**: Rust module at `src-tauri/src/mcp/`
+- **Settings**: `mcpServerEnabled`, `mcpApiKey`, `mcpPort` in AgentSettings
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/mcp/mod.rs` | Module exports |
+| `src-tauri/src/mcp/server.rs` | HTTP server with bearer auth |
+| `src-tauri/src/mcp/tools.rs` | MCP tool definitions |
+| `src/pages/SettingsPage.tsx` | MCP settings UI in Agent panel |
+
+### Available Tools
+| Tool | Description |
+|------|-------------|
+| `execute_command` | Run PowerShell commands |
+| `read_file` | Read file contents |
+| `write_file` | Write to files |
+| `list_dir` | List directory contents |
+| `move_file` | Move/rename files |
+| `copy_file` | Copy files |
+| `get_system_info` | Get system information |
+| `search_web` | Web search (Tavily/SearXNG) |
+
+### Endpoints
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | GET | No | Health check |
+| `/health` | GET | No | Health check |
+| `/mcp` | POST | Yes | MCP JSON-RPC endpoint |
+
+### Quick Start
+1. Enable in Settings → AI Agent → MCP Server
+2. Copy the auto-generated API key
+3. Restart the app
+4. Connect via: `POST http://localhost:8377/mcp` with `Authorization: Bearer <key>`
+
+### Testing
+```bash
+# Health check
+curl http://localhost:8377/
+
+# MCP endpoint
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  http://localhost:8377/mcp
+```
+
+### Security
+- Always use a strong API key
+- For remote access, use HTTPS via a reverse proxy
+- Commands execute based on approval mode settings
+- Requires app restart after configuration changes
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -502,4 +564,8 @@ See `docs/agent-system.md` for complete documentation.
 | `winapi` | Windows icon extraction (Rust) |
 | `rusqlite` | SQLite database for agent memory (Rust) |
 | `urlencoding` | URL encoding for search queries (Rust) |
+| `rmcp` | Rust MCP SDK for protocol implementation (Rust) |
+| `hyper` | HTTP server for MCP (Rust) |
+| `hyper-util` | HTTP utilities (Rust) |
+| `http-body-util` | HTTP body utilities (Rust) |
 

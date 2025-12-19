@@ -449,3 +449,122 @@ Check that solutions were saved with global scope. New solutions should automati
 6. **Memory contains sensitive data** - protect the data folder
 7. **Machine-scoped memories provide client privacy** - System info from one client won't leak to another
 8. **The memory database travels with USB** - All memories (global and machine) are in the same file, but machine-scoped queries are filtered by computer name
+
+---
+
+## MCP Server (Remote Control)
+
+The MCP (Model Context Protocol) server enables external AI systems to control this machine remotely via HTTP.
+
+### Overview
+
+External LLMs like Agent Zero, Claude Desktop, or custom AI systems can:
+- Execute commands on this machine
+- Read/write files
+- Search the web
+- Get system information
+
+All operations respect the command approval mode setting.
+
+### Architecture
+
+```
+External LLM → HTTP Request → MCP Server (Rust) → Tool Execution → Response
+                    ↓
+            Bearer Token Auth
+```
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mcpServerEnabled` | `false` | Enable/disable server |
+| `mcpApiKey` | Auto-generated | Bearer token for authentication |
+| `mcpPort` | `8377` | HTTP server port |
+
+Settings location: `data/settings.json` under `agent` key.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/mcp/mod.rs` | Module exports |
+| `src-tauri/src/mcp/server.rs` | HTTP server with bearer auth, CORS |
+| `src-tauri/src/mcp/tools.rs` | 8 MCP tool implementations |
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `execute_command` | Run PowerShell commands (Windows) or shell commands (Linux/Mac) |
+| `read_file` | Read file contents |
+| `write_file` | Write content to a file |
+| `list_dir` | List directory contents with file sizes |
+| `move_file` | Move or rename files |
+| `copy_file` | Copy files |
+| `get_system_info` | Get OS and hostname information |
+| `search_web` | Search via Tavily or SearXNG |
+
+### HTTP Endpoints
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/` | GET | No | Health check, returns server status |
+| `/health` | GET | No | Health check, returns server status |
+| `/mcp` | POST | Yes | MCP JSON-RPC endpoint |
+
+### Usage
+
+#### Enable the Server
+
+1. Go to Settings → AI Agent → MCP Server
+2. Toggle "Enable MCP Server"
+3. Copy the auto-generated API key
+4. **Restart the application** (required for changes to take effect)
+
+#### Connect from External LLM
+
+```bash
+# Health check (no auth required)
+curl http://localhost:8377/
+
+# MCP endpoint (auth required)
+curl -X POST \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
+  http://localhost:8377/mcp
+```
+
+#### Remote Access
+
+For access from other machines on the network:
+- Server binds to `0.0.0.0` (all interfaces)
+- Use `http://MACHINE_IP:8377/mcp`
+- For production: Put behind HTTPS reverse proxy (nginx, Caddy)
+
+### Security Considerations
+
+1. **API Key**: Auto-generated, unique per installation. Regenerate if compromised.
+2. **Network Exposure**: Server is accessible from LAN by default. Use firewall rules for internet exposure.
+3. **HTTPS**: For remote access over internet, always use a reverse proxy with TLS.
+4. **Approval Mode**: MCP commands execute immediately without UI approval. Set approval mode accordingly in settings.
+5. **Sensitive Operations**: `execute_command` can run any command with user privileges.
+
+### Troubleshooting
+
+#### Server not starting
+- Check that `mcpServerEnabled` is true in settings
+- Check that `mcpApiKey` is set
+- Check console output for port binding errors
+- Ensure port 8377 is not in use
+
+#### Unauthorized responses
+- Verify Authorization header format: `Bearer <API_KEY>`
+- Check API key matches settings exactly
+- No extra spaces or characters
+
+#### Connection refused
+- App must be running
+- Check firewall allows port 8377
+- Verify correct IP address for remote access

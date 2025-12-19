@@ -45,6 +45,15 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 zerocopy = "0.8"                                        # For efficient vector serialization
 urlencoding = "2"                                       # For URL encoding in search queries
 gethostname = "0.4"                                     # For machine identification in portable memory system
+tracing = "0.1"                                         # For structured logging
+
+# MCP Server
+rmcp = { version = "0.1", features = ["server"] }
+schemars = "0.8"                                        # Required for tool JSON schema generation
+hyper = { version = "1", features = ["server", "http1"] }  # HTTP types
+hyper-util = { version = "0.1", features = ["tokio"] }  # HTTP server utilities  
+http-body-util = "0.1"                                  # HTTP body utilities
+tower-http = { version = "0.6", features = ["cors"] }   # CORS for web clients
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = [

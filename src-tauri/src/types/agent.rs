@@ -436,6 +436,21 @@ pub struct AgentSettings {
     /// Maximum number of memories to inject into context
     #[serde(default = "default_max_context_memories")]
     pub max_context_memories: i32,
+
+    // ==========================================================================
+    // MCP Server Settings
+    // ==========================================================================
+    /// Whether the MCP HTTP server is enabled
+    #[serde(default)]
+    pub mcp_server_enabled: bool,
+
+    /// API key for MCP server authentication (auto-generated)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_api_key: Option<String>,
+
+    /// Port for the MCP HTTP server
+    #[serde(default = "default_mcp_port")]
+    pub mcp_port: u16,
 }
 
 fn default_model() -> String {
@@ -473,6 +488,10 @@ fn default_max_context_memories() -> i32 {
     5
 }
 
+fn default_mcp_port() -> u16 {
+    8377
+}
+
 impl Default for AgentSettings {
     fn default() -> Self {
         Self {
@@ -498,6 +517,10 @@ impl Default for AgentSettings {
             auto_rag_enabled: true,
             memory_retention_days: 0,
             max_context_memories: default_max_context_memories(),
+            // MCP Server Settings
+            mcp_server_enabled: false,
+            mcp_api_key: None,
+            mcp_port: default_mcp_port(),
         }
     }
 }
