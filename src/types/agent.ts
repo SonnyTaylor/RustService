@@ -143,6 +143,35 @@ export const AGENT_PROVIDERS: ProviderConfig[] = [
 
 
 // =============================================================================
+// MCP Client Types
+// =============================================================================
+
+/**
+ * Transport type for MCP server connections
+ */
+export type MCPTransportType = 'sse' | 'http';
+
+/**
+ * Configuration for an external MCP server the agent can connect to
+ */
+export interface MCPServerConfig {
+  /** Unique identifier */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Server URL (e.g., http://localhost:3000/mcp) */
+  url: string;
+  /** Transport type */
+  transportType: MCPTransportType;
+  /** Whether this server is enabled */
+  enabled: boolean;
+  /** Optional API key for authentication */
+  apiKey?: string;
+  /** Optional custom headers */
+  headers?: Record<string, string>;
+}
+
+// =============================================================================
 // Command Approval Types
 // =============================================================================
 
@@ -257,13 +286,17 @@ export interface AgentSettings {
   // System prompt customization
   systemPrompt?: string;
 
-  // MCP Server Settings
+  // MCP Server Settings (serving)
   /** Whether the MCP HTTP server is enabled */
   mcpServerEnabled: boolean;
   /** API key for MCP server authentication (auto-generated) */
   mcpApiKey?: string;
   /** Port for the MCP HTTP server */
   mcpPort: number;
+
+  // MCP Client Settings (connecting to external servers)
+  /** External MCP servers the agent can connect to for additional tools */
+  mcpServers?: MCPServerConfig[];
 }
 
 /**
@@ -291,6 +324,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   mcpServerEnabled: false,
   mcpApiKey: undefined,
   mcpPort: 8377,
+  // MCP Client Settings
+  mcpServers: [],
 };
 
 

@@ -451,6 +451,46 @@ pub struct AgentSettings {
     /// Port for the MCP HTTP server
     #[serde(default = "default_mcp_port")]
     pub mcp_port: u16,
+
+    // ==========================================================================
+    // MCP Client Settings (connecting to external servers)
+    // ==========================================================================
+    /// External MCP servers the agent can connect to for additional tools
+    #[serde(default)]
+    pub mcp_servers: Vec<MCPServerConfig>,
+}
+
+/// Transport type for MCP server connections
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MCPTransportType {
+    #[default]
+    Sse,
+    Http,
+}
+
+/// Configuration for an external MCP server the agent connects to
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MCPServerConfig {
+    /// Unique identifier
+    pub id: String,
+    /// Display name
+    pub name: String,
+    /// Server URL
+    pub url: String,
+    /// Transport type (sse or http)
+    #[serde(default)]
+    pub transport_type: MCPTransportType,
+    /// Whether this server is enabled
+    #[serde(default)]
+    pub enabled: bool,
+    /// Optional API key for authentication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Optional custom headers
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
 fn default_model() -> String {
@@ -521,6 +561,8 @@ impl Default for AgentSettings {
             mcp_server_enabled: false,
             mcp_api_key: None,
             mcp_port: default_mcp_port(),
+            // MCP Client Settings
+            mcp_servers: Vec::new(),
         }
     }
 }

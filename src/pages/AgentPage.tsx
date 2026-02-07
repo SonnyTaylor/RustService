@@ -9,11 +9,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { streamChat } from '@/lib/agent-chat';
 import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
+import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, getMCPState, type MCPManagerState } from '@/lib/mcp-manager';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
 import { ConversationSelector } from '@/components/agent/ConversationSelector';
-import type { AgentSettings, ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages } from '@/types/agent';
+import type { AgentSettings, ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages, MCPServerConfig } from '@/types/agent';
 import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
 import {
   Bot,
@@ -126,6 +127,12 @@ export function AgentPage() {
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState<string>('New Chat');
+  const [mcpState, setMcpState] = useState<MCPManagerState>({
+    servers: [],
+    toolCount: 0,
+    isConnecting: false,
+    errors: [],
+  });
 
   const agentHistoryRef = useRef<CoreMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -141,6 +148,32 @@ export function AgentPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Connect to MCP servers when settings change
+  useEffect(() => {
+    const mcpServers = agentSettings?.mcpServers || [];
+    const enabledServers = mcpServers.filter(s => s.enabled && s.url);
+    
+    if (enabledServers.length > 0) {
+      setMcpState(prev => ({ ...prev, isConnecting: true }));
+      connectMCPServers(mcpServers).then(({ state }) => {
+        setMcpState(state);
+      }).catch(err => {
+        console.error('[MCP] Connection error:', err);
+        setMcpState(prev => ({ ...prev, isConnecting: false }));
+      });
+    } else {
+      // No servers configured, disconnect any existing
+      disconnectMCPServers().then(() => {
+        setMcpState({ servers: [], toolCount: 0, isConnecting: false, errors: [] });
+      });
+    }
+
+    // Cleanup on unmount
+    return () => {
+      disconnectMCPServers();
+    };
+  }, [agentSettings?.mcpServers]);
 
   // Save conversation to backend
   const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
@@ -504,9 +537,13 @@ export function AgentPage() {
     }
 
     try {
-      const tools = getEnabledTools({
+      const localTools = getEnabledTools({
         searchProvider: settings.agent.searchProvider || 'none',
       });
+
+      // Merge local tools with MCP tools from connected servers
+      const mcpTools = getMCPTools();
+      const tools = { ...localTools, ...mcpTools };
 
       const result = await streamChat({
         messages: currentHistory,
@@ -1055,9 +1092,22 @@ export function AgentPage() {
                   rows={1}
                 />
                 <div className="absolute right-1 top-1">
-                  <Button type="submit" size="sm" className="h-8 w-8 p-0" disabled={!input.trim() || isLoading}>
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  </Button>
+                  {isLoading ? (
+                    <Button 
+                      type="button" 
+                      size="sm" 
+                      variant="destructive"
+                      className="h-8 w-8 p-0" 
+                      onClick={stopAgentLoop}
+                      title="Stop generating"
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <Button type="submit" size="sm" className="h-8 w-8 p-0" disabled={!input.trim()}>
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
               {messages.length > 0 && (
@@ -1072,7 +1122,7 @@ export function AgentPage() {
         {/* Right Sidebar (Tools) - wider width */}
         {showRightSidebar && (
           <div className="w-96 border-l bg-muted/10 shrink-0">
-            <AgentRightSidebar onRunInstrument={handleRunInstrument} />
+            <AgentRightSidebar onRunInstrument={handleRunInstrument} mcpState={mcpState} />
           </div>
         )}
       </div>

@@ -82,7 +82,7 @@ import type { RequiredProgramStatus } from '@/types/required-programs';
 import type { ServicePreset } from '@/types/service';
 import { COLOR_SCHEMES, DEFAULT_BUSINESS, DEFAULT_TECHNICIAN_TABS, TECHNICIAN_TAB_ICONS } from '@/types/settings';
 import { ServiceMetricsPanel } from '@/components/ServiceMetricsPanel';
-import { AGENT_PROVIDERS, type ProviderApiKeys } from '@/types/agent';
+import { AGENT_PROVIDERS, type ProviderApiKeys, type MCPServerConfig } from '@/types/agent';
 
 // =============================================================================
 // Icon Helper
@@ -2076,6 +2076,214 @@ function TechnicianTabsPanel() {
   );
 }
 
+/**
+ * MCP Connections Card - Configure external MCP servers the agent connects to
+ */
+function MCPConnectionsCard({ agentSettings, updateSetting, isLoading }: {
+  agentSettings: any;
+  updateSetting: (key: string, value: any) => Promise<void>;
+  isLoading: boolean;
+}) {
+  const [editingServer, setEditingServer] = useState<MCPServerConfig | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+
+  const mcpServers: MCPServerConfig[] = agentSettings?.mcpServers || [];
+
+  const handleAddServer = async () => {
+    const newServer: MCPServerConfig = {
+      id: crypto.randomUUID().replace(/-/g, '').substring(0, 12),
+      name: editingServer?.name || 'New Server',
+      url: editingServer?.url || '',
+      transportType: editingServer?.transportType || 'sse',
+      enabled: true,
+      apiKey: editingServer?.apiKey || undefined,
+    };
+    const newServers = [...mcpServers, newServer];
+    await updateSetting('agent', { ...agentSettings, mcpServers: newServers });
+    setEditingServer(null);
+    setIsAdding(false);
+  };
+
+  const handleUpdateServer = async (id: string, updates: Partial<MCPServerConfig>) => {
+    const newServers = mcpServers.map(s => s.id === id ? { ...s, ...updates } : s);
+    await updateSetting('agent', { ...agentSettings, mcpServers: newServers });
+  };
+
+  const handleRemoveServer = async (id: string) => {
+    const newServers = mcpServers.filter(s => s.id !== id);
+    await updateSetting('agent', { ...agentSettings, mcpServers: newServers });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingServer) return;
+    const existing = mcpServers.find(s => s.id === editingServer.id);
+    if (existing) {
+      await handleUpdateServer(editingServer.id, editingServer);
+    } else {
+      const newServers = [...mcpServers, editingServer];
+      await updateSetting('agent', { ...agentSettings, mcpServers: newServers });
+    }
+    setEditingServer(null);
+    setIsAdding(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Layers className="h-5 w-5 text-blue-500" />
+          MCP Connections
+          {mcpServers.filter(s => s.enabled).length > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {mcpServers.filter(s => s.enabled).length} active
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>
+          Connect to external MCP servers to extend the agent with additional tools
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Server List */}
+        {mcpServers.length > 0 && (
+          <div className="space-y-2">
+            {mcpServers.map(server => (
+              <div key={server.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border border-border/50">
+                <Switch
+                  checked={server.enabled}
+                  onCheckedChange={(checked) => handleUpdateServer(server.id, { enabled: checked })}
+                  disabled={isLoading}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{server.name}</span>
+                    <Badge variant="outline" className="text-[10px] h-5 shrink-0">
+                      {server.transportType.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{server.url}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setEditingServer({ ...server });
+                      setIsAdding(false);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-red-500 hover:text-red-600"
+                    onClick={() => handleRemoveServer(server.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add/Edit Form */}
+        {(isAdding || editingServer) && (
+          <div className="space-y-3 p-4 rounded-lg border border-primary/20 bg-primary/5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={editingServer?.name || ''}
+                  onChange={(e) => setEditingServer(prev => prev ? { ...prev, name: e.target.value } : {
+                    id: crypto.randomUUID().replace(/-/g, '').substring(0, 12),
+                    name: e.target.value,
+                    url: '',
+                    transportType: 'sse' as const,
+                    enabled: true,
+                  })}
+                  placeholder="My MCP Server"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Transport</Label>
+                <Select
+                  value={editingServer?.transportType || 'sse'}
+                  onValueChange={(value) => setEditingServer(prev => prev ? { ...prev, transportType: value as 'sse' | 'http' } : null)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sse">SSE (Server-Sent Events)</SelectItem>
+                    <SelectItem value="http">HTTP (Streamable)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">URL</Label>
+              <Input
+                value={editingServer?.url || ''}
+                onChange={(e) => setEditingServer(prev => prev ? { ...prev, url: e.target.value } : null)}
+                placeholder="http://localhost:3000/mcp"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">API Key (optional)</Label>
+              <Input
+                type="password"
+                value={editingServer?.apiKey || ''}
+                onChange={(e) => setEditingServer(prev => prev ? { ...prev, apiKey: e.target.value || undefined } : null)}
+                placeholder="Bearer token for authentication"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={handleSaveEdit} disabled={!editingServer?.name || !editingServer?.url}>
+                <Check className="h-3.5 w-3.5 mr-1" />
+                {mcpServers.find(s => s.id === editingServer?.id) ? 'Update' : 'Add'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setEditingServer(null); setIsAdding(false); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Add Button */}
+        {!isAdding && !editingServer && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setIsAdding(true);
+              setEditingServer({
+                id: crypto.randomUUID().replace(/-/g, '').substring(0, 12),
+                name: '',
+                url: '',
+                transportType: 'sse',
+                enabled: true,
+              });
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add MCP Server
+          </Button>
+        )}
+
+        {mcpServers.length === 0 && !isAdding && (
+          <p className="text-xs text-muted-foreground text-center py-2">
+            No MCP servers configured. Add one to extend the agent with external tools.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function AgentPanel() {
   const { settings, updateSetting, isLoading } = useSettings();
   const agentSettings = settings.agent;
@@ -2508,6 +2716,9 @@ function AgentPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* MCP Connections (Client) */}
+      <MCPConnectionsCard agentSettings={agentSettings} updateSetting={updateSetting} isLoading={isLoading} />
     </div>
   );
 }

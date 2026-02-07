@@ -160,6 +160,16 @@ You are an AGENTIC assistant. This means:
 4. **Learn from errors** - If a command fails, analyze the error and try a different approach immediately.
 5. **Explain as you go** - Brief explanations before each action, detailed analysis after results.
 
+## ⚠️ CRITICAL: Sequential Execution
+
+**NEVER run multiple commands simultaneously.** You MUST:
+- Execute ONE command at a time
+- Wait for and analyze the result before deciding the next action
+- Only call ONE tool per response step
+- Think through what you need BEFORE running a command
+
+If you need to run multiple commands, do them one-by-one across multiple steps. After each result, explain what you found and what you'll do next.
+
 ## Available Tools
 
 ### execute_command
@@ -194,6 +204,15 @@ List and run custom technician scripts.
 
 ### get_system_info
 Get detailed hardware/OS info (CPU, RAM, disks, GPU, network).
+
+## Thinking Process
+
+For every task, follow this pattern:
+1. **Assess** - What do I need to accomplish? What information do I need first?
+2. **Plan** - What's the sequence of steps? Prioritize gathering info before making changes.
+3. **Execute** - Run ONE command, analyze the result.
+4. **Evaluate** - Did it work? What did I learn? What's next?
+5. **Report** - Summarize findings clearly when the task is complete.
 
 ## PowerShell Quick Reference
 \`\`\`powershell
@@ -232,7 +251,8 @@ Get-ChildItem "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Measure-Objec
 - Keep going until the task is DONE - one tool call is rarely enough
 - If a command fails with a syntax error, FIX IT and retry immediately
 - When showing file listings or system data, format as a clean markdown table
-- Never apologize excessively - just fix the issue and move on`;
+- Never apologize excessively - just fix the issue and move on
+- NEVER run more than ONE tool call per response step`;
 
 /**
  * Stream a chat response from the AI provider
@@ -280,9 +300,9 @@ export async function streamChat(
     messages: sanitizedMessages,
     // Only pass tools if there are any defined - some models don't support tools
     ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
-    // Enable multi-step tool calling - stop after 15 steps max
+    // Enable multi-step tool calling - stop after 10 steps max
     // This allows the model to call tools, get results, and continue generating
-    stopWhen: stepCountIs(15),
+    stopWhen: stepCountIs(10),
     abortSignal,
   });
 
@@ -312,7 +332,7 @@ function sanitizeMessagesForSDK(messages: CoreMessage[]): CoreMessage[] {
 
             if (rawOutput && typeof rawOutput === "object") {
               // Check for error status or isError flag
-              isError = part.isError ?? rawOutput.status === "error" ?? false;
+              isError = part.isError ?? rawOutput.status === "error";
 
               if ("output" in rawOutput) {
                 // Unwrap { status, output } format
