@@ -72,18 +72,18 @@ export function TerminalOutputBlock({
   return (
     <div className={cn(
       "my-2 rounded-lg border overflow-hidden font-mono text-sm",
-      isPending && "border-yellow-500/50 bg-yellow-950/20",
-      isRunning && "border-blue-500/50 bg-blue-950/20",
-      isError && "border-red-500/30 bg-zinc-950",
-      isSuccess && "border-green-500/30 bg-zinc-950",
-      !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-zinc-950"
+      isPending && "border-yellow-500/40 bg-yellow-500/10",
+      isRunning && "border-blue-500/40 bg-blue-500/10",
+      isError && "border-red-500/30 bg-red-500/5",
+      isSuccess && "border-green-500/30 bg-green-500/5",
+      !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-muted/60"
     )}>
       {/* Working Directory Header */}
       {workingDirectory && (
-        <div className="px-3 py-1.5 text-xs text-zinc-500 border-b border-border/30 flex items-center gap-1">
+        <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border/30 flex items-center gap-1">
           <span className="text-green-500">⊞</span>
           <span>Working directory:</span>
-          <span className="text-zinc-400">{workingDirectory}</span>
+          <span className="text-foreground/80">{workingDirectory}</span>
         </div>
       )}
 
@@ -92,7 +92,7 @@ export function TerminalOutputBlock({
         {/* Expand/Collapse Toggle */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="absolute left-0 top-0 bottom-0 w-8 flex items-start justify-center pt-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="absolute left-0 top-0 bottom-0 w-8 flex items-start justify-center pt-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           {expanded ? (
             <ChevronDown className="h-4 w-4" />
@@ -105,7 +105,7 @@ export function TerminalOutputBlock({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-2 top-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-zinc-300"
+          className="absolute right-2 top-1.5 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
           onClick={handleCopy}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -114,13 +114,13 @@ export function TerminalOutputBlock({
         {/* Command Line */}
         <div className="pl-8 pr-10 py-2">
           <div className="flex items-center gap-2">
-            <span className="text-zinc-500 shrink-0">
+            <span className="text-muted-foreground shrink-0">
               …\{workingDirectory?.split('\\').slice(-1)[0] || 'shell'} &gt;
             </span>
             {command ? (
-              <span className="text-zinc-200 break-all">{command}</span>
+              <span className="text-foreground/90 break-all">{command}</span>
             ) : (
-              <span className="text-red-400 italic text-xs">
+              <span className="text-destructive italic text-xs">
                 (no command - malformed tool call)
               </span>
             )}
@@ -132,7 +132,7 @@ export function TerminalOutputBlock({
           <div className="pl-8 pr-4 pb-2 max-h-[250px] overflow-y-auto">
             <pre className={cn(
               "whitespace-pre-wrap break-words text-xs leading-relaxed",
-              isError ? "text-red-400" : "text-zinc-400"
+              isError ? "text-destructive" : "text-muted-foreground"
             )}>
               {displayOutput}
             </pre>
@@ -141,20 +141,20 @@ export function TerminalOutputBlock({
 
         {/* Scrollbar track visible indicator */}
         {expanded && displayOutput && displayOutput.length > 500 && (
-          <div className="absolute right-0 top-10 bottom-0 w-1.5 bg-zinc-800/50" />
+          <div className="absolute right-0 top-10 bottom-0 w-1.5 bg-muted/60" />
         )}
       </div>
 
       {/* Footer */}
       <div className="px-3 py-2 border-t border-border/30 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2 text-zinc-500">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <Terminal className="h-3 w-3" />
           <span>Terminal command</span>
         </div>
         
         <div className="flex items-center gap-2">
           {isRunning && (
-            <span className="flex items-center gap-1.5 text-blue-400">
+            <span className="flex items-center gap-1.5 text-blue-500">
               <Loader2 className="h-3 w-3 animate-spin" />
               Running...
             </span>
@@ -162,7 +162,7 @@ export function TerminalOutputBlock({
           
           {isPending && (
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-yellow-500 font-medium">
+              <span className="flex items-center gap-1 text-yellow-600 font-medium">
                 <AlertCircle className="h-3 w-3" />
                 Approval Required
               </span>
@@ -200,7 +200,7 @@ export function TerminalOutputBlock({
           {!isRunning && !isPending && (
             <span className={cn(
               "flex items-center gap-1",
-              isError ? 'text-red-400' : 'text-green-400'
+              isError ? 'text-destructive' : 'text-green-600'
             )}>
               {isError ? (
                 <X className="h-3 w-3" />

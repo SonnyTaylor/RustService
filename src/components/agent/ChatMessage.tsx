@@ -9,7 +9,7 @@
  */
 
 import { memo } from 'react';
-import { User } from 'lucide-react';
+import { User, Bot } from 'lucide-react';
 import { AgentActivityItem } from './AgentActivityItem';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
 import type { MessageRole } from '@/types/agent';
@@ -47,7 +47,7 @@ export const ChatMessage = memo(function ChatMessage({
   if (isSystem) {
     return (
       <div className="flex justify-center my-4">
-        <span className="text-xs text-zinc-500 px-3 py-1 rounded-full bg-zinc-800/50">
+        <span className="text-xs text-muted-foreground px-3 py-1 rounded-full bg-muted/50">
           {content}
         </span>
       </div>
@@ -65,7 +65,7 @@ export const ChatMessage = memo(function ChatMessage({
 
         {/* Content */}
         <div className="flex-1 min-w-0 flex flex-col items-end">
-          <div className="flex items-center gap-2 text-xs text-zinc-500 flex-row-reverse mb-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-row-reverse mb-1">
             <span className="font-medium">You</span>
             {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
           </div>
@@ -79,48 +79,62 @@ export const ChatMessage = memo(function ChatMessage({
 
   // Assistant messages - use memoized markdown for performance
   return (
-    <div className="py-3">
-      {/* Assistant text content - shown first */}
-      {content && (
-        <div className="text-zinc-300">
-          <MemoizedMarkdown content={content} id={messageId} />
-        </div>
-      )}
+    <div className="flex gap-3 py-3">
+      {/* Assistant Avatar */}
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
+        <Bot className="h-4 w-4" />
+      </div>
 
-      {/* Activities (shown after content) */}
-      {activities && activities.length > 0 && (
-        <div className="space-y-0.5 mt-3">
-          {activities.map((activity) => (
-            <AgentActivityItem 
-              key={activity.id} 
-              activity={activity} 
-              onApprove={onActivityApprove}
-              onReject={onActivityReject}
-            />
-          ))}
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+          <span className="font-medium">Agent</span>
+          {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
         </div>
-      )}
 
-      {/* Streaming indicator */}
-      {isStreaming && !content && (
-        <div className="flex items-center gap-2 text-zinc-500">
-          <span className="text-sm">Thinking</span>
-          <span className="flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-          </span>
-        </div>
-      )}
+        {/* Assistant text content */}
+        {content && (
+          <div className="text-foreground/90">
+            <MemoizedMarkdown content={content} id={messageId} />
+          </div>
+        )}
 
-      {/* Streaming cursor */}
-      {isStreaming && content && (
-        <span className="inline-block w-2 h-4 ml-1 bg-zinc-500 animate-pulse" />
-      )}
+        {/* Activities (shown after content) */}
+        {activities && activities.length > 0 && (
+          <div className="space-y-0.5 mt-3">
+            {activities.map((activity) => (
+              <AgentActivityItem 
+                key={activity.id} 
+                activity={activity} 
+                onApprove={onActivityApprove}
+                onReject={onActivityReject}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Streaming indicator */}
+        {isStreaming && !content && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span className="text-sm">Thinking</span>
+            <span className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+          </div>
+        )}
+
+        {/* Streaming cursor */}
+        {isStreaming && content && (
+          <span className="inline-block w-2 h-4 ml-1 bg-muted-foreground/70 animate-pulse" />
+        )}
+      </div>
     </div>
   );
 });
 
 export default ChatMessage;
+
 
 

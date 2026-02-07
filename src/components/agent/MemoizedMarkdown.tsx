@@ -43,7 +43,7 @@ const MemoizedMarkdownBlock = memo(
             if (isInline) {
               return (
                 <code
-                  className="px-1.5 py-0.5 rounded bg-zinc-800 font-mono text-sm text-zinc-300"
+                  className="px-1.5 py-0.5 rounded bg-muted font-mono text-sm text-foreground"
                   {...props}
                 >
                   {children}
@@ -52,14 +52,14 @@ const MemoizedMarkdownBlock = memo(
             }
 
             return (
-              <div className="relative group rounded-lg overflow-hidden bg-zinc-900 border border-border/30 my-2">
+              <div className="relative group rounded-lg overflow-hidden bg-muted/80 border border-border/30 my-2">
                 {match?.[1] && (
-                  <div className="px-3 py-1.5 border-b border-border/30 bg-zinc-800/50">
-                    <span className="text-xs text-zinc-500 font-mono">{match[1]}</span>
+                  <div className="px-3 py-1.5 border-b border-border/30 bg-muted">
+                    <span className="text-xs text-muted-foreground font-mono">{match[1]}</span>
                   </div>
                 )}
                 <pre className="p-3 overflow-x-auto text-sm">
-                  <code className="font-mono text-zinc-300">{children}</code>
+                  <code className="font-mono text-foreground">{children}</code>
                 </pre>
               </div>
             );
@@ -70,41 +70,41 @@ const MemoizedMarkdownBlock = memo(
           },
           // Lists
           ul({ children }) {
-            return <ul className="list-disc list-inside space-y-1 my-2 text-zinc-300">{children}</ul>;
+            return <ul className="list-disc list-inside space-y-1 my-2 text-foreground/90">{children}</ul>;
           },
           ol({ children }) {
-            return <ol className="list-decimal list-inside space-y-1 my-2 text-zinc-300">{children}</ol>;
+            return <ol className="list-decimal list-inside space-y-1 my-2 text-foreground/90">{children}</ol>;
           },
           li({ children }) {
             return <li className="text-sm">{children}</li>;
           },
           // Paragraphs
           p({ children }) {
-            return <p className="my-1.5 leading-relaxed text-zinc-300">{children}</p>;
+            return <p className="my-1.5 leading-relaxed text-foreground/90">{children}</p>;
           },
           // Emphasis
           strong({ children }) {
-            return <strong className="font-semibold text-zinc-100">{children}</strong>;
+            return <strong className="font-semibold text-foreground">{children}</strong>;
           },
           em({ children }) {
             return <em className="italic">{children}</em>;
           },
           // Headers
           h1({ children }) {
-            return <h1 className="text-lg font-bold mt-3 mb-2 text-zinc-100">{children}</h1>;
+            return <h1 className="text-lg font-bold mt-3 mb-2 text-foreground">{children}</h1>;
           },
           h2({ children }) {
-            return <h2 className="text-base font-bold mt-3 mb-1.5 text-zinc-100">{children}</h2>;
+            return <h2 className="text-base font-bold mt-3 mb-1.5 text-foreground">{children}</h2>;
           },
           h3({ children }) {
-            return <h3 className="text-sm font-bold mt-2 mb-1 text-zinc-100">{children}</h3>;
+            return <h3 className="text-sm font-bold mt-2 mb-1 text-foreground">{children}</h3>;
           },
           // Links
           a({ href, children }) {
             return (
               <a
                 href={href}
-                className="text-blue-400 underline underline-offset-2 hover:text-blue-300"
+                className="text-primary underline underline-offset-2 hover:text-primary/80"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -115,14 +115,14 @@ const MemoizedMarkdownBlock = memo(
           // Blockquotes
           blockquote({ children }) {
             return (
-              <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 italic text-zinc-400">
+              <blockquote className="border-l-2 border-border pl-3 my-2 italic text-muted-foreground">
                 {children}
               </blockquote>
             );
           },
           // Horizontal rules
           hr() {
-            return <hr className="my-3 border-zinc-700" />;
+            return <hr className="my-3 border-border" />;
           },
         }}
       >
@@ -160,7 +160,7 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
   if (!content) return null;
 
   return (
-    <div className="prose prose-sm prose-invert max-w-none">
+    <div className="prose prose-sm max-w-none dark:prose-invert">
       {blocks.map((block, index) => (
         <MemoizedMarkdownBlock 
           key={`${id}-block-${index}`} 
@@ -174,4 +174,5 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
 MemoizedMarkdown.displayName = 'MemoizedMarkdown';
 
 export default MemoizedMarkdown;
+
 

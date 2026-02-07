@@ -11,7 +11,7 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
-import type { SearchResult, FileEntry, Instrument } from '@/types/agent';
+import type { SearchResult, FileEntry, Instrument, Memory } from '@/types/agent';
 
 // =============================================================================
 // Common Output Schemas
@@ -312,6 +312,79 @@ export const runInstrumentTool = tool({
 });
 
 // =============================================================================
+// Memory Tools (Server-Side)
+// =============================================================================
+
+/**
+ * Save information to memory for future recall
+ */
+export const saveToMemoryTool = tool({
+  description: 'Save important information to memory for future recall. Use this to remember facts about the user, solutions to problems, system states, or behavioral rules. Memory persists across conversations.',
+  inputSchema: z.object({
+    content: z.string().describe('The information to save'),
+    memory_type: z.enum(['fact', 'solution', 'system', 'instruction', 'knowledge']).describe(
+      'Type of memory: fact (user info), solution (fix for a problem), system (system state info), instruction (behavioral rule), knowledge (general knowledge)'
+    ),
+    importance: z.number().min(0).max(100).default(70).describe('How important this memory is (0-100)'),
+  }),
+  execute: async ({ content, memory_type, importance }) => {
+    try {
+      const memory = await invoke<Memory>('save_memory', {
+        memory_type,
+        content,
+        metadata: { source: 'agent-tool' },
+        importance,
+      });
+      return { status: 'success', memoryId: memory.id, message: `Saved ${memory_type} memory` };
+    } catch (error) {
+      return { status: 'error', error: String(error) };
+    }
+  }
+});
+
+/**
+ * Recall information from memory using semantic search
+ */
+export const recallMemoryTool = tool({
+  description: 'Search your memory for relevant information. Use this when you need to recall previously saved facts, solutions, instructions, or system info. Useful before running commands to check if you already know the answer.',
+  inputSchema: z.object({
+    query: z.string().describe('What to search for in memory'),
+    memory_type: z.enum(['fact', 'solution', 'system', 'instruction', 'knowledge', 'behavior', 'all']).optional().describe(
+      'Filter by memory type, or "all" to search everything'
+    ),
+    limit: z.number().min(1).max(20).default(5).describe('Maximum number of results'),
+  }),
+  execute: async ({ query, memory_type, limit }) => {
+    try {
+      const typeFilter = memory_type === 'all' ? undefined : memory_type;
+      const memories = await invoke<Memory[]>('search_memories', {
+        query,
+        memory_type: typeFilter,
+        limit: limit || 5,
+      });
+      
+      if (memories.length === 0) {
+        return { status: 'success', results: [], message: 'No matching memories found' };
+      }
+
+      return {
+        status: 'success',
+        results: memories.map(m => ({
+          id: m.id,
+          type: m.type,
+          content: m.content,
+          importance: m.importance,
+          createdAt: m.createdAt,
+        })),
+        message: `Found ${memories.length} matching memories`,
+      };
+    } catch (error) {
+      return { status: 'error', error: String(error) };
+    }
+  }
+});
+
+// =============================================================================
 // Tool Collection
 // =============================================================================
 
@@ -329,6 +402,8 @@ export const agentTools = {
   list_dir: listDirTool,
   move_file: moveFileTool,
   copy_file: copyFileTool,
+  save_to_memory: saveToMemoryTool,
+  recall_memory: recallMemoryTool,
 } satisfies ToolSet;
 
 /**
@@ -382,6 +457,8 @@ export function getEnabledTools(settings: {
     copy_file: copyFileTool,
     list_instruments: listInstrumentsTool,
     run_instrument: runInstrumentTool,
+    save_to_memory: saveToMemoryTool,
+    recall_memory: recallMemoryTool,
   };
 
   // Add search if configured

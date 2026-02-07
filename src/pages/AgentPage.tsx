@@ -132,7 +132,7 @@ export function AgentPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
 
-  const agentSettings = settings.agent as AgentSettings | undefined;
+  const agentSettings = settings.agent;
   const currentProvider = agentSettings?.provider || 'openai';
   const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
   const isConfigured = currentApiKey.length > 0;
@@ -895,14 +895,39 @@ export function AgentPage() {
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-4 max-w-3xl mx-auto w-full space-y-4">
               {messages.length === 0 ? (
-                <div className="flex items-center justify-center min-h-[300px]">
-                  <div className="text-center space-y-4 max-w-sm">
-                    <Bot className="h-12 w-12 mx-auto text-muted-foreground/30" />
-                    <h3 className="font-medium">Ready to assist</h3>
-                    <p className="text-sm text-muted-foreground">
-                      I can run scripts, manage files, and remember context. 
-                      Check the sidebar for tools.
-                    </p>
+                <div className="flex items-center justify-center min-h-[400px]">
+                  <div className="text-center space-y-6 max-w-lg">
+                    <div className="relative mx-auto w-16 h-16">
+                      <div className="absolute inset-0 rounded-2xl bg-primary/10 animate-pulse" />
+                      <div className="relative w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                        <Sparkles className="h-8 w-8 text-primary" />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">What can I help with?</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        I can run commands, manage files, search the web, and remember context across conversations.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { icon: '🔍', text: 'Run a quick system diagnostic' },
+                        { icon: '📂', text: 'List files in the programs folder' },
+                        { icon: '⚡', text: 'Check disk health with SMART data' },
+                        { icon: '🧹', text: 'Help me clean up temp files' },
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion.text}
+                          onClick={() => {
+                            setInput(suggestion.text);
+                          }}
+                          className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/60 hover:border-border transition-colors text-left text-sm group"
+                        >
+                          <span className="text-base">{suggestion.icon}</span>
+                          <span className="text-muted-foreground group-hover:text-foreground transition-colors">{suggestion.text}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -967,5 +992,6 @@ export function AgentPage() {
 }
 
 export default AgentPage;
+
 
 

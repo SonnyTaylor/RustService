@@ -553,12 +553,5 @@ pub struct CommandExecutionResult {
     pub stderr: String,
 }
 
-/// Represents a custom instrument script
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Instrument {
-    pub name: String,
-    pub description: String,
-    pub path: String,
-    pub extension: String,
-}
+
+

@@ -432,7 +432,8 @@ export type SettingKey =
   | 'business.technicians'
   | 'technicianTabs.tabs'
   | 'technicianTabs.useFavicons'
-  | 'presets.customPresets';
+  | 'presets.customPresets'
+  | 'agent';
 
 /**
  * Type-safe mapping of setting keys to their value types
@@ -458,6 +459,7 @@ export type SettingValueType<K extends SettingKey> =
   K extends 'technicianTabs.tabs' ? TechnicianTab[] :
   K extends 'technicianTabs.useFavicons' ? boolean :
   K extends 'presets.customPresets' ? ServicePreset[] :
+  K extends 'agent' ? AgentSettings :
   never;
 
 /**

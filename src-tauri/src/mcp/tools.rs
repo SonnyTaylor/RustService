@@ -53,6 +53,7 @@ pub struct RustServiceTools {
 }
 
 impl RustServiceTools {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             tavily_api_key: None,

@@ -2103,22 +2103,22 @@ function AgentPanel() {
       // Keep model if user typed something, otherwise clear for new provider
       model: agentSettings?.model || '',
     };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleModelChange = async (value: string) => {
     const newSettings = { ...agentSettings, model: value };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleApprovalModeChange = async (value: string) => {
     const newSettings = { ...agentSettings, approvalMode: value };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleSearchProviderChange = async (value: string) => {
     const newSettings = { ...agentSettings, searchProvider: value };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
 
@@ -2130,29 +2130,29 @@ function AgentPanel() {
       [currentProvider]: value || undefined,
     };
     const newSettings = { ...agentSettings, apiKeys: newApiKeys };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleBaseUrlChange = async (value: string) => {
     const newSettings = { ...agentSettings, baseUrl: value || undefined };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleTavilyKeyChange = async (value: string) => {
     const newSettings = { ...agentSettings, tavilyApiKey: value || undefined };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const handleSearxngUrlChange = async (value: string) => {
     const newSettings = { ...agentSettings, searxngUrl: value || undefined };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   const addWhitelistPattern = async () => {
     if (!whitelistInput.trim()) return;
     const newPatterns = [...(agentSettings?.whitelistedCommands || []), whitelistInput.trim()];
     const newSettings = { ...agentSettings, whitelistedCommands: newPatterns };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
     setWhitelistInput('');
   };
 
@@ -2160,7 +2160,7 @@ function AgentPanel() {
     const newPatterns = [...(agentSettings?.whitelistedCommands || [])];
     newPatterns.splice(index, 1);
     const newSettings = { ...agentSettings, whitelistedCommands: newPatterns };
-    await updateSetting('agent' as any, newSettings as any);
+    await updateSetting('agent', newSettings);
   };
 
   // Count configured providers (those with API keys)
@@ -2426,7 +2426,7 @@ function AgentPanel() {
                   const apiKey = crypto.randomUUID().replace(/-/g, '');
                   newSettings = { ...newSettings, mcpApiKey: apiKey };
                 }
-                await updateSetting('agent' as any, newSettings as any);
+                await updateSetting('agent', newSettings);
               }}
               disabled={isLoading}
             />
@@ -2459,7 +2459,7 @@ function AgentPanel() {
                     onClick={async () => {
                       const newKey = crypto.randomUUID().replace(/-/g, '');
                       const newSettings = { ...agentSettings, mcpApiKey: newKey };
-                      await updateSetting('agent' as any, newSettings as any);
+                      await updateSetting('agent', newSettings);
                     }}
                     title="Generate new key"
                   >
@@ -2479,7 +2479,7 @@ function AgentPanel() {
                   onChange={async (e) => {
                     const port = parseInt(e.target.value) || 8377;
                     const newSettings = { ...agentSettings, mcpPort: port };
-                    await updateSetting('agent' as any, newSettings as any);
+                    await updateSetting('agent', newSettings);
                   }}
                   min={1024}
                   max={65535}

@@ -24,6 +24,7 @@ type BoxBody = Full<Bytes>;
 // =============================================================================
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcRequest {
     jsonrpc: String,
     method: String,

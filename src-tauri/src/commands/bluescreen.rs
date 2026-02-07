@@ -395,7 +395,7 @@ pub async fn get_bsod_details(dump_path: String) -> Result<BsodDetails, String> 
 }
 
 /// Get crash info from Windows Event Log
-async fn get_crash_info_from_events(crash_time: &str) -> (String, Option<String>, Vec<String>) {
+async fn get_crash_info_from_events(_crash_time: &str) -> (String, Option<String>, Vec<String>) {
     let output = Command::new("powershell")
         .args([
             "-NoProfile",

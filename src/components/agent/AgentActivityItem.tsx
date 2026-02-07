@@ -45,7 +45,7 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
       case 'searched':
         return { Icon: Search, label: 'Searched', color: 'text-blue-400' };
       case 'analyzed_file':
-        return { Icon: FileText, label: 'Analyzed', color: 'text-zinc-400' };
+        return { Icon: FileText, label: 'Analyzed', color: 'text-muted-foreground' };
       case 'ran_command':
         return { Icon: Terminal, label: 'Ran', color: 'text-green-400' };
       case 'read_file':
@@ -65,7 +65,7 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
       case 'memory_recall':
         return { Icon: Brain, label: 'Recalled from memory', color: 'text-pink-400' };
       default:
-        return { Icon: FileText, label: 'Action', color: 'text-zinc-400' };
+        return { Icon: FileText, label: 'Action', color: 'text-muted-foreground' };
     }
   })();
 
@@ -150,11 +150,11 @@ function FileOperationBlock({
   return (
     <div className={cn(
       "my-2 rounded-lg border p-3 text-sm",
-      isPending && "border-yellow-500/50 bg-yellow-950/20",
-      isRunning && "border-blue-500/50 bg-blue-950/20",
-      isError && "border-red-500/30 bg-red-950/10",
-      isSuccess && "border-green-500/30 bg-green-950/10",
-      !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-zinc-900/50"
+      isPending && "border-yellow-500/40 bg-yellow-500/10",
+      isRunning && "border-blue-500/40 bg-blue-500/10",
+      isError && "border-red-500/30 bg-red-500/10",
+      isSuccess && "border-green-500/30 bg-green-500/10",
+      !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-muted/60"
     )}>
       <div className="flex items-center gap-3">
         <config.Icon className={cn(
@@ -164,8 +164,8 @@ function FileOperationBlock({
         )} />
         
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-zinc-200 truncate">{config.label}</div>
-          <div className="text-xs text-zinc-400 truncate font-mono">{description}</div>
+          <div className="font-medium text-foreground truncate">{config.label}</div>
+          <div className="text-xs text-muted-foreground truncate font-mono">{description}</div>
         </div>
 
         {isPending && (
@@ -252,7 +252,7 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
 
   // Standard inline rendering for other activities
   return (
-    <div className="flex items-center gap-2 py-1.5 text-sm text-zinc-400">
+    <div className="flex items-center gap-2 py-1.5 text-sm text-muted-foreground">
       <config.Icon className={cn(
         'h-4 w-4 flex-shrink-0', 
         config.color,
@@ -262,14 +262,14 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
       
       {/* Activity-specific content */}
       {activity.type === 'analyzed_directory' && (
-        <span className="text-zinc-300 font-mono text-xs truncate">{activity.path}</span>
+        <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
       )}
       
       {activity.type === 'searched' && (
         <>
-          <span className="text-zinc-300 truncate">"{activity.query}"</span>
+          <span className="text-foreground/90 truncate">"{activity.query}"</span>
           {activity.resultCount !== undefined && (
-            <span className="text-zinc-500 text-xs ml-auto shrink-0">{activity.resultCount} results</span>
+            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
           )}
         </>
       )}
@@ -292,31 +292,31 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
 
       {activity.type === 'list_dir' && (
         <>
-          <span className="text-zinc-300 font-mono text-xs truncate">{activity.path}</span>
+          <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
           {activity.entryCount !== undefined && (
-            <span className="text-zinc-500 text-xs ml-auto shrink-0">{activity.entryCount} items</span>
+            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.entryCount} items</span>
           )}
         </>
       )}
       
       {activity.type === 'web_search' && (
         <>
-          <span className="text-zinc-300 truncate">{activity.query}</span>
+          <span className="text-foreground/90 truncate">{activity.query}</span>
           {activity.resultCount !== undefined && (
-            <span className="text-zinc-500 text-xs ml-auto shrink-0">{activity.resultCount} results</span>
+            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
           )}
         </>
       )}
       
       {activity.type === 'memory_save' && (
-        <span className="text-zinc-300">{activity.memoryType}</span>
+        <span className="text-foreground/90">{activity.memoryType}</span>
       )}
       
       {activity.type === 'memory_recall' && (
         <>
-          <span className="text-zinc-300 truncate">{activity.query}</span>
+          <span className="text-foreground/90 truncate">{activity.query}</span>
           {activity.resultCount !== undefined && (
-            <span className="text-zinc-500 text-xs ml-auto shrink-0">{activity.resultCount} results</span>
+            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
           )}
         </>
       )}

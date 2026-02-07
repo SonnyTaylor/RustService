@@ -727,18 +727,7 @@ export type AgentToolName =
   | "write_file"
   | "list_dir"
   | "move_file"
-  | "copy_file"
-  // Agent Zero-like Memory Tools
-  | "save_solution"
-  | "query_knowledge"
-  | "get_system_context"
-  | "save_system_state"
-  | "adjust_behavior"
-  | "get_behaviors"
-  | "extract_facts"
-  | "save_conversation_context"
-  | "summarize_conversation"
-  | "get_context";
+  | "copy_file";
 
 /**
  * Tool execution request from frontend
@@ -758,5 +747,6 @@ export interface ToolExecutionResponse {
   requiresApproval?: boolean;
   pendingCommandId?: string;
 }
+
 
 

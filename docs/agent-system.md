@@ -568,3 +568,4 @@ For access from other machines on the network:
 - App must be running
 - Check firewall allows port 8377
 - Verify correct IP address for remote access
+

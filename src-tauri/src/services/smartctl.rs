@@ -319,7 +319,7 @@ struct NvmeHealthLog {
     power_on_hours: Option<u64>,
     unsafe_shutdowns: Option<u64>,
     media_errors: Option<u64>,
-    num_err_log_entries: Option<u64>,
+    _num_err_log_entries: Option<u64>,
     data_units_written: Option<u64>,
     data_units_read: Option<u64>,
     temperature_sensors: Option<Vec<i32>>,

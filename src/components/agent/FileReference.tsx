@@ -26,19 +26,19 @@ function getFileIcon(filename: string) {
     case 'tsx':
     case 'js':
     case 'jsx':
-      return { Icon: FileCode, color: 'text-blue-400' };
+      return { Icon: FileCode, color: 'text-blue-500' };
     case 'json':
-      return { Icon: FileJson, color: 'text-yellow-400' };
+      return { Icon: FileJson, color: 'text-yellow-500' };
     case 'md':
     case 'txt':
-      return { Icon: FileText, color: 'text-zinc-400' };
+      return { Icon: FileText, color: 'text-muted-foreground' };
     case 'toml':
     case 'yaml':
     case 'yml':
     case 'config':
-      return { Icon: Settings, color: 'text-orange-400' };
+      return { Icon: Settings, color: 'text-orange-500' };
     default:
-      return { Icon: File, color: 'text-zinc-400' };
+      return { Icon: File, color: 'text-muted-foreground' };
   }
 }
 
@@ -54,16 +54,16 @@ export function FileReference({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-800/50 text-sm font-mono',
-        'hover:bg-zinc-700/50 transition-colors cursor-pointer',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-sm font-mono',
+        'hover:bg-muted/70 transition-colors cursor-pointer',
         className
       )}
       title={path}
     >
       <Icon className={cn('h-3.5 w-3.5', color)} />
-      <span className="text-zinc-200">{displayName}</span>
+      <span className="text-foreground/90">{displayName}</span>
       {lineRange && (
-        <span className="text-zinc-500">#{lineRange}</span>
+        <span className="text-muted-foreground">#{lineRange}</span>
       )}
     </span>
   );

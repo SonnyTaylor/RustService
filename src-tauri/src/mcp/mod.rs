@@ -6,5 +6,4 @@
 mod server;
 mod tools;
 
-pub use server::{run_mcp_server_http, start_mcp_server_background};
-pub use tools::RustServiceTools;
+pub use server::start_mcp_server_background;
