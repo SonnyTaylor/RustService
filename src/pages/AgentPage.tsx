@@ -422,7 +422,7 @@ export function AgentPage() {
     args: Record<string, unknown>,
     assistantMsgId: string,
     turnActivities: AgentActivity[]
-  ) => {
+  ): Promise<CoreMessage> => {
     // Update UI to show running state
     const actIdx = turnActivities.findIndex(a => a.id === toolCallId);
     if (actIdx !== -1) {
@@ -436,7 +436,12 @@ export function AgentPage() {
     let isError = false;
     
     try {
-      switch (toolName) {
+      const validation = validateToolCall(toolName, args);
+      if (!validation.valid) {
+        result = validation.error || 'Invalid tool call - missing required arguments';
+        isError = true;
+      } else {
+        switch (toolName) {
         case 'execute_command': {
           const command = String(args.command || '');
           console.log('[Agent YOLO] Auto-executing command:', command);
@@ -475,6 +480,7 @@ export function AgentPage() {
         default:
           result = `Unknown HITL tool: ${toolName}`;
           isError = true;
+        }
       }
     } catch (error) {
       result = String(error);
@@ -505,12 +511,8 @@ export function AgentPage() {
         isError: isError,
       }]
     };
-    
-    const newHistory = [...agentHistoryRef.current, toolResultMsg];
-    agentHistoryRef.current = newHistory;
 
-    // Continue the agent loop (pass existing msg id + activities for grouping)
-    await runAgentLoop(newHistory, assistantMsgId, turnActivities);
+    return toolResultMsg;
   };
 
   // Core agentic loop - streams response and handles tool calls recursively
@@ -560,6 +562,7 @@ export function AgentPage() {
       let fullContent = existingContent;
       const turnActivities: AgentActivity[] = existingActivities ? [...existingActivities] : [];
       let finalToolCalls: ToolCallPart[] = [];
+      const toolCallValidation = new Map<string, { valid: boolean; error?: string }>();
 
       // Process the stream
       for await (const part of result.fullStream) {
@@ -584,6 +587,7 @@ export function AgentPage() {
           if (!validation.valid) {
             console.warn('[Agent] Malformed tool call:', part.toolName, 'Args:', args, 'Error:', validation.error);
           }
+          toolCallValidation.set(part.toolCallId, { valid: validation.valid, error: validation.error });
           
           const activityType = mapToolToActivityType(part.toolName);
           const activityDetails = extractActivityDetails(part.toolName, args);
@@ -664,11 +668,32 @@ export function AgentPage() {
       if (hitlCalls.length === 0) {
         setIsLoading(false);
       } else if (approvalMode === 'yolo') {
-        // YOLO mode: auto-execute all HITL tools
+        // YOLO mode: execute HITL tools sequentially, then continue once
+        const toolResults: CoreMessage[] = [];
         for (const tc of hitlCalls) {
+          const validation = toolCallValidation.get(tc.toolCallId);
+          if (validation && !validation.valid) {
+            toolResults.push({
+              role: 'tool',
+              content: [{
+                type: 'tool-result',
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                result: validation.error || 'Invalid tool call - missing required arguments',
+                isError: true,
+              }]
+            });
+            continue;
+          }
+
           const args = (tc as any).args ?? (tc as any).input ?? {};
-          await autoExecuteHITLTool(tc.toolCallId, tc.toolName, args, assistantMsgId, turnActivities);
+          const resultMsg = await autoExecuteHITLTool(tc.toolCallId, tc.toolName, args, assistantMsgId, turnActivities);
+          toolResults.push(resultMsg);
         }
+
+        const newHistory = [...agentHistoryRef.current, ...toolResults];
+        agentHistoryRef.current = newHistory;
+        await runAgentLoop(newHistory, assistantMsgId, turnActivities);
       } else {
         setIsLoading(false); // Paused for manual HITL approval
       }
