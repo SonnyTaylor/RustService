@@ -1,8 +1,8 @@
 /**
  * Agent Page
  * 
- * Main interface for the agentic AI system with chat, memory browser,
- * and command history views.
+ * Main interface for the ServiceAgent AI system with chat UI,
+ * instrument sidebar, and command approval flow.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -178,20 +178,93 @@ export function AgentPage() {
         content: JSON.parse(msg.content),
       }));
 
-      // Convert to UI Message format
+      // Build a lookup of tool results by toolCallId for activity reconstruction
+      const toolResults = new Map<string, { output: string; isError: boolean }>();
+      for (const msg of data.messages) {
+        if (msg.role === 'tool') {
+          const content = JSON.parse(msg.content);
+          const parts = Array.isArray(content) ? content : [content];
+          for (const part of parts) {
+            if (part.type === 'tool-result' && part.toolCallId) {
+              const resultData = part.result;
+              let output: string;
+              let isError = !!part.isError;
+              if (typeof resultData === 'string') {
+                output = resultData;
+              } else if (resultData && typeof resultData === 'object') {
+                isError = isError || resultData.status === 'error';
+                output = resultData.output || resultData.error || JSON.stringify(resultData);
+              } else {
+                output = JSON.stringify(resultData);
+              }
+              toolResults.set(part.toolCallId, { output, isError });
+            }
+          }
+        }
+      }
+
+      // Convert to UI Message format - reconstruct activities from tool-call parts
       const uiMessages: Message[] = [];
       for (const msg of data.messages) {
-        if (msg.role === 'user' || msg.role === 'assistant') {
+        if (msg.role === 'user') {
           const content = JSON.parse(msg.content);
           uiMessages.push({
             id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: typeof content === 'string' ? content : 
-              (Array.isArray(content) ? content.find((p: any) => p.type === 'text')?.text || '' : ''),
+            role: 'user',
+            content: typeof content === 'string' ? content : '',
             createdAt: msg.createdAt,
-            activities: [],
           });
+        } else if (msg.role === 'assistant') {
+          const content = JSON.parse(msg.content);
+          let textContent = '';
+          const activities: AgentActivity[] = [];
+
+          if (typeof content === 'string') {
+            textContent = content;
+          } else if (Array.isArray(content)) {
+            // Extract text and tool-call parts
+            for (const part of content) {
+              if (part.type === 'text') {
+                textContent += part.text || '';
+              } else if (part.type === 'tool-call') {
+                const toolName = part.toolName || '';
+                const args = part.args || part.input || {};
+                const activityType = mapToolToActivityType(toolName);
+                const activityDetails = extractActivityDetails(toolName, args);
+                const result = toolResults.get(part.toolCallId);
+
+                activities.push({
+                  id: part.toolCallId,
+                  timestamp: msg.createdAt,
+                  type: activityType,
+                  status: result ? (result.isError ? 'error' : 'success') : 'success',
+                  output: result?.output,
+                  error: result?.isError ? result.output : undefined,
+                  ...activityDetails,
+                } as AgentActivity);
+              }
+            }
+          }
+
+          // Merge into last assistant message if it exists (to handle multi-step grouping)
+          const lastUiMsg = uiMessages[uiMessages.length - 1];
+          if (lastUiMsg && lastUiMsg.role === 'assistant') {
+            // Append content and activities to existing assistant message
+            if (textContent) {
+              lastUiMsg.content += (lastUiMsg.content ? '\n\n' : '') + textContent;
+            }
+            lastUiMsg.activities = [...(lastUiMsg.activities || []), ...activities];
+          } else {
+            uiMessages.push({
+              id: msg.id,
+              role: 'assistant',
+              content: textContent,
+              createdAt: msg.createdAt,
+              activities,
+            });
+          }
         }
+        // 'tool' messages are consumed via the toolResults lookup, not shown directly
       }
 
       setCurrentConversationId(conversation.id);
@@ -271,8 +344,7 @@ export function AgentPage() {
       case 'list_instruments': return 'list_dir';
       case 'run_instrument': return 'ran_command';
       case 'search_web': return 'web_search';
-      case 'save_to_memory': return 'memory_save';
-      case 'recall_memory': return 'memory_recall';
+      case 'get_system_info': return 'get_system_info';
       default: return 'ran_command';
     }
   };
@@ -300,10 +372,8 @@ export function AgentPage() {
         return { path: getPath(args.path) };
       case 'search_web':
         return { query: typeof args.query === 'string' ? args.query : '' };
-      case 'save_to_memory':
-        return { memoryType: typeof args.type === 'string' ? args.type : 'fact' };
-      case 'recall_memory':
-        return { query: typeof args.query === 'string' ? args.query : '' };
+      case 'get_system_info':
+        return {};
       case 'run_instrument':
         return { command: `Running instrument: ${typeof args.name === 'string' ? args.name : 'unknown'}` };
       default:
@@ -406,24 +476,32 @@ export function AgentPage() {
     const newHistory = [...agentHistoryRef.current, toolResultMsg];
     agentHistoryRef.current = newHistory;
 
-    // Continue the agent loop
-    await runAgentLoop(newHistory);
+    // Continue the agent loop (pass existing msg id + activities for grouping)
+    await runAgentLoop(newHistory, assistantMsgId, turnActivities);
   };
 
   // Core agentic loop - streams response and handles tool calls recursively
-  const runAgentLoop = async (currentHistory: CoreMessage[]) => {
+  // When resuming after tool approval, pass existingMsgId + existingActivities to
+  // continue appending to the same assistant message instead of creating a new one.
+  const runAgentLoop = async (
+    currentHistory: CoreMessage[],
+    existingMsgId?: string,
+    existingActivities?: AgentActivity[]
+  ) => {
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
     
-    // Create assistant message placeholder
-    const assistantMsgId = generateId();
-    setMessages(prev => [...prev, {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      createdAt: new Date().toISOString(),
-      activities: []
-    }]);
+    // Reuse existing assistant message or create a new one
+    const assistantMsgId = existingMsgId || generateId();
+    if (!existingMsgId) {
+      setMessages(prev => [...prev, {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        createdAt: new Date().toISOString(),
+        activities: []
+      }]);
+    }
 
     try {
       const tools = getEnabledTools({
@@ -438,8 +516,12 @@ export function AgentPage() {
       });
 
       // Track accumulated state for this turn
-      let fullContent = '';
-      const turnActivities: AgentActivity[] = [];
+      // If resuming, start with the existing content from the current message
+      const existingContent = existingMsgId 
+        ? (messages.find(m => m.id === assistantMsgId)?.content || '') 
+        : '';
+      let fullContent = existingContent;
+      const turnActivities: AgentActivity[] = existingActivities ? [...existingActivities] : [];
       let finalToolCalls: ToolCallPart[] = [];
 
       // Process the stream
@@ -592,6 +674,11 @@ export function AgentPage() {
       return;
     }
 
+    // Find the UI message containing this activity
+    const ownerMsg = messages.find(m => m.activities?.some(a => a.id === activityId));
+    const ownerMsgId = ownerMsg?.id;
+    const ownerActivities = ownerMsg?.activities;
+
     // 2. Update UI to show running state
     setMessages(prev => prev.map(msg => {
       if (!msg.activities) return msg;
@@ -699,8 +786,8 @@ export function AgentPage() {
     const newHistory = [...history, toolResultMsg];
     agentHistoryRef.current = newHistory;
 
-    // 6. Resume Loop
-    await runAgentLoop(newHistory);
+    // 6. Resume Loop (continue same message)
+    await runAgentLoop(newHistory, ownerMsgId, ownerActivities);
   };
 
   const handleActivityReject = async (activityId: string) => {
@@ -718,6 +805,11 @@ export function AgentPage() {
       console.error('Tool call not found for activity:', activityId);
       return;
     }
+
+    // Find the UI message containing this activity
+    const ownerMsg = messages.find(m => m.activities?.some(a => a.id === activityId));
+    const ownerMsgId = ownerMsg?.id;
+    const ownerActivities = ownerMsg?.activities;
 
     const rejectionMessage = 'User denied this action.';
 
@@ -752,9 +844,9 @@ export function AgentPage() {
     const newHistory = [...history, toolResultMsg];
     agentHistoryRef.current = newHistory;
 
-    // 4. Resume Loop so AI can respond to the rejection
+    // 4. Resume Loop so AI can respond to the rejection (continue same message)
     setIsLoading(true);
-    await runAgentLoop(newHistory);
+    await runAgentLoop(newHistory, ownerMsgId, ownerActivities);
   };
 
 
@@ -851,7 +943,7 @@ export function AgentPage() {
           </div>
           <div>
             <h1 className="font-semibold text-sm flex items-center gap-2">
-              Agent Zero
+              ServiceAgent
               <Sparkles className="h-3 w-3 text-yellow-500" />
             </h1>
             <p className="text-[10px] text-muted-foreground leading-none">
@@ -906,7 +998,7 @@ export function AgentPage() {
                     <div>
                       <h3 className="text-lg font-semibold">What can I help with?</h3>
                       <p className="text-sm text-muted-foreground mt-1">
-                        I can run commands, manage files, search the web, and remember context across conversations.
+                        I can run commands, manage files, search the web, and help diagnose system issues.
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -958,7 +1050,7 @@ export function AgentPage() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask Agent Zero..."
+                  placeholder="Ask ServiceAgent..."
                   className="min-h-[44px] max-h-32 resize-none pr-12 bg-background"
                   rows={1}
                 />

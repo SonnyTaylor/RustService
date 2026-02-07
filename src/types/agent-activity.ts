@@ -18,8 +18,7 @@ export type ActivityType =
   | 'copy_file'
   | 'list_dir'
   | 'web_search'
-  | 'memory_save'
-  | 'memory_recall';
+  | 'get_system_info';
 
 /**
  * Status of an activity
@@ -135,20 +134,10 @@ export interface WebSearchActivity extends BaseActivity {
 }
 
 /**
- * Memory save activity
+ * System info activity
  */
-export interface MemorySaveActivity extends BaseActivity {
-  type: 'memory_save';
-  memoryType: string;
-}
-
-/**
- * Memory recall activity
- */
-export interface MemoryRecallActivity extends BaseActivity {
-  type: 'memory_recall';
-  query: string;
-  resultCount?: number;
+export interface GetSystemInfoActivity extends BaseActivity {
+  type: 'get_system_info';
 }
 
 /**
@@ -165,8 +154,7 @@ export type AgentActivity =
   | CopyFileActivity
   | ListDirActivity
   | WebSearchActivity
-  | MemorySaveActivity
-  | MemoryRecallActivity;
+  | GetSystemInfoActivity;
 
 /**
  * Helper to check if an activity requires approval

@@ -5,15 +5,17 @@
  * Splits markdown into blocks and memoizes each block to prevent
  * re-rendering the entire message on each token update.
  * 
- * Based on Vercel AI SDK cookbook pattern.
+ * Supports GFM (GitHub Flavored Markdown) including tables, strikethrough, etc.
  */
 
 import { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { marked } from 'marked';
 
 /**
- * Parse markdown content into discrete blocks using marked lexer
+ * Parse markdown content into discrete blocks using marked lexer.
+ * We keep table tokens as a single block so they render correctly.
  */
 function parseMarkdownIntoBlocks(markdown: string): string[] {
   if (!markdown) return [];
@@ -22,7 +24,6 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
     const tokens = marked.lexer(markdown);
     return tokens.map(token => token.raw);
   } catch {
-    // Fallback: split by double newlines
     return markdown.split(/\n\n+/).filter(Boolean);
   }
 }
@@ -34,7 +35,31 @@ const MemoizedMarkdownBlock = memo(
   function MemoizedMarkdownBlock({ content }: { content: string }) {
     return (
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
+          // Tables
+          table({ children }) {
+            return (
+              <div className="my-2 overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm border-collapse">{children}</table>
+              </div>
+            );
+          },
+          thead({ children }) {
+            return <thead className="bg-muted/60">{children}</thead>;
+          },
+          tbody({ children }) {
+            return <tbody className="divide-y divide-border">{children}</tbody>;
+          },
+          tr({ children }) {
+            return <tr className="border-b border-border last:border-0">{children}</tr>;
+          },
+          th({ children }) {
+            return <th className="px-3 py-2 text-left text-xs font-semibold text-foreground whitespace-nowrap">{children}</th>;
+          },
+          td({ children }) {
+            return <td className="px-3 py-2 text-xs text-foreground/90 whitespace-nowrap">{children}</td>;
+          },
           // Code blocks
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
@@ -42,10 +67,7 @@ const MemoizedMarkdownBlock = memo(
 
             if (isInline) {
               return (
-                <code
-                  className="px-1.5 py-0.5 rounded bg-muted font-mono text-sm text-foreground"
-                  {...props}
-                >
+                <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-sm text-foreground" {...props}>
                   {children}
                 </code>
               );
@@ -64,7 +86,6 @@ const MemoizedMarkdownBlock = memo(
               </div>
             );
           },
-          // Prevent double wrapping with pre
           pre({ children }) {
             return <>{children}</>;
           },
@@ -102,12 +123,7 @@ const MemoizedMarkdownBlock = memo(
           // Links
           a({ href, children }) {
             return (
-              <a
-                href={href}
-                className="text-primary underline underline-offset-2 hover:text-primary/80"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={href} className="text-primary underline underline-offset-2 hover:text-primary/80" target="_blank" rel="noopener noreferrer">
                 {children}
               </a>
             );
@@ -130,18 +146,13 @@ const MemoizedMarkdownBlock = memo(
       </ReactMarkdown>
     );
   },
-  (prevProps, nextProps) => {
-    // Only re-render if content changed
-    return prevProps.content === nextProps.content;
-  }
+  (prevProps, nextProps) => prevProps.content === nextProps.content
 );
 
 MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock';
 
 interface MemoizedMarkdownProps {
-  /** The markdown content to render */
   content: string;
-  /** Unique ID for keying blocks (e.g., message ID) */
   id: string;
 }
 
@@ -151,10 +162,7 @@ interface MemoizedMarkdownProps {
  * Splits markdown into blocks and renders each block with memoization.
  * This prevents re-rendering all blocks when new content is streamed.
  */
-export const MemoizedMarkdown = memo(function MemoizedMarkdown({ 
-  content, 
-  id 
-}: MemoizedMarkdownProps) {
+export const MemoizedMarkdown = memo(function MemoizedMarkdown({ content, id }: MemoizedMarkdownProps) {
   const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content]);
 
   if (!content) return null;
@@ -162,10 +170,7 @@ export const MemoizedMarkdown = memo(function MemoizedMarkdown({
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert">
       {blocks.map((block, index) => (
-        <MemoizedMarkdownBlock 
-          key={`${id}-block-${index}`} 
-          content={block} 
-        />
+        <MemoizedMarkdownBlock key={`${id}-block-${index}`} content={block} />
       ))}
     </div>
   );

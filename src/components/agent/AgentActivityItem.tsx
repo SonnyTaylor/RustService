@@ -12,7 +12,7 @@ import {
   Terminal, 
   FileEdit,
   Globe,
-  Brain,
+  Cpu,
   BookOpen,
   FolderInput,
   Copy,
@@ -60,10 +60,8 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
         return { Icon: Folder, label: 'Listed', color: 'text-amber-400' };
       case 'web_search':
         return { Icon: Globe, label: 'Searched web', color: 'text-indigo-400' };
-      case 'memory_save':
-        return { Icon: Brain, label: 'Saved to memory', color: 'text-pink-400' };
-      case 'memory_recall':
-        return { Icon: Brain, label: 'Recalled from memory', color: 'text-pink-400' };
+      case 'get_system_info':
+        return { Icon: Cpu, label: 'System info', color: 'text-cyan-400' };
       default:
         return { Icon: FileText, label: 'Action', color: 'text-muted-foreground' };
     }
@@ -308,17 +306,8 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
         </>
       )}
       
-      {activity.type === 'memory_save' && (
-        <span className="text-foreground/90">{activity.memoryType}</span>
-      )}
-      
-      {activity.type === 'memory_recall' && (
-        <>
-          <span className="text-foreground/90 truncate">{activity.query}</span>
-          {activity.resultCount !== undefined && (
-            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
-          )}
-        </>
+      {activity.type === 'get_system_info' && (
+        <span className="text-foreground/90">Fetching hardware & OS details</span>
       )}
 
       {/* Status indicator for non-HITL activities */}
