@@ -18,7 +18,8 @@ export type ActivityType =
   | 'copy_file'
   | 'list_dir'
   | 'web_search'
-  | 'get_system_info';
+  | 'get_system_info'
+  | 'mcp_tool';
 
 /**
  * Status of an activity
@@ -141,6 +142,15 @@ export interface GetSystemInfoActivity extends BaseActivity {
 }
 
 /**
+ * MCP tool activity
+ */
+export interface McpToolActivity extends BaseActivity {
+  type: 'mcp_tool';
+  toolName: string;
+  arguments?: string;
+}
+
+/**
  * Union type of all activities
  */
 export type AgentActivity = 
@@ -154,7 +164,8 @@ export type AgentActivity =
   | CopyFileActivity
   | ListDirActivity
   | WebSearchActivity
-  | GetSystemInfoActivity;
+  | GetSystemInfoActivity
+  | McpToolActivity;
 
 /**
  * Helper to check if an activity requires approval

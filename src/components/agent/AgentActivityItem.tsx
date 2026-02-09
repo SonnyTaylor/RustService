@@ -21,6 +21,7 @@ import {
   Loader2,
   AlertCircle,
   Play,
+  Plug,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,8 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
         return { Icon: Globe, label: 'Searched web', color: 'text-indigo-400' };
       case 'get_system_info':
         return { Icon: Cpu, label: 'System info', color: 'text-cyan-400' };
+      case 'mcp_tool':
+        return { Icon: Plug, label: 'MCP tool', color: 'text-blue-400' };
       default:
         return { Icon: FileText, label: 'Action', color: 'text-muted-foreground' };
     }
@@ -308,6 +311,15 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
       
       {activity.type === 'get_system_info' && (
         <span className="text-foreground/90">Fetching hardware & OS details</span>
+      )}
+
+      {activity.type === 'mcp_tool' && (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-foreground/90 font-mono text-xs truncate">{activity.toolName}</span>
+          {activity.arguments && (
+            <span className="text-muted-foreground text-xs truncate">{activity.arguments}</span>
+          )}
+        </div>
       )}
 
       {/* Status indicator for non-HITL activities */}

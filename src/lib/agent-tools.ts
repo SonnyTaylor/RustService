@@ -188,16 +188,23 @@ export const runInstrumentTool = tool({
       const instrument = instruments.find(i => i.name.toLowerCase() === name.toLowerCase());
       if (!instrument) return { status: 'error', error: `Instrument '${name}' not found. Use list_instruments to see available.` };
 
-      let command = '';
-      if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${args || ''}`;
-      else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${args || ''}`;
-      else if (instrument.extension === 'py') command = `python "${instrument.path}" ${args || ''}`;
-      else if (instrument.extension === 'js') command = `node "${instrument.path}" ${args || ''}`;
+      // Sanitize args: escape double quotes and wrap in quotes to prevent injection
+      const sanitizedArgs = args ? `"${args.replace(/"/g, '\\"')}"` : '';
 
-      const result = await invoke<{ id: string; status: string; output?: string }>('queue_agent_command', { command, reason: `Running instrument: ${name}` });
-      return result.status === 'executed'
-        ? { status: 'success', output: result.output || 'Executed successfully' }
-        : { status: 'pending', commandId: result.id, message: 'Waiting for approval' };
+      let command = '';
+      if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${sanitizedArgs}`;
+      else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${sanitizedArgs}`;
+      else if (instrument.extension === 'py') command = `python "${instrument.path}" ${sanitizedArgs}`;
+      else if (instrument.extension === 'js') command = `node "${instrument.path}" ${sanitizedArgs}`;
+
+      // Use execute_agent_command (consistent with other HITL tools) instead of legacy queue_agent_command
+      const result = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
+        command,
+        reason: `Running instrument: ${name}`,
+      });
+      return result.error
+        ? { status: 'error', error: result.error }
+        : { status: 'success', output: result.output || 'Executed successfully' };
     } catch (error) {
       return { status: 'error', error: String(error) };
     }
@@ -248,21 +255,11 @@ export function shouldRequireApproval(toolName: string, approvalMode: string): b
 }
 
 export function getEnabledTools(settings: { searchProvider: string }): ToolSet {
-  const tools: ToolSet = {
-    execute_command: executeCommandTool,
-    read_file: readFileTool,
-    write_file: writeFileTool,
-    list_dir: listDirTool,
-    move_file: moveFileTool,
-    copy_file: copyFileTool,
-    list_programs: listProgramsTool,
-    list_instruments: listInstrumentsTool,
-    run_instrument: runInstrumentTool,
-    get_system_info: getSystemInfoTool,
-  };
+  const tools: ToolSet = { ...agentTools };
 
-  if (settings.searchProvider !== 'none') {
-    tools.search_web = searchWebTool;
+  // Remove search_web if no provider is configured
+  if (settings.searchProvider === 'none') {
+    delete tools.search_web;
   }
 
   return tools;
