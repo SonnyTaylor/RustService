@@ -347,8 +347,16 @@ export function AgentPage() {
         }
         return { valid: true };
       case 'write_file':
-        if (!args.path || typeof args.path !== 'string') {
+        if (!args.path || typeof args.path !== 'string' || !args.path.trim()) {
           return { valid: false, error: 'Missing or invalid path argument' };
+        }
+        // Validate Windows absolute path (e.g., C:\ or \\server\share)
+        const path = args.path.trim();
+        if (!/^[a-zA-Z]:\\|^\\\\/.test(path)) {
+          return { valid: false, error: 'Path must be an absolute Windows path (e.g., C:\\path\\to\\file.txt)' };
+        }
+        if (args.content === undefined || args.content === null) {
+          return { valid: false, error: 'Missing content argument' };
         }
         return { valid: true };
       case 'read_file':

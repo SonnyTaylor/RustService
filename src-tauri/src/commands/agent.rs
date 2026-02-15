@@ -1599,8 +1599,19 @@ pub fn agent_read_file(path: String) -> Result<String, String> {
 }
 
 /// Write to a file (requires approval in non-YOLO mode)
+/// Creates parent directories if they don't exist
 #[tauri::command]
 pub fn agent_write_file(path: String, content: String) -> Result<(), String> {
+    let path_buf = PathBuf::from(&path);
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = path_buf.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directories: {}", e))?;
+        }
+    }
+
     fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
