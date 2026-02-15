@@ -4224,6 +4224,7 @@ dependencies = [
  "dirs 5.0.1",
  "gethostname",
  "gfxinfo",
+ "glob",
  "hex",
  "http-body-util",
  "hyper",

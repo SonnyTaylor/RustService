@@ -10,6 +10,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use chrono::Utc;
+use glob;
 use regex::Regex;
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -1546,56 +1547,46 @@ pub fn get_command_history(limit: Option<usize>) -> Result<Vec<PendingCommand>, 
 // File Operations
 // =============================================================================
 
-/// Read a file's contents
-/// First checks if the file exists at the given path, then checks uploaded files by original name
-#[tauri::command]
-pub fn agent_read_file(path: String) -> Result<String, String> {
-    // First try to read from the given path
-    match fs::read_to_string(&path) {
-        Ok(content) => return Ok(content),
-        Err(_) => {
-            // If that fails, check if this is a filename that was uploaded
-            // Extract just the filename from the path
-            let file_name = Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&path);
+/// Read file with optional line numbers and pagination
+#[tauri::command(rename_all = "snake_case")]
+pub fn agent_read_file(
+    path: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    line_numbers: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-            // Try to find in uploaded files by original name
-            let data_dir = get_data_dir_path();
-            let uploaded_dir = data_dir.join("agent").join("files").join("uploaded");
-            if let Ok(entries) = fs::read_dir(&uploaded_dir) {
-                // Look for meta files and check original_name
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let meta_path = entry.path().with_extension("meta.json");
-                        if meta_path.exists() {
-                            if let Ok(meta_content) = fs::read_to_string(&meta_path) {
-                                if let Ok(meta) =
-                                    serde_json::from_str::<serde_json::Value>(&meta_content)
-                                {
-                                    if let Some(original_name) =
-                                        meta.get("original_name").and_then(|v| v.as_str())
-                                    {
-                                        if original_name == file_name {
-                                            // Found the file, read the actual content
-                                            let file_path = entry.path();
-                                            if let Ok(content) = fs::read_to_string(&file_path) {
-                                                return Ok(content);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
 
-            // If still not found, return the original error
-            fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
-        }
-    }
+    let offset_val = offset.unwrap_or(0);
+    let limit_val = limit.unwrap_or(total_lines);
+
+    let end = std::cmp::min(offset_val + limit_val, total_lines);
+    let selected: Vec<&str> = if offset_val < total_lines {
+        lines[offset_val..end].to_vec()
+    } else {
+        Vec::new()
+    };
+
+    let show_line_numbers = line_numbers.unwrap_or(true);
+    let formatted_content = if show_line_numbers {
+        selected
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| format!("{:4}| {}", offset_val + idx + 1, line))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        selected.join("\n")
+    };
+
+    Ok(serde_json::json!({
+        "content": formatted_content,
+        "total_lines": total_lines,
+        "has_more": end < total_lines,
+    }))
 }
 
 /// Write to a file (requires approval in non-YOLO mode)
@@ -2470,4 +2461,154 @@ pub fn read_filesystem_file(
     };
 
     Ok(attachment)
+}
+
+// =============================================================================
+// Enhanced File Operations (nanocode-inspired)
+// =============================================================================
+
+/// Edit file by replacing old_string with new_string
+#[tauri::command(rename_all = "snake_case")]
+pub fn agent_edit_file(
+    path: String,
+    old_string: String,
+    new_string: String,
+    all: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let text = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let replace_all = all.unwrap_or(false);
+
+    if !text.contains(&old_string) {
+        return Ok(serde_json::json!({
+            "status": "error",
+            "replacements": 0,
+            "message": "old_string not found in file",
+        }));
+    }
+
+    let count = text.matches(&old_string).count();
+    if !replace_all && count > 1 {
+        return Ok(serde_json::json!({
+            "status": "error",
+            "replacements": 0,
+            "message": format!("old_string appears {} times, must be unique (use all=true)", count),
+        }));
+    }
+
+    let replacement = if replace_all {
+        text.replace(&old_string, &new_string)
+    } else {
+        text.replacen(&old_string, &new_string, 1)
+    };
+
+    fs::write(&path, replacement).map_err(|e| format!("Failed to write file: {}", e))?;
+
+    let replacements = if replace_all { count } else { 1 };
+
+    Ok(serde_json::json!({
+        "status": "success",
+        "replacements": replacements,
+        "message": format!("Successfully made {} replacement{}", replacements, if replacements > 1 { "s" } else { "" }),
+    }))
+}
+
+/// Grep - search for regex pattern across files
+#[tauri::command(rename_all = "snake_case")]
+pub fn agent_grep(
+    pattern: String,
+    path: Option<String>,
+    file_pattern: Option<String>,
+    max_results: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let regex = Regex::new(&pattern).map_err(|e| format!("Invalid regex pattern: {}", e))?;
+
+    let base_path = path.unwrap_or_else(|| ".".to_string());
+    let max = max_results.unwrap_or(50);
+    let glob_pat = file_pattern.unwrap_or_else(|| "*".to_string());
+
+    let mut results = Vec::new();
+
+    // Build glob pattern
+    let full_pattern = format!("{}/**/{}", base_path, glob_pat);
+
+    for entry in glob::glob(&full_pattern)
+        .map_err(|e| format!("Invalid glob pattern: {}", e))?
+        .flatten()
+    {
+        if !entry.is_file() {
+            continue;
+        }
+
+        // Try to read as text
+        if let Ok(content) = fs::read_to_string(&entry) {
+            for (line_num, line) in content.lines().enumerate() {
+                if regex.is_match(line) {
+                    results.push(serde_json::json!({
+                        "file": entry.to_string_lossy().to_string(),
+                        "line": line_num + 1,
+                        "content": line.to_string(),
+                    }));
+
+                    if results.len() >= max {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Glob - find files matching pattern, sorted by mtime
+#[tauri::command(rename_all = "snake_case")]
+pub fn agent_glob(
+    pattern: String,
+    path: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let base_path = path.unwrap_or_else(|| ".".to_string());
+    let max = limit.unwrap_or(100);
+
+    let full_pattern = format!("{}/{}", base_path, pattern);
+
+    let mut files: Vec<(std::path::PathBuf, std::time::SystemTime, u64)> = Vec::new();
+
+    for entry in glob::glob(&full_pattern)
+        .map_err(|e| format!("Invalid glob pattern: {}", e))?
+        .flatten()
+    {
+        if let Ok(metadata) = fs::metadata(&entry) {
+            let mtime = metadata
+                .modified()
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let size = metadata.len();
+            files.push((entry, mtime, size));
+        }
+    }
+
+    // Sort by modification time (newest first)
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let results: Vec<serde_json::Value> = files
+        .into_iter()
+        .take(max)
+        .map(|(path, mtime, size)| {
+            let modified_str = chrono::DateTime::<chrono::Local>::from(mtime)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+
+            serde_json::json!({
+                "path": path.to_string_lossy().to_string(),
+                "name": path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                "modified": modified_str,
+                "size": size,
+            })
+        })
+        .collect();
+
+    Ok(results)
 }

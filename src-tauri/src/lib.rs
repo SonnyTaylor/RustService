@@ -143,6 +143,9 @@ pub fn run() {
             commands::agent_list_dir,
             commands::agent_move_file,
             commands::agent_copy_file,
+            commands::agent_edit_file,
+            commands::agent_grep,
+            commands::agent_glob,
             commands::list_instruments,
             commands::list_agent_programs,
             // File attachment commands

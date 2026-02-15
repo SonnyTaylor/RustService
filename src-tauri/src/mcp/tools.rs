@@ -3,6 +3,8 @@
 //! Defines tools exposed via MCP. Tools implement core functionality directly
 //! to avoid complex inter-module dependencies.
 
+use glob;
+use regex;
 use rmcp::model::{CallToolResult, Content};
 use rmcp::tool;
 use std::fs;
@@ -289,22 +291,266 @@ impl RustServiceTools {
         }
     }
 
-    /// Read the contents of a file
+    /// Read the contents of a file with optional pagination
     #[tool(
-        description = "Read the contents of a file. Use this to examine configuration files, logs, or other text files."
+        description = "Read the contents of a file with optional line numbers and pagination. Use this to examine configuration files, logs, or other text files."
     )]
     pub async fn read_file(
         &self,
         #[tool(param)] path: String,
+        #[tool(param)] offset: Option<usize>,
+        #[tool(param)] limit: Option<usize>,
+        #[tool(param)] line_numbers: Option<bool>,
     ) -> Result<CallToolResult, rmcp::Error> {
         eprintln!("MCP read_file: {}", path);
 
         match read_file_contents(&path) {
-            Ok(content) => Ok(CallToolResult::success(vec![Content::text(content)])),
+            Ok(content) => {
+                let lines: Vec<&str> = content.lines().collect();
+                let total_lines = lines.len();
+                let offset_val = offset.unwrap_or(0);
+                let limit_val = limit.unwrap_or(total_lines);
+                let end = std::cmp::min(offset_val + limit_val, total_lines);
+
+                let selected: Vec<&str> = if offset_val < total_lines {
+                    lines[offset_val..end].to_vec()
+                } else {
+                    Vec::new()
+                };
+
+                let show_line_numbers = line_numbers.unwrap_or(true);
+                let formatted = if show_line_numbers {
+                    selected
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, line)| format!("{:4}| {}", offset_val + idx + 1, line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    selected.join("\n")
+                };
+
+                let has_more = end < total_lines;
+                let result = if has_more {
+                    format!("{}\n\n[{} more lines...]", formatted, total_lines - end)
+                } else {
+                    formatted
+                };
+
+                Ok(CallToolResult::success(vec![Content::text(result)]))
+            }
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Error reading {}: {}",
                 path, e
             ))])),
+        }
+    }
+
+    /// Edit a file by replacing old_string with new_string
+    #[tool(
+        description = "Edit a file by replacing old_string with new_string. The old_string must be unique in the file unless all=true is specified. Use this for targeted edits instead of rewriting entire files."
+    )]
+    pub async fn edit_file(
+        &self,
+        #[tool(param)] path: String,
+        #[tool(param)] old_string: String,
+        #[tool(param)] new_string: String,
+        #[tool(param)] all: Option<bool>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP edit_file: {}", path);
+
+        let text = match fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Error reading file: {}",
+                    e
+                ))]));
+            }
+        };
+
+        let replace_all = all.unwrap_or(false);
+
+        if !text.contains(&old_string) {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Error: old_string not found in file",
+            )]));
+        }
+
+        let count = text.matches(&old_string).count();
+        if !replace_all && count > 1 {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error: old_string appears {} times, must be unique (use all=true)",
+                count
+            ))]));
+        }
+
+        let replacement = if replace_all {
+            text.replace(&old_string, &new_string)
+        } else {
+            text.replacen(&old_string, &new_string, 1)
+        };
+
+        match fs::write(&path, replacement) {
+            Ok(_) => {
+                let replacements = if replace_all { count } else { 1 };
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Successfully made {} replacement{} in {}",
+                    replacements,
+                    if replacements > 1 { "s" } else { "" },
+                    path
+                ))]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Error writing file: {}",
+                e
+            ))])),
+        }
+    }
+
+    /// Search for a regex pattern across files
+    #[tool(
+        description = "Search for a regex pattern across files in a directory. Returns matching lines with file paths and line numbers."
+    )]
+    pub async fn grep(
+        &self,
+        #[tool(param)] pattern: String,
+        #[tool(param)] path: Option<String>,
+        #[tool(param)] file_pattern: Option<String>,
+        #[tool(param)] max_results: Option<usize>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP grep: {}", pattern);
+
+        let regex = match regex::Regex::new(&pattern) {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid regex pattern: {}",
+                    e
+                ))]));
+            }
+        };
+
+        let base_path = path.unwrap_or_else(|| ".".to_string());
+        let max = max_results.unwrap_or(50);
+        let glob_pat = file_pattern.unwrap_or_else(|| "*".to_string());
+        let full_pattern = format!("{}/**/ {}", base_path, glob_pat);
+
+        let mut results = Vec::new();
+
+        let glob_result = match glob::glob(&full_pattern) {
+            Ok(g) => g,
+            Err(_) => {
+                return Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Invalid glob pattern: '{}'",
+                    pattern
+                ))]));
+            }
+        };
+
+        for entry in glob_result.flatten() {
+            if !entry.is_file() {
+                continue;
+            }
+
+            if let Ok(content) = fs::read_to_string(&entry) {
+                for (line_num, line) in content.lines().enumerate() {
+                    if regex.is_match(line) {
+                        results.push(format!(
+                            "{}:{}: {}",
+                            entry.to_string_lossy(),
+                            line_num + 1,
+                            line
+                        ));
+
+                        if results.len() >= max {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if results.len() >= max {
+                break;
+            }
+        }
+
+        if results.is_empty() {
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "No matches found for pattern '{}'",
+                pattern
+            ))]))
+        } else {
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "Found {} match{}:\n\n{}",
+                results.len(),
+                if results.len() > 1 { "es" } else { "" },
+                results.join("\n")
+            ))]))
+        }
+    }
+
+    /// Find files matching a glob pattern
+    #[tool(
+        description = "Find files matching a glob pattern, sorted by modification time (newest first)."
+    )]
+    pub async fn glob(
+        &self,
+        #[tool(param)] pattern: String,
+        #[tool(param)] path: Option<String>,
+        #[tool(param)] limit: Option<usize>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP glob: {}", pattern);
+
+        let base_path = path.unwrap_or_else(|| ".".to_string());
+        let max = limit.unwrap_or(100);
+        let full_pattern = format!("{}/{}", base_path, pattern);
+
+        let mut files: Vec<(std::path::PathBuf, std::time::SystemTime, u64)> = Vec::new();
+
+        let glob_result = match glob::glob(&full_pattern) {
+            Ok(g) => g,
+            Err(_) => {
+                return Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Invalid glob pattern: '{}'",
+                    pattern
+                ))]));
+            }
+        };
+
+        for entry in glob_result.flatten() {
+            if let Ok(metadata) = fs::metadata(&entry) {
+                let mtime = metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let size = metadata.len();
+                files.push((entry, mtime, size));
+            }
+        }
+
+        // Sort by modification time (newest first)
+        files.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let formatted: Vec<String> = files
+            .into_iter()
+            .take(max)
+            .map(|(path, _mtime, size)| {
+                format!("{} ({})", path.to_string_lossy(), format_bytes(size))
+            })
+            .collect();
+
+        if formatted.is_empty() {
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "No files found matching pattern '{}'",
+                pattern
+            ))]))
+        } else {
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "Found {} file{}:\n\n{}",
+                formatted.len(),
+                if formatted.len() > 1 { "s" } else { "" },
+                formatted.join("\n")
+            ))]))
         }
     }
 

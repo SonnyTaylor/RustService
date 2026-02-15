@@ -118,14 +118,109 @@ export const searchWebTool = tool({
 });
 
 export const readFileTool = tool({
-  description: 'Read the contents of a text file. Use for examining logs, configs, scripts, or any text file.',
+  description: 'Read the contents of a text file with optional line numbers and pagination. Use for examining logs, configs, scripts, or any text file.',
   inputSchema: z.object({
     path: z.string().describe('Full absolute path to the file'),
+    offset: z.number().optional().describe('Line number to start from (0-indexed)'),
+    limit: z.number().optional().describe('Maximum number of lines to read'),
+    lineNumbers: z.boolean().optional().describe('Include line numbers in output (default: true)'),
   }),
-  execute: async ({ path }) => {
+  execute: async ({ path, offset, limit, lineNumbers }) => {
     try {
-      const content = await invoke<string>('agent_read_file', { path });
-      return { status: 'success', content };
+      const result = await invoke<{ content: string; totalLines: number; hasMore: boolean }>('agent_read_file', { 
+        path, 
+        offset, 
+        limit,
+        line_numbers: lineNumbers ?? true 
+      });
+      return { 
+        status: 'success', 
+        content: result.content,
+        totalLines: result.totalLines,
+        hasMore: result.hasMore,
+      };
+    } catch (error) {
+      return { status: 'error', error: String(error) };
+    }
+  },
+});
+
+export const editFileTool = tool({
+  description: `Replace old_string with new_string in a file. The old_string must be unique in the file unless all=true is specified.
+Use this for targeted edits instead of rewriting entire files. Always read the file first to get the exact string to replace.`,
+  inputSchema: z.object({
+    path: z.string().describe('Full absolute path to the file'),
+    oldString: z.string().describe('The exact string to replace (must be unique in file unless all=true)'),
+    newString: z.string().describe('The replacement string'),
+    all: z.boolean().optional().describe('Replace all occurrences (default: false)'),
+  }),
+  execute: async ({ path, oldString, newString, all }) => {
+    try {
+      const result = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', { 
+        path, 
+        old_string: oldString, 
+        new_string: newString,
+        all: all ?? false 
+      });
+      return { 
+        status: result.status as 'success' | 'error', 
+        replacements: result.replacements,
+        message: result.message,
+      };
+    } catch (error) {
+      return { status: 'error', error: String(error) };
+    }
+  },
+});
+
+export const grepTool = tool({
+  description: `Search for a regex pattern across files in a directory. Returns matching lines with file paths and line numbers.
+Use this to find code patterns, error messages, or specific content across multiple files.`,
+  inputSchema: z.object({
+    pattern: z.string().describe('Regex pattern to search for'),
+    path: z.string().optional().describe('Directory path to search (default: current working directory)'),
+    filePattern: z.string().optional().describe('Glob pattern to filter files (e.g., "*.ts", "*.rs")'),
+    maxResults: z.number().optional().describe('Maximum number of results (default: 50)'),
+  }),
+  execute: async ({ pattern, path, filePattern, maxResults }) => {
+    try {
+      const results = await invoke<Array<{ file: string; line: number; content: string }>>('agent_grep', { 
+        pattern, 
+        path, 
+        file_pattern: filePattern,
+        max_results: maxResults ?? 50 
+      });
+      return { 
+        status: 'success', 
+        results,
+        count: results.length,
+      };
+    } catch (error) {
+      return { status: 'error', error: String(error) };
+    }
+  },
+});
+
+export const globTool = tool({
+  description: `Find files matching a glob pattern, sorted by modification time (newest first).
+Use this to discover files by pattern, e.g., "*.log", "src/**/*.ts", "config.*".`,
+  inputSchema: z.object({
+    pattern: z.string().describe('Glob pattern (e.g., "*.txt", "src/**/*.rs")'),
+    path: z.string().optional().describe('Base directory path (default: current working directory)'),
+    limit: z.number().optional().describe('Maximum number of results (default: 100)'),
+  }),
+  execute: async ({ pattern, path, limit }) => {
+    try {
+      const results = await invoke<Array<{ path: string; name: string; modified: string; size: number }>>('agent_glob', { 
+        pattern, 
+        path,
+        limit: limit ?? 100 
+      });
+      return { 
+        status: 'success', 
+        files: results,
+        count: results.length,
+      };
     } catch (error) {
       return { status: 'error', error: String(error) };
     }
@@ -249,6 +344,9 @@ export const agentTools = {
   execute_command: executeCommandTool,
   search_web: searchWebTool,
   read_file: readFileTool,
+  edit_file: editFileTool,
+  grep: grepTool,
+  glob: globTool,
   write_file: writeFileTool,
   generate_file: generateFileTool,
   list_dir: listDirTool,
@@ -260,7 +358,7 @@ export const agentTools = {
   get_system_info: getSystemInfoTool,
 } satisfies ToolSet;
 
-export const HITL_TOOLS = ['execute_command', 'write_file', 'generate_file', 'move_file', 'copy_file'] as const;
+export const HITL_TOOLS = ['execute_command', 'write_file', 'generate_file', 'move_file', 'copy_file', 'edit_file'] as const;
 
 export function isHITLTool(toolName: string): boolean {
   return HITL_TOOLS.includes(toolName as typeof HITL_TOOLS[number]);
@@ -276,6 +374,9 @@ export function getEnabledTools(settings: { searchProvider: string }): ToolSet {
   const tools: ToolSet = {
     execute_command: executeCommandTool,
     read_file: readFileTool,
+    edit_file: editFileTool,
+    grep: grepTool,
+    glob: globTool,
     write_file: writeFileTool,
     generate_file: generateFileTool,
     list_dir: listDirTool,

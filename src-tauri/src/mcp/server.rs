@@ -277,9 +277,18 @@ async fn dispatch_tool_call(
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or("Missing 'path' argument")?;
+            let offset = arguments
+                .get("offset")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            let line_numbers = arguments.get("line_numbers").and_then(|v| v.as_bool());
 
             let result = tools
-                .read_file(path.to_string())
+                .read_file(path.to_string(), offset, limit, line_numbers)
                 .await
                 .map_err(|e| format!("Tool error: {:?}", e))?;
 
