@@ -54,6 +54,8 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
         return { Icon: Terminal, label: 'Ran', color: 'text-green-400' };
       case 'read_file':
         return { Icon: BookOpen, label: 'Read', color: 'text-cyan-400' };
+      case 'edit_file':
+        return { Icon: FileEdit, label: 'Edit', color: 'text-purple-400' };
       case 'write_file':
         return { Icon: FileEdit, label: 'Write to', color: 'text-purple-400' };
       case 'move_file':
@@ -146,9 +148,20 @@ function FileOperationBlock({
   const isError = activity.status === 'error';
   const isSuccess = activity.status === 'success';
 
+  const formatSnippet = (value?: string) => {
+    if (!value) return '';
+    const clean = value.replace(/\s+/g, ' ').trim();
+    return clean.length > 60 ? `${clean.slice(0, 57)}...` : clean;
+  };
+
   let description = '';
   if (activity.type === 'write_file') {
     description = `Write to ${activity.path}`;
+  } else if (activity.type === 'edit_file') {
+    const oldSnippet = formatSnippet(activity.oldString);
+    const newSnippet = formatSnippet(activity.newString);
+    const change = oldSnippet || newSnippet ? `Replace "${oldSnippet}" → "${newSnippet}"` : 'Edit file contents';
+    description = activity.path ? `${activity.path} · ${change}` : change;
   } else if (activity.type === 'generate_file') {
     description = `Generate file: ${activity.filename}`;
   } else if (activity.type === 'move_file') {
@@ -250,7 +263,7 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
   }
 
   // File operations that need approval get block rendering
-  if (['write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type)) {
+  if (['edit_file', 'write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type)) {
     return (
       <FileOperationBlock
         activity={activity}

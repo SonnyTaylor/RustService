@@ -13,6 +13,7 @@ export type ActivityType =
   | 'analyzed_file'
   | 'ran_command'
   | 'read_file'
+  | 'edit_file'
   | 'write_file'
   | 'move_file'
   | 'copy_file'
@@ -88,6 +89,18 @@ export interface ReadFileActivity extends BaseActivity {
   path: string;
   filename: string;
   lineRange?: string;
+}
+
+/**
+ * File edit activity (HITL - requires approval)
+ */
+export interface EditFileActivity extends BaseActivity {
+  type: 'edit_file';
+  path: string;
+  filename: string;
+  oldString?: string;
+  newString?: string;
+  all?: boolean;
 }
 
 /**
@@ -186,6 +199,7 @@ export type AgentActivity =
   | AnalyzedFileActivity
   | RanCommandActivity
   | ReadFileActivity
+  | EditFileActivity
   | WriteFileActivity
   | MoveFileActivity
   | CopyFileActivity
@@ -200,7 +214,7 @@ export type AgentActivity =
  * Helper to check if an activity requires approval
  */
 export function isHITLActivity(activity: AgentActivity): boolean {
-  return ['ran_command', 'write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type);
+  return ['ran_command', 'edit_file', 'write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type);
 }
 
 /**

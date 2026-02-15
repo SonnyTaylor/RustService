@@ -154,23 +154,12 @@ Use this for targeted edits instead of rewriting entire files. Always read the f
     newString: z.string().describe('The replacement string'),
     all: z.boolean().optional().describe('Replace all occurrences (default: false)'),
   }),
-  execute: async ({ path, oldString, newString, all }) => {
-    try {
-      const result = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', { 
-        path, 
-        old_string: oldString, 
-        new_string: newString,
-        all: all ?? false 
-      });
-      return { 
-        status: result.status as 'success' | 'error', 
-        replacements: result.replacements,
-        message: result.message,
-      };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
-  },
+  outputSchema: z.object({
+    status: z.enum(['success', 'error']),
+    replacements: z.number().optional(),
+    message: z.string().optional(),
+    error: z.string().optional(),
+  }),
 });
 
 export const grepTool = tool({

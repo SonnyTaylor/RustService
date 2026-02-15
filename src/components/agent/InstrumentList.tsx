@@ -9,9 +9,10 @@ import { Play, FileCode, RefreshCw } from 'lucide-react';
 
 interface InstrumentListProps {
   onRunInstrument: (name: string) => void;
+  hideHeader?: boolean;
 }
 
-export function InstrumentList({ onRunInstrument }: InstrumentListProps) {
+export function InstrumentList({ onRunInstrument, hideHeader = false }: InstrumentListProps) {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,15 +45,25 @@ export function InstrumentList({ onRunInstrument }: InstrumentListProps) {
 
   return (
     <div className="h-full flex flex-col space-y-4">
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-            <h3 className="text-sm font-medium">Instruments</h3>
-            <p className="text-xs text-muted-foreground">Custom agent scripts</p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between shrink-0">
+          <div>
+              <h3 className="text-sm font-medium">Instruments</h3>
+              <p className="text-xs text-muted-foreground">Custom agent scripts</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={loadInstruments} title="Refresh">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={loadInstruments} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
+      )}
+
+      {hideHeader && (
+        <div className="flex items-center justify-end shrink-0 -mt-1">
+          <Button variant="ghost" size="icon" onClick={loadInstruments} title="Refresh">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       <ScrollArea className="flex-1 -mx-4 px-4">
         {loading ? (

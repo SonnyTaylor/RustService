@@ -1,7 +1,8 @@
 import { InstrumentList } from '@/components/agent/InstrumentList';
-import { FileCode, Info, Wrench, Plug, AlertCircle } from 'lucide-react';
+import { FileCode, Info, Plug, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSettings } from '@/components/settings-context';
 import type { AgentSettings } from '@/types/agent';
 import type { MCPManagerState } from '@/lib/mcp-manager';
@@ -10,21 +11,28 @@ interface AgentRightSidebarProps {
   className?: string;
   onRunInstrument: (name: string) => void;
   mcpState?: MCPManagerState;
+  toolSummary?: Array<{ id: string; name: string; desc: string; enabled: boolean; requiresApproval?: boolean }>;
 }
 
 /**
  * Quick info panel showing agent capabilities
  */
-function AgentInfoPanel({ mcpState }: { mcpState?: MCPManagerState }) {
+function AgentInfoPanel({
+  mcpState,
+  toolSummary,
+}: {
+  mcpState?: MCPManagerState;
+  toolSummary?: Array<{ id: string; name: string; desc: string; enabled: boolean; requiresApproval?: boolean }>;
+}) {
   const { settings } = useSettings();
   const agentSettings = settings.agent as AgentSettings | undefined;
 
-  const tools = [
-    { name: 'Commands', desc: 'Execute PowerShell', enabled: true },
-    { name: 'Files', desc: 'Read, write, copy, move', enabled: true },
-    { name: 'System Info', desc: 'Hardware & OS details', enabled: true },
-    { name: 'Web Search', desc: 'Search the internet', enabled: agentSettings?.searchProvider !== 'none' },
-    { name: 'Programs', desc: 'List portable tools', enabled: true },
+  const tools = toolSummary || [
+    { id: 'execute_command', name: 'Commands', desc: 'Execute PowerShell', enabled: true },
+    { id: 'files', name: 'Files', desc: 'Read, write, copy, move', enabled: true },
+    { id: 'get_system_info', name: 'System Info', desc: 'Hardware & OS details', enabled: true },
+    { id: 'search_web', name: 'Web Search', desc: 'Search the internet', enabled: agentSettings?.searchProvider !== 'none' },
+    { id: 'list_programs', name: 'Programs', desc: 'List portable tools', enabled: true },
   ];
 
   const mcpServerCount = mcpState?.servers?.length || 0;
@@ -36,17 +44,24 @@ function AgentInfoPanel({ mcpState }: { mcpState?: MCPManagerState }) {
         <h3 className="text-sm font-medium mb-2">Capabilities</h3>
         <div className="space-y-1.5">
           {tools.map(t => (
-            <div key={t.name} className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/40">
+            <div key={t.id} className="flex items-center justify-between py-1.5 px-2 rounded-md bg-muted/40">
               <div>
                 <span className="text-xs font-medium text-foreground">{t.name}</span>
                 <span className="text-[10px] text-muted-foreground ml-1.5">{t.desc}</span>
               </div>
-              <Badge variant="outline" className={cn(
-                'text-[10px] h-5',
-                t.enabled ? 'text-green-500 border-green-500/30' : 'text-muted-foreground border-muted'
-              )}>
-                {t.enabled ? 'On' : 'Off'}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                {t.requiresApproval && (
+                  <Badge variant="outline" className="text-[10px] h-5 text-yellow-500 border-yellow-500/30">
+                    HITL
+                  </Badge>
+                )}
+                <Badge variant="outline" className={cn(
+                  'text-[10px] h-5',
+                  t.enabled ? 'text-green-500 border-green-500/30' : 'text-muted-foreground border-muted'
+                )}>
+                  {t.enabled ? 'On' : 'Off'}
+                </Badge>
+              </div>
             </div>
           ))}
           {/* MCP Tools row */}
@@ -130,9 +145,9 @@ function AgentInfoPanel({ mcpState }: { mcpState?: MCPManagerState }) {
  * Agent Right Sidebar
  * Shows instruments, MCP servers, and agent info
  */
-export function AgentRightSidebar({ className, onRunInstrument, mcpState }: AgentRightSidebarProps) {
+export function AgentRightSidebar({ className, onRunInstrument, mcpState, toolSummary }: AgentRightSidebarProps) {
   return (
-    <div className={cn("flex flex-col h-full bg-background", className)}>
+    <div className={cn("flex flex-col h-full bg-background overflow-hidden", className)}>
       {/* Instruments Section */}
       <div className="px-4 py-3 border-b shrink-0">
         <div className="flex items-center gap-2">
@@ -141,17 +156,22 @@ export function AgentRightSidebar({ className, onRunInstrument, mcpState }: Agen
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">Custom scripts for the agent</p>
       </div>
-      <div className="flex-1 min-h-0 overflow-auto p-4">
-        <InstrumentList onRunInstrument={onRunInstrument} />
+
+      <div className="h-[42%] min-h-[220px] border-b px-4 py-3 shrink-0">
+        <InstrumentList onRunInstrument={onRunInstrument} hideHeader />
       </div>
 
       {/* Info Section */}
-      <div className="px-4 py-3 border-t shrink-0">
-        <div className="flex items-center gap-2 mb-2">
-          <Info className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">Agent Info</h2>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="px-4 py-3 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium">Agent Info</h2>
+          </div>
         </div>
-        <AgentInfoPanel mcpState={mcpState} />
+        <ScrollArea className="h-full px-4 py-3">
+          <AgentInfoPanel mcpState={mcpState} toolSummary={toolSummary} />
+        </ScrollArea>
       </div>
     </div>
   );

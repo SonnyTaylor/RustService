@@ -5,17 +5,16 @@
  * instrument sidebar, and command approval flow.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { streamChat } from '@/lib/agent-chat';
 import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
-import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, getMCPState, type MCPManagerState } from '@/lib/mcp-manager';
+import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, type MCPManagerState } from '@/lib/mcp-manager';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage, type MessagePart } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
 import { ConversationSelector } from '@/components/agent/ConversationSelector';
-import { FileAttachmentComponent } from '@/components/agent/FileAttachment';
-import type { AgentSettings, ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages, MCPServerConfig } from '@/types/agent';
+import type { ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages } from '@/types/agent';
 import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
 import type { FileAttachment } from '@/types/file-attachment';
 import {
@@ -131,7 +130,7 @@ export function AgentPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [conversationTitle, setConversationTitle] = useState<string>('New Chat');
+  const [, setConversationTitle] = useState<string>('New Chat');
   const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const mcpServersKeyRef = useRef<string>('');
@@ -146,15 +145,45 @@ export function AgentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
+  const messagesRef = useRef<Message[]>([]);
+  const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
 
   const agentSettings = settings.agent;
   const currentProvider = agentSettings?.provider || 'openai';
   const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
   const isConfigured = currentApiKey.length > 0;
 
+  const toolSummary = useMemo(() => {
+    const enabledTools = getEnabledTools({
+      searchProvider: settings.agent?.searchProvider || 'none',
+    });
+    const enabled = new Set(Object.keys(enabledTools));
+    return [
+      { id: 'execute_command', name: 'Commands', desc: 'Execute PowerShell', requiresApproval: true },
+      { id: 'read_file', name: 'Read File', desc: 'Open file contents' },
+      { id: 'edit_file', name: 'Edit File', desc: 'Replace text in files', requiresApproval: true },
+      { id: 'write_file', name: 'Write File', desc: 'Create or overwrite files', requiresApproval: true },
+      { id: 'generate_file', name: 'Generate File', desc: 'Create downloadable files', requiresApproval: true },
+      { id: 'move_file', name: 'Move File', desc: 'Move or rename files', requiresApproval: true },
+      { id: 'copy_file', name: 'Copy File', desc: 'Copy files', requiresApproval: true },
+      { id: 'list_dir', name: 'List Directory', desc: 'List folder contents' },
+      { id: 'grep', name: 'Grep', desc: 'Search text across files' },
+      { id: 'glob', name: 'Glob', desc: 'Find files by pattern' },
+      { id: 'list_programs', name: 'Programs', desc: 'List portable tools' },
+      { id: 'list_instruments', name: 'Instruments', desc: 'List available scripts' },
+      { id: 'run_instrument', name: 'Run Instrument', desc: 'Execute a script' },
+      { id: 'search_web', name: 'Web Search', desc: 'Search the internet' },
+      { id: 'get_system_info', name: 'System Info', desc: 'Hardware & OS details' },
+    ].map(tool => ({ ...tool, enabled: enabled.has(tool.id) }));
+  }, [settings.agent.searchProvider]);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
   }, [messages]);
 
   // Connect to MCP servers when settings change (stabilized to prevent reconnection loop)
@@ -359,6 +388,31 @@ export function AgentPage() {
           return { valid: false, error: 'Missing content argument' };
         }
         return { valid: true };
+      case 'edit_file':
+        if (!args.path || typeof args.path !== 'string' || !args.path.trim()) {
+          return { valid: false, error: 'Missing or invalid path argument' };
+        }
+        if (!/^[a-zA-Z]:\\|^\\\\/.test(args.path.trim())) {
+          return { valid: false, error: 'Path must be an absolute Windows path (e.g., C:\\path\\to\\file.txt)' };
+        }
+        if (!args.oldString || typeof args.oldString !== 'string') {
+          return { valid: false, error: 'Missing or invalid oldString argument' };
+        }
+        if (!args.newString || typeof args.newString !== 'string') {
+          return { valid: false, error: 'Missing or invalid newString argument' };
+        }
+        return { valid: true };
+      case 'generate_file':
+        if (!args.filename || typeof args.filename !== 'string') {
+          return { valid: false, error: 'Missing or invalid filename argument' };
+        }
+        if (args.content === undefined || args.content === null) {
+          return { valid: false, error: 'Missing content argument' };
+        }
+        if (!args.description || typeof args.description !== 'string') {
+          return { valid: false, error: 'Missing or invalid description argument' };
+        }
+        return { valid: true };
       case 'read_file':
         if (!args.path || typeof args.path !== 'string') {
           return { valid: false, error: 'Missing or invalid path argument' };
@@ -383,6 +437,7 @@ export function AgentPage() {
     switch(toolName) {
       case 'execute_command': return 'ran_command';
       case 'write_file': return 'write_file';
+      case 'edit_file': return 'edit_file';
       case 'read_file': return 'read_file';
       case 'move_file': return 'move_file';
       case 'copy_file': return 'copy_file';
@@ -390,6 +445,9 @@ export function AgentPage() {
       case 'list_programs': return 'list_dir';
       case 'list_instruments': return 'list_dir';
       case 'run_instrument': return 'ran_command';
+      case 'generate_file': return 'generate_file';
+      case 'grep': return 'searched';
+      case 'glob': return 'searched';
       case 'search_web': return 'web_search';
       case 'get_system_info': return 'get_system_info';
       default: return 'ran_command';
@@ -399,6 +457,11 @@ export function AgentPage() {
   const extractActivityDetails = (toolName: string, args: Record<string, unknown>) => {
     const getPath = (p: unknown) => typeof p === 'string' ? p : '';
     const getFilename = (p: unknown) => typeof p === 'string' ? p.split(/[/\\]/).pop() || '' : '';
+    const truncate = (value?: string) => {
+      if (!value) return '';
+      const compact = value.replace(/\s+/g, ' ').trim();
+      return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+    };
     const stringifyArgs = () => {
       try {
         return JSON.stringify(args);
@@ -416,14 +479,35 @@ export function AgentPage() {
           filename: getFilename(args.path),
           content: typeof args.content === 'string' ? args.content : undefined
         };
+      case 'edit_file':
+        return {
+          path: getPath(args.path),
+          filename: getFilename(args.path),
+          oldString: typeof args.oldString === 'string' ? truncate(args.oldString) : undefined,
+          newString: typeof args.newString === 'string' ? truncate(args.newString) : undefined,
+          all: typeof args.all === 'boolean' ? args.all : undefined,
+        };
       case 'read_file':
         return { path: getPath(args.path), filename: getFilename(args.path) };
       case 'move_file':
         return { src: getPath(args.src), dest: getPath(args.dest) };
       case 'copy_file':
         return { src: getPath(args.src), dest: getPath(args.dest) };
+      case 'generate_file':
+        return {
+          filename: typeof args.filename === 'string' ? args.filename : 'generated-file',
+          description: typeof args.description === 'string' ? args.description : '',
+        };
       case 'list_dir':
         return { path: getPath(args.path) };
+      case 'list_programs':
+        return { path: 'data/programs' };
+      case 'list_instruments':
+        return { path: 'data/instruments' };
+      case 'grep':
+        return { query: typeof args.pattern === 'string' ? args.pattern : '' };
+      case 'glob':
+        return { query: typeof args.pattern === 'string' ? args.pattern : '' };
       case 'search_web':
         return { query: typeof args.query === 'string' ? args.query : '' };
       case 'get_system_info':
@@ -439,17 +523,33 @@ export function AgentPage() {
     }
   };
 
+  const findMessageIdForActivity = (activityId: string) => {
+    for (const msg of messagesRef.current) {
+      if (!msg.parts) continue;
+      const hasActivity = msg.parts.some(part => part.type === 'tool' && part.activity?.id === activityId);
+      if (hasActivity) return msg.id;
+    }
+    return null;
+  };
+
   // Helper: update an activity within a message's parts array
   const updateActivityInParts = (msgId: string | null, activityId: string, updates: Partial<AgentActivity>) => {
+    let found = false;
     setMessages(prev => prev.map(msg => {
       if (msgId && msg.id !== msgId) return msg;
       if (!msg.parts) return msg;
       const partIdx = msg.parts.findIndex(p => p.type === 'tool' && p.activity?.id === activityId);
       if (partIdx === -1) return msg;
+      found = true;
       const newParts = [...msg.parts];
       newParts[partIdx] = { ...newParts[partIdx], activity: { ...newParts[partIdx].activity!, ...updates } as AgentActivity };
       return { ...msg, parts: newParts };
     }));
+
+    if (!found) {
+      const existing = pendingActivityUpdatesRef.current.get(activityId) || {};
+      pendingActivityUpdatesRef.current.set(activityId, { ...existing, ...updates });
+    }
   };
 
   // Auto-execute HITL tool in YOLO mode (bypasses approval UI)
@@ -488,6 +588,34 @@ export function AgentPage() {
             content: String(args.content || ''),
           });
           result = `Successfully wrote to ${args.path}`;
+          break;
+        }
+        case 'edit_file': {
+          const res = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', {
+            path: String(args.path || ''),
+            old_string: String(args.oldString || ''),
+            new_string: String(args.newString || ''),
+            all: Boolean(args.all),
+          });
+          result = res.message || `Edited ${args.path} (${res.replacements} replacements)`;
+          isError = res.status !== 'success';
+          break;
+        }
+        case 'generate_file': {
+          const attachment = await invoke<FileAttachment>('generate_agent_file', {
+            filename: String(args.filename || 'generated.txt'),
+            content: String(args.content || ''),
+            description: String(args.description || ''),
+            mime_type: typeof (args as any).mime_type === 'string' ? (args as any).mime_type : undefined,
+            tool_call_id: toolCallId,
+            approved: true,
+          });
+          result = `Generated ${attachment.originalName}`;
+          updateActivityInParts(null, toolCallId, {
+            filename: attachment.originalName,
+            path: attachment.storedPath,
+            size: attachment.size,
+          });
           break;
         }
         case 'move_file': {
@@ -541,25 +669,44 @@ export function AgentPage() {
 
   // Core agentic loop - streams response and handles tool calls recursively.
   // Creates ONE assistant message per turn with interleaved parts (text ↔ tool).
-  const runAgentLoop = async (currentHistory: CoreMessage[], options?: { allowAutoContinue?: boolean }) => {
+  const runAgentLoop = async (
+    currentHistory: CoreMessage[],
+    options?: { allowAutoContinue?: boolean; reuseMessageId?: string | null }
+  ) => {
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
     const allowAutoContinue = options?.allowAutoContinue ?? true;
-    
-    const assistantMsgId = generateId();
 
-    // Create a single assistant message for this turn
-    setMessages(prev => [...prev, {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      createdAt: new Date().toISOString(),
-      parts: [],
-    }]);
+    const reuseMessageId = options?.reuseMessageId ?? null;
+    let assistantMsgId = reuseMessageId || generateId();
+    let initialParts: MessagePart[] = [];
+    let initialContent = '';
+
+    if (reuseMessageId) {
+      const existing = messagesRef.current.find(m => m.id === reuseMessageId);
+      if (existing) {
+        initialParts = existing.parts ? [...existing.parts] : [];
+        initialContent = existing.content || '';
+      } else {
+        assistantMsgId = generateId();
+      }
+    }
+
+    const createdNewMessage = !reuseMessageId || assistantMsgId !== reuseMessageId;
+    if (createdNewMessage) {
+      // Create a single assistant message for this turn
+      setMessages(prev => [...prev, {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        createdAt: new Date().toISOString(),
+        parts: [],
+      }]);
+    }
 
     try {
       const localTools = getEnabledTools({
-        searchProvider: settings.agent.searchProvider || 'none',
+        searchProvider: settings.agent?.searchProvider || 'none',
       });
 
       // Merge local tools with MCP tools from connected servers
@@ -574,8 +721,9 @@ export function AgentPage() {
       });
 
       // Track accumulated state for this turn — all in ONE message
-      const parts: MessagePart[] = [];
-      let fullContent = '';
+      const parts: MessagePart[] = [...initialParts];
+      let fullContent = initialContent;
+      let historyTextContent = '';
       let currentTextContent = '';
       let currentTextPartIdx = -1;
       let finalToolCalls: ToolCallPart[] = [];
@@ -603,6 +751,7 @@ export function AgentPage() {
           }
           currentTextContent += part.text;
           fullContent += part.text;
+          historyTextContent += part.text;
           parts[currentTextPartIdx] = { type: 'text', content: currentTextContent };
           updateMsg();
         } 
@@ -635,8 +784,16 @@ export function AgentPage() {
             ...activityDetails
           } as AgentActivity;
 
+          const pendingUpdates = pendingActivityUpdatesRef.current.get(part.toolCallId);
+          const resolvedActivity = pendingUpdates
+            ? ({ ...newActivity, ...pendingUpdates } as AgentActivity)
+            : newActivity;
+          if (pendingUpdates) {
+            pendingActivityUpdatesRef.current.delete(part.toolCallId);
+          }
+
           // Add tool part and reset text tracking so next text starts a new part
-          parts.push({ type: 'tool', activity: newActivity });
+          parts.push({ type: 'tool', activity: resolvedActivity });
           currentTextPartIdx = -1;
           updateMsg();
         }
@@ -691,7 +848,7 @@ export function AgentPage() {
       const assistantMessage: CoreMessage = {
         role: 'assistant',
         content: [
-          ...(fullContent ? [{ type: 'text' as const, text: fullContent }] : []),
+          ...(historyTextContent ? [{ type: 'text' as const, text: historyTextContent }] : []),
           ...finalToolCalls.map(tc => ({
             type: 'tool-call' as const,
             toolCallId: tc.toolCallId,
@@ -709,8 +866,8 @@ export function AgentPage() {
       const approvalMode = agentSettings?.approvalMode || 'always';
       
       if (hitlCalls.length === 0) {
-        if (allowAutoContinue && toolResultMessages.length > 0 && !fullContent.trim()) {
-          await runAgentLoop(baseHistory, { allowAutoContinue: false });
+        if (allowAutoContinue && toolResultMessages.length > 0 && !historyTextContent.trim()) {
+          await runAgentLoop(baseHistory, { allowAutoContinue: false, reuseMessageId: assistantMsgId });
         } else {
           setIsLoading(false);
         }
@@ -742,7 +899,7 @@ export function AgentPage() {
 
         const newHistory = [...baseHistory, ...toolResults];
         agentHistoryRef.current = newHistory;
-        await runAgentLoop(newHistory);
+        await runAgentLoop(newHistory, { reuseMessageId: assistantMsgId });
       } else {
         setIsLoading(false); // Paused for manual HITL approval
       }
@@ -750,7 +907,9 @@ export function AgentPage() {
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         // Remove the empty assistant message on abort
-        setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId));
+        if (createdNewMessage) {
+          setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId));
+        }
         setIsLoading(false);
         return;
       }
@@ -759,7 +918,9 @@ export function AgentPage() {
       if (error instanceof Error && error.message?.includes('No output generated')) {
         console.warn('[Agent] No output generated by model — ending turn.');
         // Remove the empty assistant message
-        setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId || (msg.parts && msg.parts.length > 0)));
+        if (createdNewMessage) {
+          setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId || (msg.parts && msg.parts.length > 0)));
+        }
         setIsLoading(false);
         return;
       }
@@ -834,6 +995,34 @@ export function AgentPage() {
             result = `Successfully wrote to ${args.path}`;
             break;
           }
+          case 'edit_file': {
+            const res = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', {
+              path: String(args.path || ''),
+              old_string: String(args.oldString || ''),
+              new_string: String(args.newString || ''),
+              all: Boolean(args.all),
+            });
+            result = res.message || `Edited ${args.path} (${res.replacements} replacements)`;
+            isError = res.status !== 'success';
+            break;
+          }
+          case 'generate_file': {
+            const attachment = await invoke<FileAttachment>('generate_agent_file', {
+              filename: String(args.filename || 'generated.txt'),
+              content: String(args.content || ''),
+              description: String(args.description || ''),
+              mime_type: typeof (args as any).mime_type === 'string' ? (args as any).mime_type : undefined,
+              tool_call_id: activityId,
+              approved: true,
+            });
+            result = `Generated ${attachment.originalName}`;
+            updateActivityInParts(null, activityId, {
+              filename: attachment.originalName,
+              path: attachment.storedPath,
+              size: attachment.size,
+            });
+            break;
+          }
           case 'move_file': {
             await invoke('agent_move_file', { 
               src: String(args.src || ''), 
@@ -886,7 +1075,7 @@ export function AgentPage() {
     agentHistoryRef.current = newHistory;
 
     // 6. Resume Loop (new assistant message)
-    await runAgentLoop(newHistory);
+    await runAgentLoop(newHistory, { reuseMessageId: findMessageIdForActivity(activityId) });
   };
 
   const handleActivityReject = async (activityId: string) => {
@@ -930,7 +1119,7 @@ export function AgentPage() {
 
     // 4. Resume Loop so AI can respond to the rejection (new assistant message)
     setIsLoading(true);
-    await runAgentLoop(newHistory);
+    await runAgentLoop(newHistory, { reuseMessageId: findMessageIdForActivity(activityId) });
   };
 
 
@@ -1306,7 +1495,7 @@ export function AgentPage() {
               exit={{ opacity: 0, x: 24 }}
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
             >
-              <AgentRightSidebar onRunInstrument={handleRunInstrument} mcpState={mcpState} />
+              <AgentRightSidebar onRunInstrument={handleRunInstrument} mcpState={mcpState} toolSummary={toolSummary} />
             </motion.div>
           )}
         </AnimatePresence>
