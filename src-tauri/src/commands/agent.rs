@@ -1547,10 +1547,55 @@ pub fn get_command_history(limit: Option<usize>) -> Result<Vec<PendingCommand>, 
 // =============================================================================
 
 /// Read a file's contents
-/// Read a file's contents
+/// First checks if the file exists at the given path, then checks uploaded files by original name
 #[tauri::command]
 pub fn agent_read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+    // First try to read from the given path
+    match fs::read_to_string(&path) {
+        Ok(content) => return Ok(content),
+        Err(_) => {
+            // If that fails, check if this is a filename that was uploaded
+            // Extract just the filename from the path
+            let file_name = Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&path);
+
+            // Try to find in uploaded files by original name
+            let data_dir = get_data_dir_path();
+            let uploaded_dir = data_dir.join("agent").join("files").join("uploaded");
+            if let Ok(entries) = fs::read_dir(&uploaded_dir) {
+                // Look for meta files and check original_name
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let meta_path = entry.path().with_extension("meta.json");
+                        if meta_path.exists() {
+                            if let Ok(meta_content) = fs::read_to_string(&meta_path) {
+                                if let Ok(meta) =
+                                    serde_json::from_str::<serde_json::Value>(&meta_content)
+                                {
+                                    if let Some(original_name) =
+                                        meta.get("original_name").and_then(|v| v.as_str())
+                                    {
+                                        if original_name == file_name {
+                                            // Found the file, read the actual content
+                                            let file_path = entry.path();
+                                            if let Ok(content) = fs::read_to_string(&file_path) {
+                                                return Ok(content);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If still not found, return the original error
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+        }
+    }
 }
 
 /// Write to a file (requires approval in non-YOLO mode)
