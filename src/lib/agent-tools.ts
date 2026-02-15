@@ -188,23 +188,16 @@ export const runInstrumentTool = tool({
       const instrument = instruments.find(i => i.name.toLowerCase() === name.toLowerCase());
       if (!instrument) return { status: 'error', error: `Instrument '${name}' not found. Use list_instruments to see available.` };
 
-      // Sanitize args: escape double quotes and wrap in quotes to prevent injection
-      const sanitizedArgs = args ? `"${args.replace(/"/g, '\\"')}"` : '';
-
       let command = '';
-      if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${sanitizedArgs}`;
-      else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${sanitizedArgs}`;
-      else if (instrument.extension === 'py') command = `python "${instrument.path}" ${sanitizedArgs}`;
-      else if (instrument.extension === 'js') command = `node "${instrument.path}" ${sanitizedArgs}`;
+      if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${args || ''}`;
+      else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${args || ''}`;
+      else if (instrument.extension === 'py') command = `python "${instrument.path}" ${args || ''}`;
+      else if (instrument.extension === 'js') command = `node "${instrument.path}" ${args || ''}`;
 
-      // Use execute_agent_command (consistent with other HITL tools) instead of legacy queue_agent_command
-      const result = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
-        command,
-        reason: `Running instrument: ${name}`,
-      });
-      return result.error
-        ? { status: 'error', error: result.error }
-        : { status: 'success', output: result.output || 'Executed successfully' };
+      const result = await invoke<{ id: string; status: string; output?: string }>('queue_agent_command', { command, reason: `Running instrument: ${name}` });
+      return result.status === 'executed'
+        ? { status: 'success', output: result.output || 'Executed successfully' }
+        : { status: 'pending', commandId: result.id, message: 'Waiting for approval' };
     } catch (error) {
       return { status: 'error', error: String(error) };
     }
@@ -225,6 +218,30 @@ export const getSystemInfoTool = tool({
 });
 
 // =============================================================================
+// File Generation Tool (HITL)
+// =============================================================================
+
+export const generateFileTool = tool({
+  description: `Generate a file with content and save it to the agent workspace. 
+Use this when you need to create reports, logs, scripts, configuration files, or any output file.
+The file will be saved and the user will be able to download it from the chat.
+Examples: creating diagnostic reports, exporting logs, generating scripts, saving analysis results.`,
+  inputSchema: z.object({
+    filename: z.string().describe('Name for the file including extension (e.g., "report.txt", "script.ps1", "data.json")'),
+    content: z.string().describe('Full content to write to the file'),
+    description: z.string().describe('Brief description of what this file contains and why it was generated'),
+    mime_type: z.string().optional().describe('MIME type (optional, auto-detected from extension if not provided)'),
+  }),
+  outputSchema: z.object({
+    status: z.enum(['success', 'error', 'pending']),
+    file_id: z.string().optional(),
+    path: z.string().optional(),
+    size: z.number().optional(),
+    error: z.string().optional(),
+  }),
+});
+
+// =============================================================================
 // Tool Collection & Helpers
 // =============================================================================
 
@@ -233,6 +250,7 @@ export const agentTools = {
   search_web: searchWebTool,
   read_file: readFileTool,
   write_file: writeFileTool,
+  generate_file: generateFileTool,
   list_dir: listDirTool,
   move_file: moveFileTool,
   copy_file: copyFileTool,
@@ -242,7 +260,7 @@ export const agentTools = {
   get_system_info: getSystemInfoTool,
 } satisfies ToolSet;
 
-export const HITL_TOOLS = ['execute_command', 'write_file', 'move_file', 'copy_file'] as const;
+export const HITL_TOOLS = ['execute_command', 'write_file', 'generate_file', 'move_file', 'copy_file'] as const;
 
 export function isHITLTool(toolName: string): boolean {
   return HITL_TOOLS.includes(toolName as typeof HITL_TOOLS[number]);
@@ -255,11 +273,22 @@ export function shouldRequireApproval(toolName: string, approvalMode: string): b
 }
 
 export function getEnabledTools(settings: { searchProvider: string }): ToolSet {
-  const tools: ToolSet = { ...agentTools };
+  const tools: ToolSet = {
+    execute_command: executeCommandTool,
+    read_file: readFileTool,
+    write_file: writeFileTool,
+    generate_file: generateFileTool,
+    list_dir: listDirTool,
+    move_file: moveFileTool,
+    copy_file: copyFileTool,
+    list_programs: listProgramsTool,
+    list_instruments: listInstrumentsTool,
+    run_instrument: runInstrumentTool,
+    get_system_info: getSystemInfoTool,
+  };
 
-  // Remove search_web if no provider is configured
-  if (settings.searchProvider === 'none') {
-    delete tools.search_web;
+  if (settings.searchProvider !== 'none') {
+    tools.search_web = searchWebTool;
   }
 
   return tools;

@@ -46,6 +46,9 @@ zerocopy = "0.8"                                        # For efficient vector s
 urlencoding = "2"                                       # For URL encoding in search queries
 gethostname = "0.4"                                     # For machine identification in portable memory system
 tracing = "0.1"                                         # For structured logging
+sha2 = "0.10"                                           # For SHA-256 checksums
+hex = "0.4"                                             # For hex encoding
+mime_guess = "2"                                        # For MIME type detection from file extension
 
 # MCP Server
 rmcp = { version = "0.1", features = ["server"] }

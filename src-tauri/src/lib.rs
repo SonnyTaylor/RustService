@@ -145,6 +145,16 @@ pub fn run() {
             commands::agent_copy_file,
             commands::list_instruments,
             commands::list_agent_programs,
+            // File attachment commands
+            commands::save_uploaded_file,
+            commands::generate_agent_file,
+            commands::read_file_content,
+            commands::read_file_binary,
+            commands::get_file_info,
+            commands::list_agent_files,
+            commands::delete_agent_file,
+            commands::validate_filesystem_path,
+            commands::read_filesystem_file,
             // Conversation commands
             commands::create_conversation,
             commands::list_conversations,

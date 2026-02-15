@@ -1,25 +1,28 @@
 /**
  * Chat Message Component
  *
- * Displays messages with interleaved text and tool activity parts.
- * Supports linear flow: text → tool → text → tool → text
+ * Displays messages with interleaved text, tool activity, and file attachment parts.
+ * Supports linear flow: text → tool → text → tool → text → attachment
  */
 
-import { memo, useState, useCallback } from 'react';
-import { User, Bot, Copy, Check } from 'lucide-react';
+import { memo } from 'react';
+import { User, Bot } from 'lucide-react';
 import { AgentActivityItem } from './AgentActivityItem';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
+import { FileAttachmentComponent } from './FileAttachment';
 import type { MessageRole } from '@/types/agent';
 import type { AgentActivity } from '@/types/agent-activity';
+import type { FileAttachment } from '@/types/file-attachment';
 
 // =============================================================================
 // Types
 // =============================================================================
 
 export interface MessagePart {
-  type: 'text' | 'tool';
+  type: 'text' | 'tool' | 'attachment';
   content?: string;
   activity?: AgentActivity;
+  attachments?: FileAttachment[];
 }
 
 interface ChatMessageProps {
@@ -29,6 +32,7 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   parts?: MessagePart[];
   timestamp?: string;
+  attachments?: FileAttachment[]; // Legacy support for direct attachments
   onActivityApprove?: (activityId: string) => void;
   onActivityReject?: (activityId: string) => void;
 }
@@ -44,6 +48,7 @@ export const ChatMessage = memo(function ChatMessage({
   isStreaming,
   parts,
   timestamp,
+  attachments,
   onActivityApprove,
   onActivityReject,
 }: ChatMessageProps) {
@@ -76,6 +81,20 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
           <div className="rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground max-w-[85%]">
             <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+            {/* User attachments */}
+            {attachments && attachments.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-primary-foreground/20 space-y-2">
+                {attachments.map(att => (
+                  <FileAttachmentComponent
+                    key={att.id}
+                    attachment={att}
+                    compact
+                    showPreview
+                    showDownload
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -85,25 +104,9 @@ export const ChatMessage = memo(function ChatMessage({
   // Assistant messages — left-aligned with interleaved parts
   const hasParts = parts && parts.length > 0;
   const hasContent = !!content;
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    // Gather all text content from parts, or fall back to content prop
-    let textToCopy = '';
-    if (hasParts) {
-      textToCopy = parts.filter(p => p.type === 'text' && p.content).map(p => p.content).join('\n\n');
-    }
-    if (!textToCopy) textToCopy = content;
-    if (!textToCopy) return;
-
-    navigator.clipboard.writeText(textToCopy).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [content, hasParts, parts]);
 
   return (
-    <div className="group/msg flex gap-3 py-3">
+    <div className="flex gap-3 py-3">
       {/* Avatar */}
       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center mt-0.5">
         <Bot className="h-3.5 w-3.5" />
@@ -114,17 +117,6 @@ export const ChatMessage = memo(function ChatMessage({
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5">
           <span className="font-medium">Agent</span>
           {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
-
-          {/* Copy button — visible on hover */}
-          {(hasContent || hasParts) && !isStreaming && (
-            <button
-              onClick={handleCopy}
-              className="ml-auto opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-              title="Copy message"
-            >
-              {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-            </button>
-          )}
         </div>
 
         {/* Render interleaved parts if available */}
@@ -148,6 +140,20 @@ export const ChatMessage = memo(function ChatMessage({
                   />
                 );
               }
+              if (part.type === 'attachment' && part.attachments && part.attachments.length > 0) {
+                return (
+                  <div key={`attachment-${index}`} className="space-y-2">
+                    {part.attachments.map(att => (
+                      <FileAttachmentComponent
+                        key={att.id}
+                        attachment={att}
+                        showPreview
+                        showDownload
+                      />
+                    ))}
+                  </div>
+                );
+              }
               return null;
             })}
           </div>
@@ -157,6 +163,20 @@ export const ChatMessage = memo(function ChatMessage({
             <MemoizedMarkdown content={content} id={messageId} />
           </div>
         ) : null}
+
+        {/* Legacy attachments (not in parts) */}
+        {attachments && attachments.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {attachments.map(att => (
+              <FileAttachmentComponent
+                key={att.id}
+                attachment={att}
+                showPreview
+                showDownload
+              />
+            ))}
+          </div>
+        )}
 
         {/* Streaming indicator */}
         {isStreaming && !hasContent && !hasParts && (

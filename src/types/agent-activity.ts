@@ -7,7 +7,7 @@
 /**
  * Types of activities the agent can perform
  */
-export type ActivityType = 
+export type ActivityType =
   | 'analyzed_directory'
   | 'searched'
   | 'analyzed_file'
@@ -19,7 +19,9 @@ export type ActivityType =
   | 'list_dir'
   | 'web_search'
   | 'get_system_info'
-  | 'mcp_tool';
+  | 'mcp_tool'
+  | 'generate_file'
+  | 'attach_files';
 
 /**
  * Status of an activity
@@ -151,9 +153,34 @@ export interface McpToolActivity extends BaseActivity {
 }
 
 /**
+ * File generation activity (agent creates a file)
+ */
+export interface GenerateFileActivity extends BaseActivity {
+  type: 'generate_file';
+  filename: string;
+  description: string;
+  mimeType?: string;
+  size?: number;
+  path?: string;
+}
+
+/**
+ * File attachment activity (user attaches files)
+ */
+export interface AttachFilesActivity extends BaseActivity {
+  type: 'attach_files';
+  fileCount: number;
+  files: Array<{
+    name: string;
+    size: number;
+    mimeType: string;
+  }>;
+}
+
+/**
  * Union type of all activities
  */
-export type AgentActivity = 
+export type AgentActivity =
   | AnalyzedDirectoryActivity
   | SearchedActivity
   | AnalyzedFileActivity
@@ -165,13 +192,15 @@ export type AgentActivity =
   | ListDirActivity
   | WebSearchActivity
   | GetSystemInfoActivity
-  | McpToolActivity;
+  | McpToolActivity
+  | GenerateFileActivity
+  | AttachFilesActivity;
 
 /**
  * Helper to check if an activity requires approval
  */
 export function isHITLActivity(activity: AgentActivity): boolean {
-  return ['ran_command', 'write_file', 'move_file', 'copy_file'].includes(activity.type);
+  return ['ran_command', 'write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type);
 }
 
 /**

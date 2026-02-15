@@ -595,5 +595,280 @@ pub struct CommandExecutionResult {
     pub stderr: String,
 }
 
+// =============================================================================
+// File Attachment Types
+// =============================================================================
 
+/// Categories of files for specialized handling
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileCategory {
+    Text,
+    Code,
+    Document,
+    Image,
+    Media,
+    Binary,
+}
 
+impl FileCategory {
+    /// Get category from MIME type
+    pub fn from_mime_type(mime_type: &str) -> Self {
+        if mime_type.starts_with("text/") {
+            return Self::Text;
+        }
+        if mime_type.starts_with("image/") {
+            return Self::Image;
+        }
+        if mime_type.starts_with("audio/") || mime_type.starts_with("video/") {
+            return Self::Media;
+        }
+
+        let code_types = [
+            "application/javascript",
+            "application/json",
+            "application/xml",
+            "application/x-python-code",
+            "application/x-sh",
+        ];
+        if code_types.contains(&mime_type) || mime_type.contains("script") {
+            return Self::Code;
+        }
+
+        let doc_types = [
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats",
+        ];
+        if doc_types.iter().any(|t| mime_type.contains(t)) {
+            return Self::Document;
+        }
+
+        Self::Binary
+    }
+
+    /// Get category from file extension
+    pub fn from_extension(filename: &str) -> Self {
+        let ext = filename.split('.').last().unwrap_or("").to_lowercase();
+
+        let code_exts = [
+            "js", "ts", "jsx", "tsx", "py", "rs", "java", "cpp", "c", "h", "hpp", "go", "rb",
+            "php", "swift", "kt", "scala", "r", "m", "mm", "cs", "vb", "fs", "hs", "lua", "pl",
+            "sh", "bash", "zsh", "fish", "ps1", "cmd", "bat", "sql", "html", "css", "scss", "sass",
+            "less", "xml", "yaml", "yml", "toml", "ini", "conf", "config", "json", "md",
+            "markdown",
+        ];
+        if code_exts.contains(&ext.as_str()) {
+            return Self::Code;
+        }
+
+        let image_exts = [
+            "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico", "tiff", "raw",
+        ];
+        if image_exts.contains(&ext.as_str()) {
+            return Self::Image;
+        }
+
+        let media_exts = [
+            "mp3", "mp4", "wav", "avi", "mov", "mkv", "flv", "wmv", "webm", "ogg", "ogv",
+        ];
+        if media_exts.contains(&ext.as_str()) {
+            return Self::Media;
+        }
+
+        let doc_exts = [
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "txt",
+        ];
+        if doc_exts.contains(&ext.as_str()) {
+            return Self::Document;
+        }
+
+        Self::Binary
+    }
+
+    /// Check if this category should have content auto-extracted
+    pub fn should_auto_extract(&self) -> bool {
+        matches!(self, Self::Text | Self::Code)
+    }
+}
+
+/// Source of a file attachment
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileSource {
+    Upload,
+    Generated,
+    Filesystem,
+}
+
+/// Unified file attachment metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAttachment {
+    pub id: String,
+    pub source: FileSource,
+    pub original_name: String,
+    pub stored_name: String,
+    pub mime_type: String,
+    pub category: FileCategory,
+    pub size: u64,
+    pub stored_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_count: Option<u32>,
+    pub checksum: String,
+    pub uploaded_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+    #[serde(flatten)]
+    pub metadata: FileAttachmentMetadata,
+}
+
+/// Source-specific metadata for file attachments
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAttachmentMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_metadata: Option<UploadMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_metadata: Option<GenerationMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filesystem_metadata: Option<FilesystemMetadata>,
+}
+
+impl Default for FileAttachmentMetadata {
+    fn default() -> Self {
+        Self {
+            upload_metadata: None,
+            generation_metadata: None,
+            filesystem_metadata: None,
+        }
+    }
+}
+
+/// Metadata for user-uploaded files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadMetadata {
+    pub uploaded_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_path: Option<String>,
+    pub auto_extracted: bool,
+}
+
+/// Metadata for agent-generated files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationMetadata {
+    pub generated_by: String,
+    pub description: String,
+    pub tool_call_id: String,
+    pub approved: bool,
+}
+
+/// Metadata for filesystem-referenced files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemMetadata {
+    pub original_path: String,
+    pub accessed_at: String,
+    pub auto_read: bool,
+}
+
+/// File upload request from frontend
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileUploadRequest {
+    pub file_name: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub content_base64: String,
+}
+
+/// File chunk upload request for large files
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChunkRequest {
+    pub upload_id: String,
+    pub chunk_index: u32,
+    pub total_chunks: u32,
+    pub content_base64: String,
+}
+
+/// Status of a chunked upload
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkUploadStatus {
+    pub upload_id: String,
+    pub chunks_received: Vec<u32>,
+    pub chunks_total: u32,
+    pub bytes_received: u64,
+    pub bytes_total: u64,
+    pub complete: bool,
+}
+
+/// File generation request from agent
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileGenerationRequest {
+    pub filename: String,
+    pub content: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+}
+
+/// Result of validating a filesystem path
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathValidationResult {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sanitized_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub within_sandbox: bool,
+}
+
+/// Request to read a file from the filesystem
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemReadRequest {
+    pub path: String,
+    #[serde(default)]
+    pub auto_extract: bool,
+    #[serde(default)]
+    pub max_size: Option<u64>,
+}
+
+/// File size limits (in bytes)
+pub const FILE_SIZE_SMALL: u64 = 10 * 1024 * 1024; // 10 MB
+pub const FILE_SIZE_LARGE: u64 = 100 * 1024 * 1024; // 100 MB
+pub const FILE_SIZE_HUGE: u64 = 1024 * 1024 * 1024; // 1 GB
+pub const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB
+pub const MAX_CONTENT_EXTRACTION_SIZE: usize = 100 * 1024; // 100 KB
+
+/// Helper to format file size for display
+pub fn format_file_size(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let k = 1024_f64;
+    let i = (bytes as f64).log(k).floor() as usize;
+    let size = bytes as f64 / k.powi(i as i32);
+    format!("{:.2} {}", size, UNITS[i.min(UNITS.len() - 1)])
+}
+
+/// Helper to compute SHA-256 checksum
+pub fn compute_checksum(data: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}

@@ -1,6 +1,6 @@
 /**
  * Agent Page
- * 
+ *
  * Main interface for the ServiceAgent AI system with chat UI,
  * instrument sidebar, and command approval flow.
  */
@@ -14,8 +14,10 @@ import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage, type MessagePart } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
 import { ConversationSelector } from '@/components/agent/ConversationSelector';
+import { FileAttachmentComponent } from '@/components/agent/FileAttachment';
 import type { AgentSettings, ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages, MCPServerConfig } from '@/types/agent';
 import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
+import type { FileAttachment } from '@/types/file-attachment';
 import {
   Bot,
   Send,
@@ -29,7 +31,9 @@ import {
   Zap,
   Menu,
   PanelRightClose,
-  PanelRight
+  PanelRight,
+  Paperclip,
+  X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -110,6 +114,7 @@ interface Message {
   content: string;
   createdAt: string;
   parts?: MessagePart[];
+  attachments?: FileAttachment[];
 }
 
 // =============================================================================
@@ -127,6 +132,8 @@ export function AgentPage() {
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState<string>('New Chat');
+  const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const mcpServersKeyRef = useRef<string>('');
   const [mcpState, setMcpState] = useState<MCPManagerState>({
     servers: [],
@@ -136,21 +143,14 @@ export function AgentPage() {
   });
 
   const agentHistoryRef = useRef<CoreMessage[]>([]);
-  const messagesRef = useRef<Message[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
-  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
 
   const agentSettings = settings.agent;
   const currentProvider = agentSettings?.provider || 'openai';
   const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
   const isConfigured = currentApiKey.length > 0;
-
-  // Keep messagesRef in sync for use inside closures
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   // Auto-scroll
   useEffect(() => {
@@ -186,34 +186,18 @@ export function AgentPage() {
   }, [agentSettings?.mcpServers]);
 
   // Save conversation to backend
-  const saveConversation = useCallback(async (history: CoreMessage[]) => {
-    if (!currentConversationId || history.length === 0) return;
+  const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
+    if (!currentConversationId || msgs.length === 0) return;
 
     try {
-      // Build a timestamp lookup from UI messages by role sequence
-      const uiMsgs = messagesRef.current;
-      let uiIdx = 0;
-
-      const conversationMessages: ConversationMessage[] = history.map((msg) => {
-        // Advance through UI messages to find a matching role for timestamp
-        let timestamp = new Date().toISOString();
-        while (uiIdx < uiMsgs.length) {
-          if (uiMsgs[uiIdx].role === msg.role || (msg.role === 'tool' && uiMsgs[uiIdx].role === 'assistant')) {
-            timestamp = uiMsgs[uiIdx].createdAt;
-            // Only advance past user messages (assistants may have multiple history entries)
-            if (msg.role === 'user') uiIdx++;
-            break;
-          }
-          uiIdx++;
-        }
-        return {
-          id: generateId(),
-          conversationId: currentConversationId,
-          role: msg.role,
-          content: JSON.stringify(msg.content),
-          createdAt: timestamp,
-        };
-      });
+      // Convert messages to ConversationMessage format
+      const conversationMessages: ConversationMessage[] = history.map((msg, index) => ({
+        id: generateId(),
+        conversationId: currentConversationId,
+        role: msg.role,
+        content: JSON.stringify(msg.content),
+        createdAt: msgs[Math.floor(index / 2)]?.createdAt || new Date().toISOString(),
+      }));
 
       await invoke('save_conversation_messages', {
         conversationId: currentConversationId,
@@ -460,63 +444,6 @@ export function AgentPage() {
     }));
   };
 
-  /**
-   * Shared HITL tool executor — single source of truth for running
-   * execute_command, write_file, move_file, and copy_file.
-   * Returns { result, isError }.
-   */
-  const executeHITLTool = async (
-    toolName: string,
-    args: Record<string, unknown>,
-    reason?: string,
-  ): Promise<{ result: string; isError: boolean }> => {
-    const validation = validateToolCall(toolName, args);
-    if (!validation.valid) {
-      return { result: validation.error || 'Invalid tool call - missing required arguments', isError: true };
-    }
-
-    try {
-      switch (toolName) {
-        case 'execute_command': {
-          const command = String(args.command || '');
-          console.log('[Agent] Executing command:', command);
-          const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
-            command,
-            reason: String(args.reason || reason || 'User approved'),
-          });
-          return { result: res.output || res.error || 'Command executed successfully.', isError: !!res.error };
-        }
-        case 'write_file': {
-          await invoke('agent_write_file', {
-            path: String(args.path || ''),
-            content: String(args.content || ''),
-          });
-          return { result: `Successfully wrote to ${args.path}`, isError: false };
-        }
-        case 'move_file': {
-          await invoke('agent_move_file', {
-            src: String(args.src || ''),
-            dest: String(args.dest || ''),
-          });
-          return { result: `Successfully moved ${args.src} to ${args.dest}`, isError: false };
-        }
-        case 'copy_file': {
-          await invoke('agent_copy_file', {
-            src: String(args.src || ''),
-            dest: String(args.dest || ''),
-          });
-          return { result: `Successfully copied ${args.src} to ${args.dest}`, isError: false };
-        }
-        default:
-          return { result: `Unknown HITL tool: ${toolName}`, isError: true };
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error('[Agent] Tool execution error:', msg);
-      return { result: msg, isError: true };
-    }
-  };
-
   // Auto-execute HITL tool in YOLO mode (bypasses approval UI)
   const autoExecuteHITLTool = async (
     toolCallId: string,
@@ -526,7 +453,60 @@ export function AgentPage() {
     // Update UI to show running state
     updateActivityInParts(null, toolCallId, { status: 'running' as ActivityStatus });
 
-    const { result, isError } = await executeHITLTool(toolName, args, 'YOLO mode - auto-approved');
+    let result: string;
+    let isError = false;
+    
+    try {
+      const validation = validateToolCall(toolName, args);
+      if (!validation.valid) {
+        result = validation.error || 'Invalid tool call - missing required arguments';
+        isError = true;
+      } else {
+        switch (toolName) {
+        case 'execute_command': {
+          const command = String(args.command || '');
+          console.log('[Agent YOLO] Auto-executing command:', command);
+          const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
+            command, 
+            reason: String(args.reason || 'YOLO mode - auto-approved')
+          });
+          result = res.output || res.error || 'Command executed successfully.';
+          isError = !!res.error;
+          break;
+        }
+        case 'write_file': {
+          await invoke('agent_write_file', { 
+            path: String(args.path || ''),
+            content: String(args.content || ''),
+          });
+          result = `Successfully wrote to ${args.path}`;
+          break;
+        }
+        case 'move_file': {
+          await invoke('agent_move_file', { 
+            src: String(args.src || ''), 
+            dest: String(args.dest || '') 
+          });
+          result = `Moved ${args.src} to ${args.dest}`;
+          break;
+        }
+        case 'copy_file': {
+          await invoke('agent_copy_file', { 
+            src: String(args.src || ''), 
+            dest: String(args.dest || '') 
+          });
+          result = `Copied ${args.src} to ${args.dest}`;
+          break;
+        }
+        default:
+          result = `Unknown HITL tool: ${toolName}`;
+          isError = true;
+        }
+      }
+    } catch (error) {
+      result = String(error);
+      isError = true;
+    }
 
     // Update UI with result
     updateActivityInParts(null, toolCallId, {
@@ -535,16 +515,20 @@ export function AgentPage() {
       error: isError ? result : undefined,
     });
 
-    return {
+    // Add tool result to history and continue loop
+    const toolResultMsg: CoreMessage = {
       role: 'tool',
       content: [{
         type: 'tool-result',
         toolCallId,
         toolName,
-        result,
-        isError,
+        output: isError
+          ? { type: 'error-text' as const, value: result }
+          : { type: 'text' as const, value: result },
       }]
     };
+
+    return toolResultMsg;
   };
 
   // Core agentic loop - streams response and handles tool calls recursively.
@@ -555,7 +539,6 @@ export function AgentPage() {
     const allowAutoContinue = options?.allowAutoContinue ?? true;
     
     const assistantMsgId = generateId();
-    setStreamingMsgId(assistantMsgId);
 
     // Create a single assistant message for this turn
     setMessages(prev => [...prev, {
@@ -681,39 +664,33 @@ export function AgentPage() {
           }
 
           // Record tool result in history so the model can continue if needed
+          const resultValue = typeof resultData === 'undefined' ? output : resultData;
           toolResultMessages.push({
             role: 'tool',
             content: [{
               type: 'tool-result',
               toolCallId: part.toolCallId,
               toolName: part.toolName,
-              result: typeof resultData === 'undefined' ? output : resultData,
-              isError: isError,
+              output: isError
+                ? { type: 'error-text' as const, value: resultValue }
+                : { type: 'text' as const, value: resultValue },
             }]
           });
         }
       }
 
-      // Stream finished. Build history content preserving interleaved order.
-      const assistantContentParts: Array<{ type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }> = [];
-      for (const p of parts) {
-        if (p.type === 'text' && p.content) {
-          assistantContentParts.push({ type: 'text' as const, text: p.content });
-        } else if (p.type === 'tool' && p.activity) {
-          const tc = finalToolCalls.find(t => t.toolCallId === p.activity!.id);
-          if (tc) {
-            assistantContentParts.push({
-              type: 'tool-call' as const,
-              toolCallId: tc.toolCallId,
-              toolName: tc.toolName,
-              input: (tc as any).args ?? (tc as any).input,
-            });
-          }
-        }
-      }
+      // Stream finished. Update history with the full assistant message.
       const assistantMessage: CoreMessage = {
         role: 'assistant',
-        content: assistantContentParts.length > 0 ? assistantContentParts : (fullContent || ''),
+        content: [
+          ...(fullContent ? [{ type: 'text' as const, text: fullContent }] : []),
+          ...finalToolCalls.map(tc => ({
+            type: 'tool-call' as const,
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            input: (tc as any).args ?? (tc as any).input,
+          }))
+        ]
       };
       
       const baseHistory = [...currentHistory, assistantMessage, ...toolResultMessages];
@@ -727,7 +704,6 @@ export function AgentPage() {
         if (allowAutoContinue && toolResultMessages.length > 0 && !fullContent.trim()) {
           await runAgentLoop(baseHistory, { allowAutoContinue: false });
         } else {
-          setStreamingMsgId(null);
           setIsLoading(false);
         }
       } else if (approvalMode === 'yolo') {
@@ -742,8 +718,10 @@ export function AgentPage() {
                 type: 'tool-result',
                 toolCallId: tc.toolCallId,
                 toolName: tc.toolName,
-                result: validation.error || 'Invalid tool call - missing required arguments',
-                isError: true,
+                output: {
+                  type: 'error-text' as const,
+                  value: validation.error || 'Invalid tool call - missing required arguments',
+                },
               }]
             });
             continue;
@@ -758,7 +736,6 @@ export function AgentPage() {
         agentHistoryRef.current = newHistory;
         await runAgentLoop(newHistory);
       } else {
-        setStreamingMsgId(null);
         setIsLoading(false); // Paused for manual HITL approval
       }
 
@@ -766,7 +743,6 @@ export function AgentPage() {
       if (error instanceof Error && error.name === 'AbortError') {
         // Remove the empty assistant message on abort
         setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId));
-        setStreamingMsgId(null);
         setIsLoading(false);
         return;
       }
@@ -776,7 +752,6 @@ export function AgentPage() {
         console.warn('[Agent] No output generated by model — ending turn.');
         // Remove the empty assistant message
         setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId || (msg.parts && msg.parts.length > 0)));
-        setStreamingMsgId(null);
         setIsLoading(false);
         return;
       }
@@ -787,7 +762,6 @@ export function AgentPage() {
           ? { ...m, content: m.content + `\n\n*[Error: ${error}]*`, parts: [...(m.parts || []), { type: 'text', content: `\n\n*[Error: ${error}]*` }] }
           : m
       ));
-      setStreamingMsgId(null);
       setIsLoading(false);
     }
   };
@@ -795,7 +769,6 @@ export function AgentPage() {
   // Stop the agentic loop
   const stopAgentLoop = useCallback(() => {
     abortControllerRef.current?.abort();
-    setStreamingMsgId(null);
     setIsLoading(false);
   }, []);
 
@@ -819,10 +792,67 @@ export function AgentPage() {
     // 2. Update UI to show running state
     updateActivityInParts(null, activityId, { status: 'running' as ActivityStatus });
 
-    // 3. Execute the tool via shared executor
+    // 3. Execute the tool
     setIsLoading(true);
+    let result: string;
+    let isError = false;
     const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
-    const { result, isError } = await executeHITLTool(toolCall.toolName, args, 'User approved');
+    
+    // Validate args before execution
+    const validation = validateToolCall(toolCall.toolName, args);
+    if (!validation.valid) {
+      console.error('[Agent] Cannot execute invalid tool call:', toolCall.toolName, 'Error:', validation.error);
+      result = validation.error || 'Invalid tool call - missing required arguments';
+      isError = true;
+    } else {
+      try {
+        switch (toolCall.toolName) {
+          case 'execute_command': {
+            const command = String(args.command || '');
+            console.log('[Agent] Executing command:', command);
+            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
+              command, 
+              reason: String(args.reason || 'User approved')
+            });
+            result = res.output || res.error || 'Command executed successfully.';
+            isError = !!res.error;
+            break;
+          }
+          case 'write_file': {
+            await invoke('agent_write_file', { 
+              path: String(args.path || ''),
+              content: String(args.content || ''),
+            });
+            result = `Successfully wrote to ${args.path}`;
+            break;
+          }
+          case 'move_file': {
+            await invoke('agent_move_file', { 
+              src: String(args.src || ''), 
+              dest: String(args.dest || '') 
+            });
+            result = `Successfully moved ${args.src} to ${args.dest}`;
+            break;
+          }
+          case 'copy_file': {
+            await invoke('agent_copy_file', { 
+              src: String(args.src || ''), 
+              dest: String(args.dest || '') 
+            });
+            result = `Successfully copied ${args.src} to ${args.dest}`;
+            break;
+          }
+          default: {
+            result = `Unknown tool: ${toolCall.toolName}`;
+            isError = true;
+          }
+        }
+      } catch (err) {
+        console.error('[Agent] Tool execution error:', err);
+        result = err instanceof Error ? err.message : String(err);
+        isError = true;
+      }
+    }
 
     // 4. Update UI Activity with result
     updateActivityInParts(null, activityId, {
@@ -838,8 +868,9 @@ export function AgentPage() {
         type: 'tool-result',
         toolCallId: activityId,
         toolName: toolCall.toolName,
-        result: result,
-        isError: isError,
+        output: isError
+          ? { type: 'error-text' as const, value: result }
+          : { type: 'text' as const, value: result },
       }]
     };
     
@@ -882,8 +913,7 @@ export function AgentPage() {
         type: 'tool-result',
         toolCallId: activityId,
         toolName: toolCall.toolName,
-        result: rejectionMessage,
-        isError: true,
+        output: { type: 'error-text' as const, value: rejectionMessage },
       }]
     };
 
@@ -896,8 +926,21 @@ export function AgentPage() {
   };
 
 
-  const executeMessage = async (text: string) => {
-    if (!text.trim() || isLoading || !agentSettings) return;
+  const executeMessage = async (text: string, attachments?: FileAttachment[]) => {
+    if ((!text.trim() && !attachments?.length) || isLoading || !agentSettings) return;
+
+    // Build content with file context
+    let messageContent = text;
+    if (attachments && attachments.length > 0) {
+      const fileContext = attachments.map(att => {
+        let context = `[File: ${att.originalName} (${att.category}, ${att.size} bytes)]`;
+        if (att.content) {
+          context += `\nContent:\n${att.content.substring(0, 2000)}${att.content.length > 2000 ? '\n... (truncated)' : ''}`;
+        }
+        return context;
+      }).join('\n\n');
+      messageContent = text + '\n\n' + fileContext;
+    }
 
     // Add user message to UI
     const newMessage: Message = {
@@ -905,11 +948,12 @@ export function AgentPage() {
       role: 'user',
       content: text,
       createdAt: new Date().toISOString(),
+      attachments: attachments,
     };
     setMessages(prev => [...prev, newMessage]);
 
     // Update history
-    const userMsg: CoreMessage = { role: 'user', content: text };
+    const userMsg: CoreMessage = { role: 'user', content: messageContent };
     const newHistory = [...agentHistoryRef.current, userMsg];
     agentHistoryRef.current = newHistory;
 
@@ -927,16 +971,19 @@ export function AgentPage() {
     // Start loop
     await runAgentLoop(newHistory);
 
-    // Auto-save after loop completes (reads latest via ref, not stale closure)
-    saveConversation(agentHistoryRef.current);
+    // Auto-save after loop completes
+    const updatedMessages = [...messages, newMessage];
+    saveConversation(updatedMessages, agentHistoryRef.current);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return;
-    const text = input.trim();
+    if (!input.trim() && pendingAttachments.length === 0) return;
+    const text = input.trim() || (pendingAttachments.length > 0 ? 'Please analyze these files:' : '');
+    const attachments = [...pendingAttachments];
     setInput('');
-    await executeMessage(text);
+    setPendingAttachments([]);
+    await executeMessage(text, attachments);
   };
 
   const handleRunInstrument = (name: string) => {
@@ -950,6 +997,52 @@ export function AgentPage() {
       e.preventDefault();
       handleSendMessage(e);
     }
+  };
+
+  // File upload handlers
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    const newAttachments: FileAttachment[] = [];
+
+    for (const file of files) {
+      try {
+        // Read file as base64
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]); // Remove data URL prefix
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        // Save to backend
+        const attachment = await invoke<FileAttachment>('save_uploaded_file', {
+          file_name: file.name,
+          mime_type: file.type || 'application/octet-stream',
+          size: file.size,
+          content_base64: base64,
+        });
+
+        newAttachments.push(attachment);
+      } catch (error) {
+        console.error('Failed to upload file:', error);
+      }
+    }
+
+    setPendingAttachments(prev => [...prev, ...newAttachments]);
+    setIsUploading(false);
+
+    // Reset input
+    e.target.value = '';
+  };
+
+  const removePendingAttachment = (id: string) => {
+    setPendingAttachments(prev => prev.filter(att => att.id !== id));
   };
 
   const clearChat = async () => {
@@ -1055,9 +1148,10 @@ export function AgentPage() {
                       ].map((suggestion) => (
                         <button
                           key={suggestion.text}
-                          onClick={() => executeMessage(suggestion.text)}
-                          disabled={isLoading}
-                          className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/60 hover:border-border transition-colors text-left text-sm group disabled:opacity-50 disabled:pointer-events-none"
+                          onClick={() => {
+                            setInput(suggestion.text);
+                          }}
+                          className="flex items-center gap-2 p-3 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/60 hover:border-border transition-colors text-left text-sm group"
                         >
                           <span className="text-base">{suggestion.icon}</span>
                           <span className="text-muted-foreground group-hover:text-foreground transition-colors">{suggestion.text}</span>
@@ -1082,7 +1176,8 @@ export function AgentPage() {
                         content={msg.content}
                         timestamp={msg.createdAt}
                         parts={msg.parts}
-                        isStreaming={msg.id === streamingMsgId}
+                        attachments={msg.attachments}
+                        isStreaming={isLoading && msg.role === 'assistant' && index === messages.length - 1}
                         onActivityApprove={handleActivityApprove}
                         onActivityReject={handleActivityReject}
                       />
@@ -1099,33 +1194,91 @@ export function AgentPage() {
           <div className="p-4 border-t bg-background/80 backdrop-blur-sm z-10">
             <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto relative flex gap-2">
               <div className="flex-1 relative">
-                <Textarea 
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask ServiceAgent..."
-                  className="min-h-[44px] max-h-32 resize-none pr-12 bg-background"
-                  rows={1}
-                />
-                <div className="absolute right-1 top-1">
+                {/* Pending Attachments Preview */}
+                {pendingAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {pendingAttachments.map(att => (
+                      <div key={att.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-muted text-xs">
+                        <Paperclip className="h-3 w-3" />
+                        <span className="truncate max-w-[120px]">{att.originalName}</span>
+                        <button
+                          type="button"
+                          onClick={() => removePendingAttachment(att.id)}
+                          className="ml-1 hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Textarea
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={pendingAttachments.length > 0 ? "Add a message about these files..." : "Ask ServiceAgent..."}
+                    className="min-h-[44px] max-h-32 resize-none pr-12 bg-background flex-1"
+                    rows={1}
+                    disabled={isUploading}
+                  />
+
+                  {/* File Upload Button */}
+                  <div className="relative">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="file-upload-input"
+                      disabled={isUploading || isLoading}
+                    />
+                    <label htmlFor="file-upload-input">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10 shrink-0"
+                        disabled={isUploading || isLoading}
+                        asChild
+                      >
+                        <span>
+                          {isUploading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Paperclip className="h-4 w-4" />
+                          )}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+
+                  {/* Send Button */}
                   {isLoading ? (
-                    <Button 
-                      type="button" 
-                      size="sm" 
+                    <Button
+                      type="button"
+                      size="icon"
                       variant="destructive"
-                      className="h-8 w-8 p-0" 
+                      className="h-10 w-10 shrink-0"
                       onClick={stopAgentLoop}
                       title="Stop generating"
                     >
-                      <Square className="h-3.5 w-3.5" />
+                      <Square className="h-4 w-4" />
                     </Button>
                   ) : (
-                    <Button type="submit" size="sm" className="h-8 w-8 p-0" disabled={!input.trim()}>
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      disabled={(!input.trim() && pendingAttachments.length === 0) || isUploading}
+                    >
                       <Send className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
               </div>
+
               {messages.length > 0 && (
                 <Button type="button" variant="ghost" size="icon" onClick={clearChat} title="Clear Chat">
                   <Trash2 className="h-4 w-4 text-muted-foreground" />

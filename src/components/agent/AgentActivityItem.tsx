@@ -5,11 +5,11 @@
  * Each activity type has its own icon and format.
  */
 
-import { 
-  Folder, 
-  Search, 
-  FileText, 
-  Terminal, 
+import {
+  Folder,
+  Search,
+  FileText,
+  Terminal,
   FileEdit,
   Globe,
   Cpu,
@@ -22,6 +22,9 @@ import {
   AlertCircle,
   Play,
   Plug,
+  FilePlus,
+  Paperclip,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -65,6 +68,10 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
         return { Icon: Cpu, label: 'System info', color: 'text-cyan-400' };
       case 'mcp_tool':
         return { Icon: Plug, label: 'MCP tool', color: 'text-blue-400' };
+      case 'generate_file':
+        return { Icon: FilePlus, label: 'Generated', color: 'text-purple-400' };
+      case 'attach_files':
+        return { Icon: Paperclip, label: 'Attached', color: 'text-teal-400' };
       default:
         return { Icon: FileText, label: 'Action', color: 'text-muted-foreground' };
     }
@@ -142,6 +149,8 @@ function FileOperationBlock({
   let description = '';
   if (activity.type === 'write_file') {
     description = `Write to ${activity.path}`;
+  } else if (activity.type === 'generate_file') {
+    description = `Generate file: ${activity.filename}`;
   } else if (activity.type === 'move_file') {
     description = `Move ${activity.src} → ${activity.dest}`;
   } else if (activity.type === 'copy_file') {
@@ -241,7 +250,7 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
   }
 
   // File operations that need approval get block rendering
-  if (['write_file', 'move_file', 'copy_file'].includes(activity.type)) {
+  if (['write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type)) {
     return (
       <FileOperationBlock
         activity={activity}
@@ -322,10 +331,45 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
         </div>
       )}
 
+      {activity.type === 'generate_file' && activity.status === 'success' && (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-foreground/90 font-mono text-xs truncate">{activity.filename}</span>
+          {activity.size !== undefined && (
+            <span className="text-muted-foreground text-xs">({formatFileSize(activity.size)})</span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => activity.path && window.open(`file://${activity.path}`, '_blank')}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Download
+          </Button>
+        </div>
+      )}
+
+      {activity.type === 'attach_files' && (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-foreground/90">{activity.fileCount} file(s)</span>
+          <span className="text-muted-foreground text-xs truncate">
+            {activity.files.map(f => f.name).join(', ')}
+          </span>
+        </div>
+      )}
+
       {/* Status indicator for non-HITL activities */}
       <StatusIndicator status={activity.status} output={activity.output} error={activity.error} />
     </div>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 export default AgentActivityItem;

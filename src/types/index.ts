@@ -6,6 +6,7 @@ export * from './agent-activity';
 export * from './bluescreen';
 export * from './component-test';
 export * from './event-log';
+export * from './file-attachment';
 export * from './network-diagnostics';
 export * from './programs';
 export * from './required-programs';
