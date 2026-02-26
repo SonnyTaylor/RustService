@@ -143,9 +143,12 @@ export function AgentPage() {
 
   const agentHistoryRef = useRef<CoreMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userHasScrolledUpRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
   const messagesRef = useRef<Message[]>([]);
+  const conversationIdRef = useRef<string | null>(null);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
 
   const agentSettings = settings.agent;
@@ -178,14 +181,33 @@ export function AgentPage() {
     ].map(tool => ({ ...tool, enabled: enabled.has(tool.id) }));
   }, [settings.agent.searchProvider]);
 
-  // Auto-scroll
+  // Auto-scroll — only when user is near the bottom, not when they've scrolled up to read
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!userHasScrolledUpRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
+
+  // Track whether user has scrolled away from the bottom
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      userHasScrolledUpRef.current = distanceFromBottom > 100;
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    conversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
 
   // Connect to MCP servers when settings change (stabilized to prevent reconnection loop)
   useEffect(() => {
@@ -217,26 +239,27 @@ export function AgentPage() {
 
   // Save conversation to backend
   const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
-    if (!currentConversationId || msgs.length === 0) return;
+    const convId = conversationIdRef.current;
+    if (!convId || msgs.length === 0) return;
 
     try {
       // Convert messages to ConversationMessage format
       const conversationMessages: ConversationMessage[] = history.map((msg, index) => ({
         id: generateId(),
-        conversationId: currentConversationId,
+        conversationId: convId,
         role: msg.role,
         content: JSON.stringify(msg.content),
         createdAt: msgs[Math.floor(index / 2)]?.createdAt || new Date().toISOString(),
       }));
 
       await invoke('save_conversation_messages', {
-        conversationId: currentConversationId,
+        conversationId: convId,
         messages: conversationMessages,
       });
     } catch (err) {
       console.error('Failed to save conversation:', err);
     }
-  }, [currentConversationId]);
+  }, []);
 
   // Load a conversation
   const loadConversation = useCallback(async (conversation: Conversation) => {
@@ -335,6 +358,7 @@ export function AgentPage() {
         // 'tool' messages are consumed via the toolResults lookup, not shown directly
       }
 
+      conversationIdRef.current = conversation.id;
       setCurrentConversationId(conversation.id);
       setConversationTitle(conversation.title);
       setMessages(uiMessages);
@@ -345,26 +369,24 @@ export function AgentPage() {
     }
   }, []);
 
-  // Start a new conversation
-  const startNewConversation = useCallback(async () => {
-    try {
-      const conversation = await invoke<Conversation>('create_conversation', { title: null });
-      setCurrentConversationId(conversation.id);
-      setConversationTitle('New Chat');
-      setMessages([]);
-      agentHistoryRef.current = [];
-      isFirstMessageRef.current = true;
-    } catch (err) {
-      console.error('Failed to create conversation:', err);
-    }
+  // Reset to a fresh chat (no DB row created until first message is sent)
+  const startNewConversation = useCallback(() => {
+    conversationIdRef.current = null;
+    setCurrentConversationId(null);
+    setConversationTitle('New Chat');
+    setMessages([]);
+    agentHistoryRef.current = [];
+    isFirstMessageRef.current = true;
   }, []);
 
-  // Create initial conversation on mount if none exists
-  useEffect(() => {
-    if (!currentConversationId && isConfigured) {
-      startNewConversation();
-    }
-  }, [currentConversationId, isConfigured, startNewConversation]);
+  // Lazily ensure a conversation exists in the DB — called on first message send
+  const ensureConversation = useCallback(async (title: string): Promise<string> => {
+    if (conversationIdRef.current) return conversationIdRef.current;
+    const conversation = await invoke<Conversation>('create_conversation', { title });
+    conversationIdRef.current = conversation.id;
+    setCurrentConversationId(conversation.id);
+    return conversation.id;
+  }, []);
 
   /**
    * Validate tool call arguments and return error if invalid
@@ -1162,15 +1184,17 @@ export function AgentPage() {
     const newHistory = [...agentHistoryRef.current, userMsg];
     agentHistoryRef.current = newHistory;
 
-    // Update title on first message
-    if (isFirstMessageRef.current && currentConversationId) {
+    // Create conversation in DB on first message (lazy creation avoids "New Chat" spam)
+    if (isFirstMessageRef.current) {
       isFirstMessageRef.current = false;
       const title = text.length > 50 ? text.substring(0, 50) + '...' : text;
       setConversationTitle(title);
-      invoke('update_conversation_title', {
-        conversationId: currentConversationId,
-        title,
-      }).catch(err => console.error('Failed to update title:', err));
+      try {
+        const convId = await ensureConversation(title);
+        setCurrentConversationId(convId);
+      } catch (err) {
+        console.error('Failed to create conversation:', err);
+      }
     }
 
     // Start loop
@@ -1253,16 +1277,12 @@ export function AgentPage() {
   const clearChat = async () => {
     abortControllerRef.current?.abort();
     setIsLoading(false);
-    setMessages([]);
-    agentHistoryRef.current = [];
-    isFirstMessageRef.current = true;
     try {
       await invoke('clear_pending_commands');
-      // Start a fresh conversation
-      await startNewConversation();
     } catch (err) {
-      console.error('Failed to clear chat:', err);
+      console.error('Failed to clear pending commands:', err);
     }
+    startNewConversation();
   };
 
   if (!isConfigured) {
@@ -1327,7 +1347,7 @@ export function AgentPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Center Chat Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-4 max-w-3xl mx-auto w-full space-y-4">
               {messages.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[400px]">

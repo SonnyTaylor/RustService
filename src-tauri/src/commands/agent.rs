@@ -1813,11 +1813,13 @@ pub fn list_conversations(limit: Option<usize>) -> Result<Vec<Conversation>, Str
     let conn = get_db_connection()?;
     let limit_val = limit.unwrap_or(50) as i64;
 
+    // Only show conversations that have at least one message (excludes empty "New Chat" stubs)
     let mut stmt = conn
         .prepare(
-            "SELECT id, title, created_at, updated_at 
-             FROM conversations 
-             ORDER BY updated_at DESC 
+            "SELECT c.id, c.title, c.created_at, c.updated_at
+             FROM conversations c
+             WHERE EXISTS (SELECT 1 FROM conversation_messages m WHERE m.conversation_id = c.id)
+             ORDER BY c.updated_at DESC
              LIMIT ?1",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
