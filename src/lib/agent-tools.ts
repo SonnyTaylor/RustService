@@ -235,7 +235,7 @@ export const listDirTool = tool({
 });
 
 export const listProgramsTool = tool({
-  description: 'List all portable programs and CLI tools available in the data/programs folder.',
+  description: 'Get an overview of all portable programs installed in data/programs (executables scanned recursively). Use only when you need to see everything at once. For locating a specific tool, prefer find_exe.',
   inputSchema: z.object({}),
   execute: async () => {
     try {
@@ -243,6 +243,25 @@ export const listProgramsTool = tool({
       return { status: 'success', programs: programs.map(p => ({ name: p.name, path: p.path, executables: p.executables })) };
     } catch (error) {
       return { status: 'error', error: String(error) };
+    }
+  },
+});
+
+export const findExeTool = tool({
+  description: `Preferred tool for locating a specific CLI executable. Searches data/programs recursively.
+Use find_exe("smartctl") instead of list_programs when you know what tool you need.
+Returns full absolute paths of matches. If empty, the program is not installed.
+Set searchPath=true to also check system PATH via where.exe.`,
+  inputSchema: z.object({
+    query: z.string().describe('Executable name or keyword to search for (e.g. "smartctl", "ffmpeg", "rclone")'),
+    searchPath: z.boolean().optional().describe('Also check system PATH via where.exe (default: false)'),
+  }),
+  execute: async ({ query, searchPath }) => {
+    try {
+      const matches = await invoke<string[]>('agent_find_exe', { query, search_path: searchPath ?? false });
+      return { status: 'success' as const, matches, found: matches.length > 0 };
+    } catch (error) {
+      return { status: 'error' as const, error: String(error) };
     }
   },
 });
@@ -289,14 +308,34 @@ export const runInstrumentTool = tool({
 });
 
 export const getSystemInfoTool = tool({
-  description: 'Get detailed system information including OS, CPU, RAM, disks, GPU, network. Use this to understand the machine.',
-  inputSchema: z.object({}),
-  execute: async () => {
+  description: `Get system information (OS, CPU, RAM, disks, GPU, network). Specify sections to avoid loading unnecessary data and save tokens.
+Examples: sections=["disk"] for disk space, sections=["memory"] for RAM, sections=["os","cpu"] for hardware overview.
+Omit sections to get everything.`,
+  inputSchema: z.object({
+    sections: z.array(z.enum(['os', 'cpu', 'memory', 'disk', 'network'])).optional()
+      .describe('Specific sections to retrieve. Omit for all. Use ["disk"] for disk tasks, ["memory"] for RAM diagnostics, etc.'),
+  }),
+  execute: async ({ sections }) => {
     try {
       const info = await invoke<Record<string, unknown>>('get_system_info');
-      return { status: 'success', info };
+      if (!sections || sections.length === 0) {
+        return { status: 'success' as const, info };
+      }
+      const keyMap: Record<string, string> = {
+        os: 'os',
+        cpu: 'cpu',
+        memory: 'memory',
+        disk: 'disks',
+        network: 'networks',
+      };
+      const filtered: Record<string, unknown> = {};
+      for (const s of sections) {
+        const key = keyMap[s];
+        if (key && info[key] !== undefined) filtered[key] = info[key];
+      }
+      return { status: 'success' as const, info: filtered };
     } catch (error) {
-      return { status: 'error', error: String(error) };
+      return { status: 'error' as const, error: String(error) };
     }
   },
 });
@@ -342,6 +381,7 @@ export const agentTools = {
   move_file: moveFileTool,
   copy_file: copyFileTool,
   list_programs: listProgramsTool,
+  find_exe: findExeTool,
   list_instruments: listInstrumentsTool,
   run_instrument: runInstrumentTool,
   get_system_info: getSystemInfoTool,
@@ -372,6 +412,7 @@ export function getEnabledTools(settings: { searchProvider: string }): ToolSet {
     move_file: moveFileTool,
     copy_file: copyFileTool,
     list_programs: listProgramsTool,
+    find_exe: findExeTool,
     list_instruments: listInstrumentsTool,
     run_instrument: runInstrumentTool,
     get_system_info: getSystemInfoTool,

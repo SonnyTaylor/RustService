@@ -196,14 +196,17 @@ Move, rename, or copy files. Requires approval.
 ### search_web
 Search the internet for solutions, documentation, error fixes.
 
+### find_exe
+Find a specific executable by name in data/programs (searched recursively). Use this instead of list_programs when you know what tool you need — e.g. find_exe("smartctl") for disk health, find_exe("ffmpeg") for media tools. Much more token-efficient. Set searchPath=true to also check system PATH.
+
 ### list_programs
-List portable tools in the programs folder.
+Get an overview of all portable programs installed. Use only when you don't know what tools are available. For locating a specific tool, prefer find_exe.
 
 ### list_instruments / run_instrument
 List and run custom technician scripts.
 
 ### get_system_info
-Get detailed hardware/OS info (CPU, RAM, disks, GPU, network).
+Get hardware/OS info. Pass sections=["disk"] for disk-only info, sections=["memory"] for RAM diagnostics, sections=["os","cpu"] for hardware overview. Omit sections to get everything.
 
 ## Thinking Process
 

@@ -18,6 +18,8 @@ export type ActivityType =
   | 'move_file'
   | 'copy_file'
   | 'list_dir'
+  | 'list_programs'
+  | 'find_exe'
   | 'web_search'
   | 'get_system_info'
   | 'mcp_tool'
@@ -150,6 +152,23 @@ export interface WebSearchActivity extends BaseActivity {
 }
 
 /**
+ * List programs activity
+ */
+export interface ListProgramsActivity extends BaseActivity {
+  type: 'list_programs';
+  programCount?: number;
+}
+
+/**
+ * Find executable activity
+ */
+export interface FindExeActivity extends BaseActivity {
+  type: 'find_exe';
+  query: string;
+  matchCount?: number;
+}
+
+/**
  * System info activity
  */
 export interface GetSystemInfoActivity extends BaseActivity {
@@ -204,6 +223,8 @@ export type AgentActivity =
   | MoveFileActivity
   | CopyFileActivity
   | ListDirActivity
+  | ListProgramsActivity
+  | FindExeActivity
   | WebSearchActivity
   | GetSystemInfoActivity
   | McpToolActivity

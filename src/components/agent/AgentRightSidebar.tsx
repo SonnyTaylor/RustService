@@ -1,9 +1,11 @@
 import { InstrumentList } from '@/components/agent/InstrumentList';
-import { FileCode, Info, Plug, AlertCircle } from 'lucide-react';
+import { FileCode, Info, Plug, AlertCircle, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSettings } from '@/components/settings-context';
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { AgentSettings } from '@/types/agent';
 import type { MCPManagerState } from '@/lib/mcp-manager';
 
@@ -142,8 +144,44 @@ function AgentInfoPanel({
 }
 
 /**
+ * Portable programs panel showing programs in data/programs
+ */
+function ProgramList() {
+  const [programs, setPrograms] = useState<Array<Record<string, string>>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    invoke<Array<Record<string, string>>>('list_agent_programs')
+      .then(setPrograms)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="text-xs text-muted-foreground py-2">Loading...</div>;
+  }
+  if (programs.length === 0) {
+    return <div className="text-xs text-muted-foreground py-2">No programs in data/programs</div>;
+  }
+  return (
+    <div className="space-y-1.5">
+      {programs.map(p => (
+        <div key={p.name} className="py-1.5 px-2 rounded-md bg-muted/40">
+          <span className="text-xs font-medium">{p.name}</span>
+          {p.executables && (
+            <div className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate" title={p.executables}>
+              {p.executables}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Agent Right Sidebar
- * Shows instruments, MCP servers, and agent info
+ * Shows instruments, programs, and agent info
  */
 export function AgentRightSidebar({ className, onRunInstrument, mcpState, toolSummary }: AgentRightSidebarProps) {
   return (
@@ -157,8 +195,22 @@ export function AgentRightSidebar({ className, onRunInstrument, mcpState, toolSu
         <p className="text-xs text-muted-foreground mt-0.5">Custom scripts for the agent</p>
       </div>
 
-      <div className="h-[42%] min-h-[220px] border-b px-4 py-3 shrink-0">
+      <div className="h-[35%] min-h-[180px] border-b px-4 py-3 shrink-0">
         <InstrumentList onRunInstrument={onRunInstrument} hideHeader />
+      </div>
+
+      {/* Programs Section */}
+      <div className="px-4 py-3 border-b shrink-0">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-amber-400" />
+          <h2 className="text-sm font-medium">Portable Programs</h2>
+        </div>
+      </div>
+
+      <div className="h-[22%] min-h-[100px] border-b overflow-hidden shrink-0">
+        <ScrollArea className="h-full px-4 py-2">
+          <ProgramList />
+        </ScrollArea>
       </div>
 
       {/* Info Section */}

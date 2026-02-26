@@ -28,6 +28,7 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,10 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
         return { Icon: Copy, label: 'Copy', color: 'text-teal-400' };
       case 'list_dir':
         return { Icon: Folder, label: 'Listed', color: 'text-amber-400' };
+      case 'list_programs':
+        return { Icon: Package, label: 'Programs', color: 'text-amber-400' };
+      case 'find_exe':
+        return { Icon: Search, label: 'Found exe', color: 'text-cyan-400' };
       case 'web_search':
         return { Icon: Globe, label: 'Searched web', color: 'text-indigo-400' };
       case 'get_system_info':
@@ -393,6 +398,26 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
             <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
             {activity.entryCount !== undefined && (
               <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.entryCount} items</span>
+            )}
+          </>
+        )}
+
+        {activity.type === 'list_programs' && (
+          <>
+            <span className="text-foreground/90">Portable programs</span>
+            {activity.programCount !== undefined && (
+              <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.programCount} found</span>
+            )}
+          </>
+        )}
+
+        {activity.type === 'find_exe' && (
+          <>
+            <span className="text-foreground/90 font-mono text-xs truncate">"{activity.query}"</span>
+            {activity.matchCount !== undefined && (
+              <span className="text-muted-foreground text-xs ml-auto shrink-0">
+                {activity.matchCount} {activity.matchCount === 1 ? 'match' : 'matches'}
+              </span>
             )}
           </>
         )}

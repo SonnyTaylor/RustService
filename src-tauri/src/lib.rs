@@ -149,6 +149,7 @@ pub fn run() {
             commands::agent_glob,
             commands::list_instruments,
             commands::list_agent_programs,
+            commands::agent_find_exe,
             // File attachment commands
             commands::save_uploaded_file,
             commands::generate_agent_file,

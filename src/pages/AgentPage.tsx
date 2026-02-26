@@ -170,6 +170,7 @@ export function AgentPage() {
       { id: 'grep', name: 'Grep', desc: 'Search text across files' },
       { id: 'glob', name: 'Glob', desc: 'Find files by pattern' },
       { id: 'list_programs', name: 'Programs', desc: 'List portable tools' },
+      { id: 'find_exe', name: 'Find Exe', desc: 'Locate CLI executables' },
       { id: 'list_instruments', name: 'Instruments', desc: 'List available scripts' },
       { id: 'run_instrument', name: 'Run Instrument', desc: 'Execute a script' },
       { id: 'search_web', name: 'Web Search', desc: 'Search the internet' },
@@ -442,7 +443,8 @@ export function AgentPage() {
       case 'move_file': return 'move_file';
       case 'copy_file': return 'copy_file';
       case 'list_dir': return 'list_dir';
-      case 'list_programs': return 'list_dir';
+      case 'list_programs': return 'list_programs';
+      case 'find_exe': return 'find_exe';
       case 'list_instruments': return 'list_dir';
       case 'run_instrument': return 'ran_command';
       case 'generate_file': return 'generate_file';
@@ -501,7 +503,9 @@ export function AgentPage() {
       case 'list_dir':
         return { path: getPath(args.path) };
       case 'list_programs':
-        return { path: 'data/programs' };
+        return {};
+      case 'find_exe':
+        return { query: typeof args.query === 'string' ? args.query : '' };
       case 'list_instruments':
         return { path: 'data/instruments' };
       case 'grep':

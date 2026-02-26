@@ -1678,6 +1678,21 @@ pub fn list_instruments() -> Result<Vec<Instrument>, String> {
     Ok(instruments)
 }
 
+fn collect_exes_recursive(dir: &std::path::Path, root: &std::path::Path, acc: &mut Vec<String>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_exes_recursive(&p, root, acc);
+            } else if p.extension().map(|e| e == "exe").unwrap_or(false) {
+                if let Ok(rel) = p.strip_prefix(root) {
+                    acc.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+}
+
 /// List programs in the programs folder
 #[tauri::command]
 pub fn list_agent_programs() -> Result<Vec<HashMap<String, String>>, String> {
@@ -1702,18 +1717,8 @@ pub fn list_agent_programs() -> Result<Vec<HashMap<String, String>>, String> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            // Look for executable files
             let mut exes = Vec::new();
-            if let Ok(entries) = fs::read_dir(&path) {
-                for exe_entry in entries.flatten() {
-                    let exe_path = exe_entry.path();
-                    if exe_path.extension().map(|e| e == "exe").unwrap_or(false) {
-                        if let Some(exe_name) = exe_path.file_name().and_then(|n| n.to_str()) {
-                            exes.push(exe_name.to_string());
-                        }
-                    }
-                }
-            }
+            collect_exes_recursive(&path, &path, &mut exes);
 
             let mut info = HashMap::new();
             info.insert("name".to_string(), name);
@@ -1725,6 +1730,55 @@ pub fn list_agent_programs() -> Result<Vec<HashMap<String, String>>, String> {
     }
 
     Ok(programs)
+}
+
+/// Find executables by name/keyword across the programs folder and optionally system PATH
+#[tauri::command]
+pub fn agent_find_exe(query: String, search_path: Option<bool>) -> Result<Vec<String>, String> {
+    let programs_dir = get_data_dir_path().join("programs");
+    let query_lower = query.to_lowercase();
+    let mut matches: Vec<String> = Vec::new();
+
+    fn walk(dir: &std::path::Path, query: &str, results: &mut Vec<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    walk(&p, query, results);
+                } else if p.extension().map(|e| e == "exe").unwrap_or(false) {
+                    let stem = p
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if stem.contains(query) {
+                        results.push(p.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if programs_dir.exists() {
+        walk(&programs_dir, &query_lower, &mut matches);
+    }
+
+    if search_path.unwrap_or(false) {
+        if let Ok(output) = std::process::Command::new("cmd")
+            .args(["/C", &format!("where.exe {}", query)])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let t = line.trim().to_string();
+                if !t.is_empty() {
+                    matches.push(t);
+                }
+            }
+        }
+    }
+
+    Ok(matches)
 }
 
 // =============================================================================

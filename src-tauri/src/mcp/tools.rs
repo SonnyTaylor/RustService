@@ -149,6 +149,21 @@ fn get_data_dir() -> std::path::PathBuf {
     }
 }
 
+fn collect_exes_recursive_mcp(dir: &Path, root: &Path, acc: &mut Vec<String>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_exes_recursive_mcp(&p, root, acc);
+            } else if p.extension().map(|e| e == "exe").unwrap_or(false) {
+                if let Ok(rel) = p.strip_prefix(root) {
+                    acc.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+}
+
 fn list_programs_in_folder() -> Result<Vec<ProgramInfo>, String> {
     let programs_dir = get_data_dir().join("programs");
     if !programs_dir.exists() {
@@ -167,25 +182,9 @@ fn list_programs_in_folder() -> Result<Vec<ProgramInfo>, String> {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
 
-                // Find executables in this folder
+                // Recursively find all executables in this program's folder
                 let mut executables = Vec::new();
-                if let Ok(sub_entries) = fs::read_dir(&path) {
-                    for sub_entry in sub_entries.flatten() {
-                        let sub_path = sub_entry.path();
-                        if sub_path.is_file() {
-                            if let Some(ext) = sub_path.extension() {
-                                if ext == "exe" {
-                                    executables.push(
-                                        sub_path
-                                            .file_name()
-                                            .map(|n| n.to_string_lossy().to_string())
-                                            .unwrap_or_default(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
+                collect_exes_recursive_mcp(&path, &path, &mut executables);
 
                 programs.push(ProgramInfo {
                     name,
@@ -883,6 +882,77 @@ impl RustServiceTools {
                 "Error listing programs: {}",
                 e
             ))])),
+        }
+    }
+
+    /// Find an executable by name or keyword across portable programs and optionally system PATH
+    #[tool(
+        description = "Find a specific executable by name/keyword in data/programs (searched recursively). Use this instead of list_programs when you know what tool you're looking for — much more token-efficient. Returns full absolute paths of matches. Set search_path=true to also check system PATH via where.exe."
+    )]
+    pub async fn find_exe(
+        &self,
+        #[tool(param)] query: String,
+        #[tool(param)] search_path: Option<bool>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        eprintln!("MCP find_exe: {} search_path={:?}", query, search_path);
+
+        let programs_dir = get_data_dir().join("programs");
+        let query_lower = query.to_lowercase();
+        let mut matches: Vec<String> = Vec::new();
+
+        fn walk_for_exe(dir: &Path, query: &str, results: &mut Vec<String>) {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        walk_for_exe(&p, query, results);
+                    } else if p.extension().map(|e| e == "exe").unwrap_or(false) {
+                        let stem = p
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if stem.contains(query) {
+                            results.push(p.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        if programs_dir.exists() {
+            walk_for_exe(&programs_dir, &query_lower, &mut matches);
+        }
+
+        if search_path.unwrap_or(false) {
+            if let Ok(output) = Command::new("cmd")
+                .args(["/C", &format!("where.exe {}", query)])
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let t = line.trim().to_string();
+                    if !t.is_empty() {
+                        matches.push(t);
+                    }
+                }
+            }
+        }
+
+        if matches.is_empty() {
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "No executable matching '{}' found in data/programs{}.",
+                query,
+                if search_path.unwrap_or(false) {
+                    " or system PATH"
+                } else {
+                    ""
+                }
+            ))]))
+        } else {
+            Ok(CallToolResult::success(vec![Content::text(
+                matches.join("\n"),
+            )]))
         }
     }
 
