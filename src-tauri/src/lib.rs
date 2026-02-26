@@ -117,6 +117,7 @@ pub fn run() {
             commands::get_startup_items,
             commands::toggle_startup_item,
             commands::delete_startup_item,
+            commands::open_startup_item_location,
             // Event log commands
             commands::get_event_log_sources,
             commands::get_event_logs,

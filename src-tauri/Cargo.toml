@@ -66,5 +66,6 @@ winapi = { version = "0.3", features = [
     "wingdi",
     "libloaderapi",
     "winbase",
+    "winver",
 ] }
 widestring = "1.0"

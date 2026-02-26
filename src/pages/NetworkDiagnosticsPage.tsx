@@ -22,8 +22,11 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  Copy,
+  Check,
 } from 'lucide-react';
 
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +70,76 @@ export function NetworkDiagnosticsPage() {
   const [dnsType, setDnsType] = useState('A');
   const [dnsResult, setDnsResult] = useState<DnsLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
+
+  // Copy state
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, section: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSection(section);
+    setTimeout(() => setCopiedSection(null), 2000);
+  };
+
+  const formatPingResults = (): string => {
+    if (!pingResult) return '';
+    const lines = [
+      `Ping Results: ${pingResult.host}`,
+      pingResult.resolvedIp ? `Resolved IP: ${pingResult.resolvedIp}` : '',
+      '',
+      `Packets: ${pingResult.packetsReceived}/${pingResult.packetsSent} received`,
+      `Packet Loss: ${pingResult.packetLossPercent}%`,
+      `Min: ${pingResult.minMs?.toFixed(1) ?? '-'} ms`,
+      `Avg: ${pingResult.avgMs?.toFixed(1) ?? '-'} ms`,
+      `Max: ${pingResult.maxMs?.toFixed(1) ?? '-'} ms`,
+      '',
+      'Replies:',
+      ...pingResult.replies.map(r =>
+        r.status === 'Success'
+          ? `  #${r.seq}: ${r.timeMs?.toFixed(1) ?? '<1'} ms (TTL=${r.ttl})`
+          : `  #${r.seq}: ${r.status}`
+      ),
+    ];
+    return lines.filter(l => l !== undefined).join('\n');
+  };
+
+  const formatTracerouteResults = (): string => {
+    if (!traceResult) return '';
+    const lines = [
+      `Traceroute to ${traceResult.host}`,
+      traceResult.resolvedIp ? `Resolved IP: ${traceResult.resolvedIp}` : '',
+      traceResult.completed ? 'Status: Complete' : 'Status: Incomplete',
+      '',
+      'Hops:',
+      ...traceResult.hops.map(hop =>
+        hop.timedOut
+          ? `  ${hop.hopNumber}  * Request timed out`
+          : `  ${hop.hopNumber}  ${hop.ipAddress || 'Unknown'}  ${hop.rtt1Ms?.toFixed(0) ?? '*'}ms  ${hop.rtt2Ms?.toFixed(0) ?? '*'}ms  ${hop.rtt3Ms?.toFixed(0) ?? '*'}ms`
+      ),
+    ];
+    return lines.filter(l => l !== undefined).join('\n');
+  };
+
+  const formatDnsResults = (): string => {
+    if (!dnsResult) return '';
+    const lines = [
+      `DNS Lookup: ${dnsResult.query} (${dnsResult.queryType})`,
+      `Response Time: ${dnsResult.responseTimeMs} ms`,
+      dnsResult.serverUsed ? `Server: ${dnsResult.serverUsed}` : '',
+      '',
+    ];
+    if (dnsResult.error) {
+      lines.push(`Error: ${dnsResult.error}`);
+    } else {
+      lines.push('Answers:');
+      dnsResult.answers.forEach(record => {
+        lines.push(`  ${record.recordType}  ${record.value}${record.ttl ? `  TTL: ${record.ttl}` : ''}`);
+      });
+      if (dnsResult.answers.length === 0) {
+        lines.push('  No records found');
+      }
+    }
+    return lines.filter(l => l !== undefined).join('\n');
+  };
 
   // Load network info on mount
   useEffect(() => {
@@ -342,18 +415,29 @@ export function NetworkDiagnosticsPage() {
                   {pingResult && (
                     <div className="space-y-4">
                       <Separator />
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <span className="text-sm text-muted-foreground">Host</span>
-                          <div className="font-medium">
-                            {pingResult.host}
-                            {pingResult.resolvedIp && (
-                              <span className="text-muted-foreground ml-2">
-                                [{pingResult.resolvedIp}]
-                              </span>
-                            )}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <span className="text-sm text-muted-foreground">Host</span>
+                            <div className="font-medium">
+                              {pingResult.host}
+                              {pingResult.resolvedIp && (
+                                <span className="text-muted-foreground ml-2">
+                                  [{pingResult.resolvedIp}]
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => copyToClipboard(formatPingResults(), 'ping')}
+                        >
+                          {copiedSection === 'ping' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {copiedSection === 'ping' ? 'Copied!' : 'Copy'}
+                        </Button>
                       </div>
 
                       {/* Stats Grid */}
@@ -470,6 +554,15 @@ export function NetworkDiagnosticsPage() {
                         {traceResult.completed && (
                           <Badge variant="default" className="ml-auto">Complete</Badge>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn("h-7 px-2 text-xs gap-1", !traceResult.completed && "ml-auto")}
+                          onClick={() => copyToClipboard(formatTracerouteResults(), 'trace')}
+                        >
+                          {copiedSection === 'trace' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {copiedSection === 'trace' ? 'Copied!' : 'Copy'}
+                        </Button>
                       </div>
 
                       {/* Hops */}
@@ -572,6 +665,15 @@ export function NetworkDiagnosticsPage() {
                             Server: {dnsResult.serverUsed}
                           </div>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 ml-auto"
+                          onClick={() => copyToClipboard(formatDnsResults(), 'dns')}
+                        >
+                          {copiedSection === 'dns' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {copiedSection === 'dns' ? 'Copied!' : 'Copy'}
+                        </Button>
                       </div>
 
                       {dnsResult.error ? (

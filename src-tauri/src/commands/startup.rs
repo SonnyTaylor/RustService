@@ -190,6 +190,7 @@ async fn get_registry_startup_items() -> Result<Vec<StartupItem>, String> {
         let path = extract_path_from_command(&command);
         let impact = estimate_impact(&name, &command);
 
+        let publisher = get_file_publisher(path.as_deref());
         items.push(StartupItem {
             id: format!("reg_{}", sanitize_id(&name)),
             name: name.clone(),
@@ -198,7 +199,7 @@ async fn get_registry_startup_items() -> Result<Vec<StartupItem>, String> {
             source,
             source_location: raw["SourceLocation"].as_str().unwrap_or("").to_string(),
             enabled,
-            publisher: get_file_publisher(&name),
+            publisher,
             description: None,
             impact,
         });
@@ -268,11 +269,11 @@ fn scan_startup_folder(path: &PathBuf, source: StartupSource) -> Result<Vec<Star
             id: format!("folder_{}", sanitize_id(&name)),
             name,
             command: command.clone(),
-            path: Some(command),
+            path: Some(command.clone()),
             source: source.clone(),
             source_location: path.to_string_lossy().to_string(),
             enabled: true, // Folder items are always "enabled" if they exist
-            publisher: None,
+            publisher: get_file_publisher(Some(&command)),
             description: None,
             impact,
         });
@@ -455,13 +456,40 @@ async fn toggle_scheduled_task(name: &str, enabled: bool) -> Result<(), String> 
     Ok(())
 }
 
+/// Open the file location of a startup item in Explorer
+#[tauri::command]
+pub async fn open_startup_item_location(path: String) -> Result<(), String> {
+    let file_path = std::path::Path::new(&path);
+
+    if file_path.exists() {
+        // Use explorer /select to highlight the file
+        Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {}", e))?;
+    } else if let Some(parent) = file_path.parent() {
+        if parent.exists() {
+            Command::new("explorer")
+                .arg(parent.to_string_lossy().as_ref())
+                .spawn()
+                .map_err(|e| format!("Failed to open Explorer: {}", e))?;
+        } else {
+            return Err(format!("Path does not exist: {}", path));
+        }
+    } else {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    Ok(())
+}
+
 /// Delete a startup item
 #[tauri::command]
-pub async fn delete_startup_item(id: String) -> Result<(), String> {
+pub async fn delete_startup_item(id: String, command: Option<String>) -> Result<(), String> {
     if id.starts_with("reg_") {
         delete_registry_startup_item(&id[4..]).await
     } else if id.starts_with("folder_") {
-        delete_startup_folder_item(&id[7..]).await
+        delete_startup_folder_item(&id[7..], command).await
     } else if id.starts_with("task_") {
         delete_scheduled_task(&id[5..]).await
     } else {
@@ -508,9 +536,58 @@ async fn delete_registry_startup_item(name: &str) -> Result<(), String> {
 }
 
 /// Delete a startup folder item
-async fn delete_startup_folder_item(_name: &str) -> Result<(), String> {
-    // This would need the actual file path - for safety, we don't implement direct deletion
-    Err("Startup folder items must be deleted manually from the folder".to_string())
+async fn delete_startup_folder_item(_name: &str, command: Option<String>) -> Result<(), String> {
+    let file_path = command
+        .ok_or_else(|| "No file path provided for startup folder item".to_string())?;
+
+    let path = std::path::Path::new(&file_path);
+
+    if !path.exists() {
+        return Err(format!("File does not exist: {}", file_path));
+    }
+
+    // Safety: ensure the file is actually inside a known startup folder
+    let allowed_dirs: Vec<PathBuf> = {
+        let mut allowed = Vec::new();
+        if let Some(local) = dirs::data_local_dir() {
+            allowed.push(
+                local
+                    .join("Microsoft")
+                    .join("Windows")
+                    .join("Start Menu")
+                    .join("Programs")
+                    .join("Startup"),
+            );
+        }
+        allowed.push(PathBuf::from(
+            r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup",
+        ));
+        allowed
+    };
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve path: {}", e))?;
+
+    let is_in_startup_folder = allowed_dirs.iter().any(|dir| {
+        if let Ok(canon_dir) = dir.canonicalize() {
+            canonical.starts_with(&canon_dir)
+        } else {
+            false
+        }
+    });
+
+    if !is_in_startup_folder {
+        return Err(format!(
+            "Refusing to delete file outside startup folders: {}",
+            file_path
+        ));
+    }
+
+    std::fs::remove_file(path)
+        .map_err(|e| format!("Failed to delete startup item: {}", e))?;
+
+    Ok(())
 }
 
 /// Delete a scheduled task
@@ -587,9 +664,76 @@ fn estimate_impact(name: &str, _command: &str) -> StartupImpact {
     StartupImpact::Medium
 }
 
-/// Get publisher from file (placeholder - would need actual implementation)
-fn get_file_publisher(_name: &str) -> Option<String> {
-    // This would require reading the file's digital signature
-    // For now, return None
+/// Get publisher (CompanyName) from file version info
+fn get_file_publisher(exe_path: Option<&str>) -> Option<String> {
+    let path = exe_path?;
+    if path.is_empty() {
+        return None;
+    }
+
+    // Only attempt for .exe / .dll files that exist
+    let p = std::path::Path::new(path);
+    if !p.exists() {
+        return None;
+    }
+
+    #[cfg(windows)]
+    {
+        use widestring::U16CString;
+
+        let wide_path = U16CString::from_str(path).ok()?;
+        let mut handle: u32 = 0;
+
+        let size = unsafe {
+            winapi::um::winver::GetFileVersionInfoSizeW(wide_path.as_ptr(), &mut handle)
+        };
+        if size == 0 {
+            return None;
+        }
+
+        let mut buffer: Vec<u8> = vec![0u8; size as usize];
+        let success = unsafe {
+            winapi::um::winver::GetFileVersionInfoW(
+                wide_path.as_ptr(),
+                handle,
+                size,
+                buffer.as_mut_ptr() as *mut _,
+            )
+        };
+        if success == 0 {
+            return None;
+        }
+
+        // Try common language/codepage combos for CompanyName
+        let sub_blocks = [
+            "\\StringFileInfo\\040904B0\\CompanyName",  // English US, Unicode
+            "\\StringFileInfo\\040904E4\\CompanyName",  // English US, Windows Latin-1
+            "\\StringFileInfo\\000004B0\\CompanyName",  // Language neutral, Unicode
+        ];
+
+        for sub_block in &sub_blocks {
+            let wide_sub = U16CString::from_str(*sub_block).ok()?;
+            let mut lp_buffer: *mut winapi::ctypes::c_void = std::ptr::null_mut();
+            let mut len: u32 = 0;
+
+            let ok = unsafe {
+                winapi::um::winver::VerQueryValueW(
+                    buffer.as_ptr() as *const _,
+                    wide_sub.as_ptr(),
+                    &mut lp_buffer,
+                    &mut len,
+                )
+            };
+
+            if ok != 0 && len > 0 && !lp_buffer.is_null() {
+                let slice = unsafe { std::slice::from_raw_parts(lp_buffer as *const u16, len as usize) };
+                let company = String::from_utf16_lossy(slice).trim_end_matches('\0').trim().to_string();
+                if !company.is_empty() {
+                    return Some(company);
+                }
+            }
+        }
+    }
+
     None
 }

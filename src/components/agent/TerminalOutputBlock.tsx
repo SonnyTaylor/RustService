@@ -67,7 +67,6 @@ export function TerminalOutputBlock({
   const isPending = status === 'pending_approval';
   const isError = status === 'error' || (exitCode !== undefined && exitCode !== 0);
   const isSuccess = status === 'success' && !isError;
-  const displayOutput = output || error || '';
 
   return (
     <div className={cn(
@@ -128,19 +127,33 @@ export function TerminalOutputBlock({
         </div>
 
         {/* Output (Collapsible) */}
-        {expanded && displayOutput && (
+        {expanded && (output || error) && (
           <div className="pl-8 pr-4 pb-2 max-h-[250px] overflow-y-auto">
-            <pre className={cn(
-              "whitespace-pre-wrap break-words text-xs leading-relaxed",
-              isError ? "text-destructive" : "text-muted-foreground"
-            )}>
-              {displayOutput}
-            </pre>
+            {output && error ? (
+              <>
+                <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                  {output}
+                </pre>
+                <div className="mt-2 pt-2 border-t border-red-500/20">
+                  <span className="text-[10px] uppercase tracking-wider text-red-400/70 font-medium">stderr</span>
+                  <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-destructive mt-1">
+                    {error}
+                  </pre>
+                </div>
+              </>
+            ) : (
+              <pre className={cn(
+                "whitespace-pre-wrap break-words text-xs leading-relaxed",
+                isError ? "text-destructive" : "text-muted-foreground"
+              )}>
+                {output || error}
+              </pre>
+            )}
           </div>
         )}
 
         {/* Scrollbar track visible indicator */}
-        {expanded && displayOutput && displayOutput.length > 500 && (
+        {expanded && (output || error) && ((output?.length ?? 0) + (error?.length ?? 0)) > 500 && (
           <div className="absolute right-0 top-10 bottom-0 w-1.5 bg-muted/60" />
         )}
       </div>

@@ -409,7 +409,7 @@ pub async fn search_event_logs(
     let script = format!(
         r#"
         Get-WinEvent -LogName '{}' -MaxEvents 1000 -ErrorAction SilentlyContinue |
-        Where-Object {{ $_.Message -like '*{}*' -or $_.ProviderName -like '*{}*' }} |
+        Where-Object {{ $_.Message -like '*{}*' -or $_.ProviderName -like '*{}*' -or [string]$_.Id -like '*{}*' }} |
         Select-Object -First {} |
         ForEach-Object {{
             $msg = $_.Message
@@ -440,7 +440,7 @@ pub async fn search_event_logs(
             }}
         }} | ConvertTo-Json -Depth 3
         "#,
-        log_name, query, query, limit
+        log_name, query, query, query, limit
     );
 
     let output = Command::new("powershell")

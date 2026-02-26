@@ -5,6 +5,7 @@
  * Each activity type has its own icon and format.
  */
 
+import { useState } from 'react';
 import {
   Folder,
   Search,
@@ -25,6 +26,8 @@ import {
   FilePlus,
   Paperclip,
   Download,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -94,9 +97,15 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
 }
 
 /**
- * Status indicator component
+ * Status indicator component with expandable text for long content
  */
-function StatusIndicator({ status, output, error }: { status: ActivityStatus; output?: string; error?: string }) {
+function StatusIndicator({ status, output, error, expanded, onToggle }: {
+  status: ActivityStatus;
+  output?: string;
+  error?: string;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
   if (status === 'running') {
     return (
       <span className="text-blue-400 text-xs flex items-center gap-1">
@@ -114,15 +123,26 @@ function StatusIndicator({ status, output, error }: { status: ActivityStatus; ou
     );
   }
   if (status === 'error') {
+    const text = error || output || 'Failed';
+    const isLong = text.length > 80;
     return (
-      <span className="text-red-400 text-xs truncate max-w-[200px]" title={error || output}>
-        {error || output || 'Failed'}
+      <span
+        className={cn("text-red-400 text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:text-red-300")}
+        title={!expanded ? text : undefined}
+        onClick={isLong ? onToggle : undefined}
+      >
+        {text}
       </span>
     );
   }
   if (status === 'success' && output) {
+    const isLong = output.length > 80;
     return (
-      <span className="text-green-400 text-xs truncate max-w-[200px]" title={output}>
+      <span
+        className={cn("text-green-400 text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:text-green-300")}
+        title={!expanded ? output : undefined}
+        onClick={isLong ? onToggle : undefined}
+      >
         {output}
       </span>
     );
@@ -131,15 +151,56 @@ function StatusIndicator({ status, output, error }: { status: ActivityStatus; ou
 }
 
 /**
+ * Expandable diff preview for edit_file operations
+ */
+function EditFilePreview({ oldString, newString }: { oldString?: string; newString?: string }) {
+  const [showChanges, setShowChanges] = useState(false);
+
+  if (!oldString && !newString) return null;
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setShowChanges(!showChanges)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {showChanges ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {showChanges ? 'Hide changes' : 'Show changes'}
+      </button>
+      {showChanges && (
+        <div className="mt-2 space-y-2">
+          {oldString && (
+            <div>
+              <div className="text-xs text-red-400 mb-1">- Remove:</div>
+              <pre className="text-xs bg-red-500/10 border border-red-500/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-red-300">
+                {oldString}
+              </pre>
+            </div>
+          )}
+          {newString && (
+            <div>
+              <div className="text-xs text-green-400 mb-1">+ Add:</div>
+              <pre className="text-xs bg-green-500/10 border border-green-500/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-green-300">
+                {newString}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * File operation approval block (for write_file, move_file, copy_file)
  */
-function FileOperationBlock({ 
-  activity, 
-  onApprove, 
-  onReject 
-}: { 
-  activity: AgentActivity; 
-  onApprove?: () => void; 
+function FileOperationBlock({
+  activity,
+  onApprove,
+  onReject
+}: {
+  activity: AgentActivity;
+  onApprove?: () => void;
   onReject?: () => void;
 }) {
   const config = getActivityConfig(activity.type, activity.status);
@@ -185,7 +246,7 @@ function FileOperationBlock({
           config.color,
           'iconClass' in config && config.iconClass
         )} />
-        
+
         <div className="flex-1 min-w-0">
           <div className="font-medium text-foreground truncate">{config.label}</div>
           <div className="text-xs text-muted-foreground truncate font-mono">{description}</div>
@@ -239,12 +300,19 @@ function FileOperationBlock({
           </span>
         )}
       </div>
+
+      {/* Expandable diff preview for edit_file */}
+      {activity.type === 'edit_file' && isPending && (
+        <EditFilePreview oldString={activity.oldString} newString={activity.newString} />
+      )}
     </div>
   );
 }
 
 export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivityItemProps) {
   const config = getActivityConfig(activity.type, activity.status);
+  const [expanded, setExpanded] = useState(false);
+  const hasExpandableOutput = !!(activity.output || activity.error) && (activity.output?.length ?? 0) + (activity.error?.length ?? 0) > 80;
 
   // Terminal commands get special rendering
   if (activity.type === 'ran_command') {
@@ -275,104 +343,130 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
 
   // Standard inline rendering for other activities
   return (
-    <div className="flex items-center gap-2 py-1.5 text-sm text-muted-foreground">
-      <config.Icon className={cn(
-        'h-4 w-4 flex-shrink-0', 
-        config.color,
-        'iconClass' in config && config.iconClass
-      )} />
-      <span className="shrink-0">{config.label}</span>
-      
-      {/* Activity-specific content */}
-      {activity.type === 'analyzed_directory' && (
-        <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
-      )}
-      
-      {activity.type === 'searched' && (
-        <>
-          <span className="text-foreground/90 truncate">"{activity.query}"</span>
-          {activity.resultCount !== undefined && (
-            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
-          )}
-        </>
-      )}
-      
-      {activity.type === 'analyzed_file' && (
-        <FileReference 
-          path={activity.path}
-          filename={activity.filename}
-          lineRange={activity.lineRange}
-        />
-      )}
-      
-      {activity.type === 'read_file' && (
-        <FileReference 
-          path={activity.path}
-          filename={activity.filename}
-          lineRange={activity.lineRange}
-        />
-      )}
+    <div>
+      <div
+        className={cn(
+          "flex items-center gap-2 py-1.5 text-sm text-muted-foreground",
+          hasExpandableOutput && "cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1"
+        )}
+        onClick={hasExpandableOutput ? () => setExpanded(!expanded) : undefined}
+      >
+        <config.Icon className={cn(
+          'h-4 w-4 flex-shrink-0',
+          config.color,
+          'iconClass' in config && config.iconClass
+        )} />
+        <span className="shrink-0">{config.label}</span>
 
-      {activity.type === 'list_dir' && (
-        <>
+        {/* Activity-specific content */}
+        {activity.type === 'analyzed_directory' && (
           <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
-          {activity.entryCount !== undefined && (
-            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.entryCount} items</span>
-          )}
-        </>
-      )}
-      
-      {activity.type === 'web_search' && (
-        <>
-          <span className="text-foreground/90 truncate">{activity.query}</span>
-          {activity.resultCount !== undefined && (
-            <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
-          )}
-        </>
-      )}
-      
-      {activity.type === 'get_system_info' && (
-        <span className="text-foreground/90">Fetching hardware & OS details</span>
-      )}
+        )}
 
-      {activity.type === 'mcp_tool' && (
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-foreground/90 font-mono text-xs truncate">{activity.toolName}</span>
-          {activity.arguments && (
-            <span className="text-muted-foreground text-xs truncate">{activity.arguments}</span>
-          )}
-        </div>
-      )}
+        {activity.type === 'searched' && (
+          <>
+            <span className="text-foreground/90 truncate">"{activity.query}"</span>
+            {activity.resultCount !== undefined && (
+              <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
+            )}
+          </>
+        )}
 
-      {activity.type === 'generate_file' && activity.status === 'success' && (
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-foreground/90 font-mono text-xs truncate">{activity.filename}</span>
-          {activity.size !== undefined && (
-            <span className="text-muted-foreground text-xs">({formatFileSize(activity.size)})</span>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => activity.path && window.open(`file://${activity.path}`, '_blank')}
-          >
-            <Download className="h-3 w-3 mr-1" />
-            Download
-          </Button>
-        </div>
-      )}
+        {activity.type === 'analyzed_file' && (
+          <FileReference
+            path={activity.path}
+            filename={activity.filename}
+            lineRange={activity.lineRange}
+          />
+        )}
 
-      {activity.type === 'attach_files' && (
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-foreground/90">{activity.fileCount} file(s)</span>
-          <span className="text-muted-foreground text-xs truncate">
-            {activity.files.map(f => f.name).join(', ')}
-          </span>
-        </div>
-      )}
+        {activity.type === 'read_file' && (
+          <FileReference
+            path={activity.path}
+            filename={activity.filename}
+            lineRange={activity.lineRange}
+          />
+        )}
 
-      {/* Status indicator for non-HITL activities */}
-      <StatusIndicator status={activity.status} output={activity.output} error={activity.error} />
+        {activity.type === 'list_dir' && (
+          <>
+            <span className="text-foreground/90 font-mono text-xs truncate">{activity.path}</span>
+            {activity.entryCount !== undefined && (
+              <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.entryCount} items</span>
+            )}
+          </>
+        )}
+
+        {activity.type === 'web_search' && (
+          <>
+            <span className="text-foreground/90 truncate">{activity.query}</span>
+            {activity.resultCount !== undefined && (
+              <span className="text-muted-foreground text-xs ml-auto shrink-0">{activity.resultCount} results</span>
+            )}
+          </>
+        )}
+
+        {activity.type === 'get_system_info' && (
+          <span className="text-foreground/90">Fetching hardware & OS details</span>
+        )}
+
+        {activity.type === 'mcp_tool' && (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-foreground/90 font-mono text-xs truncate">{activity.toolName}</span>
+            {activity.arguments && (
+              <span className="text-muted-foreground text-xs truncate">{activity.arguments}</span>
+            )}
+          </div>
+        )}
+
+        {activity.type === 'generate_file' && activity.status === 'success' && (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-foreground/90 font-mono text-xs truncate">{activity.filename}</span>
+            {activity.size !== undefined && (
+              <span className="text-muted-foreground text-xs">({formatFileSize(activity.size)})</span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={(e) => { e.stopPropagation(); activity.path && window.open(`file://${activity.path}`, '_blank'); }}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Download
+            </Button>
+          </div>
+        )}
+
+        {activity.type === 'attach_files' && (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-foreground/90">{activity.fileCount} file(s)</span>
+            <span className="text-muted-foreground text-xs truncate">
+              {activity.files.map(f => f.name).join(', ')}
+            </span>
+          </div>
+        )}
+
+        {/* Status indicator for non-HITL activities */}
+        <StatusIndicator
+          status={activity.status}
+          output={activity.output}
+          error={activity.error}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
+        />
+      </div>
+
+      {/* Expanded output panel */}
+      {expanded && (activity.output || activity.error) && (
+        <pre className={cn(
+          "text-xs ml-6 mt-1 mb-2 p-2 rounded border max-h-[300px] overflow-y-auto whitespace-pre-wrap break-words font-mono",
+          activity.error
+            ? "text-red-300 bg-red-500/10 border-red-500/20"
+            : "text-muted-foreground bg-muted/60 border-border/50"
+        )}>
+          {activity.error || activity.output}
+        </pre>
+      )}
     </div>
   );
 }

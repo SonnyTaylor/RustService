@@ -483,8 +483,8 @@ export function AgentPage() {
         return {
           path: getPath(args.path),
           filename: getFilename(args.path),
-          oldString: typeof args.oldString === 'string' ? truncate(args.oldString) : undefined,
-          newString: typeof args.newString === 'string' ? truncate(args.newString) : undefined,
+          oldString: typeof args.oldString === 'string' ? args.oldString : undefined,
+          newString: typeof args.newString === 'string' ? args.newString : undefined,
           all: typeof args.all === 'boolean' ? args.all : undefined,
         };
       case 'read_file':
@@ -560,6 +560,8 @@ export function AgentPage() {
   ): Promise<CoreMessage> => {
     // Update UI to show running state
     updateActivityInParts(null, toolCallId, { status: 'running' as ActivityStatus });
+    // Yield to event loop so React commits the batched state update before executing
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     let result: string;
     let isError = false;
@@ -650,6 +652,8 @@ export function AgentPage() {
       output: result,
       error: isError ? result : undefined,
     });
+    // Yield to event loop so React commits the batched state update before the next tool executes
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     // Add tool result to history and continue loop
     const toolResultMsg: CoreMessage = {

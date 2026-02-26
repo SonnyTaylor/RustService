@@ -149,7 +149,7 @@ export function StartupManagerPage() {
     if (!deleteItem) return;
     setDeleting(true);
     try {
-      await invoke('delete_startup_item', { id: deleteItem.id });
+      await invoke('delete_startup_item', { id: deleteItem.id, command: deleteItem.command || null });
       setItems(prev => prev.filter(i => i.id !== deleteItem.id));
     } catch (err) {
       console.error('Failed to delete startup item:', err);
@@ -365,12 +365,13 @@ export function StartupManagerPage() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-1">
-                          {item.path && (
+                          {(item.path || item.command) && (
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
                               title="Open file location"
+                              onClick={() => invoke('open_startup_item_location', { path: item.path || item.command })}
                             >
                               <ExternalLink className="h-4 w-4" />
                             </Button>
