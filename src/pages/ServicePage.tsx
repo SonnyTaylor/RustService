@@ -61,6 +61,10 @@ import {
   Copy,
   Search,
   Plus,
+  Square,
+  CheckCircle2,
+  Timer,
+  AlertCircle,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -886,89 +890,316 @@ interface RunnerViewProps {
   logs: string[];
   onCancel: () => void;
   onBack: () => void;
+  queue: ServiceQueueItem[];
 }
 
-function RunnerView({ report, definitions, logs, onCancel, onBack }: RunnerViewProps) {
+/** Format milliseconds into a human-readable duration string */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
+}
+
+function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: RunnerViewProps) {
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [taskStartMs, setTaskStartMs] = useState(0);
+  const [taskElapsedMs, setTaskElapsedMs] = useState(0);
+  const startTimeRef = useRef(Date.now());
+  const taskStartRef = useRef(Date.now());
+
+  // Estimated times per service from the definitions
+  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+  // Use the queue prop as fallback when report is not yet populated
+  const enabledServices = (report?.queue ?? queue).filter((q) => q.enabled);
+  const currentIndex = report?.currentServiceIndex ?? 0;
+  const completedCount = report?.results?.length ?? 0;
+  const totalCount = enabledServices.length;
+  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+  const currentService = enabledServices[currentIndex];
+  const currentDef = currentService ? definitionMap.get(currentService.serviceId) : null;
+
+  // Calculate estimated total time (sum of estimatedDurationSecs for enabled services)
+  const totalEstimatedMs = enabledServices.reduce((acc, q) => {
+    const def = definitionMap.get(q.serviceId);
+    return acc + (def?.estimatedDurationSecs ?? 30) * 1000;
+  }, 0);
+
+  // Calculate estimated remaining time
+  const estimatedRemainingMs = Math.max(0, totalEstimatedMs - elapsedMs);
 
   // Auto-scroll logs
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  const enabledServices = report?.queue.filter((q) => q.enabled) || [];
-  const currentIndex = report?.currentServiceIndex ?? 0;
-  const completedCount = report?.results.length || 0;
-  const progress = enabledServices.length > 0
-    ? (completedCount / enabledServices.length) * 100
-    : 0;
+  // Elapsed time ticker
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+      setTaskElapsedMs(Date.now() - taskStartRef.current);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const definitionMap = new Map(definitions.map((d) => [d.id, d]));
-  const currentService = enabledServices[currentIndex];
-  const currentDef = currentService ? definitionMap.get(currentService.serviceId) : null;
+  // Track when current task changes
+  useEffect(() => {
+    taskStartRef.current = Date.now();
+    setTaskStartMs(Date.now());
+  }, [currentIndex]);
+
+  // Build service status list
+  const serviceStatuses = enabledServices.map((item, index) => {
+    const def = definitionMap.get(item.serviceId);
+    const result = report?.results?.[index];
+    let status: 'pending' | 'running' | 'completed' | 'failed' = 'pending';
+    if (index < completedCount) {
+      status = result?.success ? 'completed' : 'failed';
+    } else if (index === currentIndex) {
+      status = 'running';
+    }
+    return {
+      item,
+      def,
+      result,
+      status,
+      index,
+    };
+  });
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-6 pb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
-              <div className="relative">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <div className="absolute inset-0 animate-ping opacity-50">
-                  <Loader2 className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-              Running Services
-            </h2>
-            <p className="text-muted-foreground mt-1">
+      <div className="p-5 pb-4 border-b bg-background/95 backdrop-blur">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="relative flex items-center justify-center w-10 h-10">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold">Running Services</h2>
+            <p className="text-sm text-muted-foreground truncate">
               {currentDef ? (
                 <>
                   <span className="text-primary font-medium">{currentDef.name}</span>
-                  {' • '}
+                  {' — '}
+                  Step {currentIndex + 1} of {totalCount}
                 </>
-              ) : null}
-              Step {currentIndex + 1} of {enabledServices.length}
+              ) : (
+                'Starting...'
+              )}
             </p>
           </div>
-          <Button variant="destructive" onClick={onCancel} className="gap-2">
-            <XCircle className="h-4 w-4" />
-            Cancel
-          </Button>
+
+          {/* Control Buttons */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onCancel}
+              className="gap-2"
+            >
+              <Square className="h-3.5 w-3.5" />
+              Stop
+            </Button>
+          </div>
         </div>
 
-        {/* Progress */}
-        <div className="mt-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Progress</span>
-            <span className="font-medium">{Math.round(progress)}%</span>
+        {/* Progress Section */}
+        <div className="space-y-3">
+          {/* Progress Bar */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">
+                {completedCount} of {totalCount} tasks complete
+              </span>
+              <span className="font-medium text-primary">{Math.round(progress)}%</span>
+            </div>
+            <Progress value={progress} className="h-2.5" />
           </div>
-          <Progress value={progress} className="h-3" />
+
+          {/* Time Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex items-center gap-2 text-xs bg-muted/40 rounded-lg px-3 py-2">
+              <Timer className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <span className="text-muted-foreground">Elapsed:</span>{' '}
+                <span className="font-medium">{formatDuration(elapsedMs)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs bg-muted/40 rounded-lg px-3 py-2">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <span className="text-muted-foreground">Task:</span>{' '}
+                <span className="font-medium">{formatDuration(taskElapsedMs)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs bg-muted/40 rounded-lg px-3 py-2">
+              <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+              <div>
+                <span className="text-muted-foreground">ETA:</span>{' '}
+                <span className="font-medium">
+                  {estimatedRemainingMs > 0 ? `~${formatDuration(estimatedRemainingMs)}` : 'Almost done'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Separator className="mx-6" />
+      {/* Main Content: Task List */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-4 space-y-4">
+          {/* Active Task Card */}
+          {currentDef && (
+            <Card className="border-primary/30 bg-primary/5 overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="p-2.5 rounded-xl bg-primary/20 text-primary">
+                      {(() => { const Icon = getIcon(currentDef.icon); return <Icon className="h-5 w-5" />; })()}
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-primary animate-pulse" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold">{currentDef.name}</h3>
+                      <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full font-medium">
+                        Running
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground truncate">{currentDef.description}</p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div className="font-medium">{formatDuration(taskElapsedMs)}</div>
+                    <div>~{currentDef.estimatedDurationSecs}s est.</div>
+                  </div>
+                </div>
 
-      {/* Logs */}
-      <ScrollArea className="flex-1 min-h-0 p-6">
-        <div className="font-mono text-sm space-y-1.5 bg-muted/30 rounded-xl p-4 border">
-          {logs.length === 0 && (
-            <div className="text-muted-foreground animate-pulse">Starting services...</div>
+                {/* Latest log line */}
+                {logs.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-background/80 rounded-lg border text-xs font-mono text-muted-foreground">
+                    <span className="text-primary/60 shrink-0">❯</span>
+                    <span className="truncate">{logs[logs.length - 1]}</span>
+                  </div>
+                )}
+              </div>
+            </Card>
           )}
-          {logs.map((log, index) => (
-            <div
-              key={index}
-              className="text-muted-foreground flex gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200"
-            >
-              <span className="text-primary/60 select-none">❯</span>
-              <span>{log}</span>
+
+          {/* Task Queue List */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Task Queue
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setShowLogs(!showLogs)}
+              >
+                {showLogs ? 'Hide Logs' : 'Show Logs'}
+              </Button>
             </div>
-          ))}
-          <div ref={logsEndRef} />
+
+            {serviceStatuses.map(({ item, def, result, status, index }) => {
+              if (!def) return null;
+              const Icon = getIcon(def.icon);
+              const isActive = status === 'running';
+
+              return (
+                <div
+                  key={item.id}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-primary/10 border border-primary/20'
+                      : status === 'completed'
+                      ? 'bg-muted/30'
+                      : status === 'failed'
+                      ? 'bg-destructive/5'
+                      : 'bg-transparent opacity-50'
+                  }`}
+                >
+                  {/* Status Indicator */}
+                  <div className="shrink-0">
+                    {status === 'running' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    ) : status === 'completed' ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : status === 'failed' ? (
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                    )}
+                  </div>
+
+                  {/* Service Icon */}
+                  <div className={`p-1.5 rounded-lg ${
+                    isActive ? 'bg-primary/20 text-primary' :
+                    status === 'completed' ? 'bg-green-500/10 text-green-500' :
+                    status === 'failed' ? 'bg-destructive/10 text-destructive' :
+                    'bg-muted text-muted-foreground'
+                  }`}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+
+                  {/* Name */}
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium ${
+                      status === 'pending' ? 'text-muted-foreground' : ''
+                    }`}>
+                      {def.name}
+                    </span>
+                  </div>
+
+                  {/* Duration / Status */}
+                  <div className="text-xs text-muted-foreground text-right shrink-0">
+                    {status === 'completed' && result ? (
+                      <span className="text-green-600 dark:text-green-500">
+                        {formatDuration(result.durationMs)}
+                      </span>
+                    ) : status === 'failed' && result ? (
+                      <span className="text-destructive">Failed</span>
+                    ) : status === 'running' ? (
+                      <span className="text-primary">{formatDuration(taskElapsedMs)}</span>
+                    ) : (
+                      <span>~{def.estimatedDurationSecs}s</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Expandable Log Section */}
+          {showLogs && (
+            <div className="mt-4">
+              <div className="font-mono text-xs space-y-1 bg-muted/30 rounded-xl p-4 border max-h-60 overflow-y-auto">
+                {logs.length === 0 && (
+                  <div className="text-muted-foreground animate-pulse">Starting services...</div>
+                )}
+                {logs.map((log, idx) => (
+                  <div
+                    key={idx}
+                    className="text-muted-foreground flex gap-2"
+                  >
+                    <span className="text-primary/60 select-none shrink-0">❯</span>
+                    <span>{log}</span>
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>
@@ -1076,9 +1307,12 @@ export function ServicePage() {
       const unsubProgress = await listen<{ currentIndex: number; totalCount: number }>(
         'service-progress',
         (event) => {
-          setReport((prev) =>
-            prev ? { ...prev, currentServiceIndex: event.payload.currentIndex } : null
-          );
+          setReport((prev) => {
+            if (prev) {
+              return { ...prev, currentServiceIndex: event.payload.currentIndex };
+            }
+            return prev;
+          });
         }
       );
       unsubscribers.push(unsubProgress);
@@ -1090,10 +1324,12 @@ export function ServicePage() {
       });
       unsubscribers.push(unsubComplete);
 
-      // State change events
+      // State change events — update the report during AND after running
       const unsubState = await listen<ServiceRunState>('service-state-changed', (event) => {
-        if (!event.payload.isRunning && event.payload.currentReport) {
+        if (event.payload.currentReport) {
           setReport(event.payload.currentReport);
+        }
+        if (!event.payload.isRunning && event.payload.currentReport) {
           if (event.payload.currentReport.status !== 'running') {
             setPhase('results');
           }
@@ -1280,6 +1516,7 @@ export function ServicePage() {
           logs={logs}
           onCancel={handleCancel}
           onBack={handleBack}
+          queue={queue}
         />
       )}
       {phase === 'results' && report && (

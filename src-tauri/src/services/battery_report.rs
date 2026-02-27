@@ -303,122 +303,110 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
         chemistry: String::new(),
     };
 
-    let lines: Vec<&str> = html.lines().collect();
+    // Normalize the HTML: join all lines into one string, then split by table rows.
+    // powercfg /batteryreport output wraps lines at ~80 columns, which can split
+    // fields like "FULL CHARGE CAPACITY" across two lines. Normalizing first avoids
+    // all line-boundary parsing issues.
+    let normalized = html
+        .lines()
+        .map(|l| l.trim())
+        .collect::<Vec<_>>()
+        .join(" ");
 
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
+    // --- Parse the "Installed batteries" table for battery metadata ---
+    // The table has rows like:
+    //   <span class="label">DESIGN CAPACITY</span></td><td>84,000 mWh</td>
+    // Split by </tr> to get individual rows, then extract label-value pairs.
+    if let Some(battery_section_start) = normalized.find("Installed batteries") {
+        let section = &normalized[battery_section_start..];
+        // Find the end of this table
+        let section_end = section.find("</table>").unwrap_or(section.len());
+        let battery_table = &section[..section_end];
 
-        // Look for DESIGN CAPACITY
-        if trimmed.contains("DESIGN CAPACITY") || trimmed.contains("Design Capacity") {
-            if let Some(next) = lines.get(i + 1) {
-                if let Some(val) = extract_mwh(next) {
-                    report.design_capacity_mwh = val;
-                }
-            }
-            // Also check same line for table format
-            if let Some(val) = extract_mwh(trimmed) {
-                report.design_capacity_mwh = val;
-            }
-        }
+        // Split into rows
+        for row in battery_table.split("</tr>") {
+            // Extract cells from each row
+            let cells: Vec<String> = row
+                .split("</td>")
+                .map(|c| strip_html_tags(c))
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty())
+                .collect();
 
-        // FULL CHARGE CAPACITY
-        if trimmed.contains("FULL CHARGE CAPACITY") || trimmed.contains("Full Charge Capacity") {
-            if let Some(next) = lines.get(i + 1) {
-                if let Some(val) = extract_mwh(next) {
-                    report.full_charge_capacity_mwh = val;
-                }
-            }
-            if let Some(val) = extract_mwh(trimmed) {
-                report.full_charge_capacity_mwh = val;
-            }
-        }
+            if cells.len() >= 2 {
+                let label = cells[0].to_uppercase();
+                let value = &cells[1];
 
-        // CYCLE COUNT
-        if trimmed.contains("CYCLE COUNT") || trimmed.contains("Cycle Count") {
-            if let Some(next) = lines.get(i + 1) {
-                let text = strip_html_tags(next);
-                if let Ok(val) = text.trim().parse::<u32>() {
-                    report.cycle_count = Some(val);
-                }
-            }
-            let text = strip_html_tags(trimmed);
-            // Try to find number after "Cycle Count"
-            if let Some(pos) = text.find("Count") {
-                let after = &text[pos + 5..];
-                let num_str: String = after.chars().filter(|c| c.is_ascii_digit()).collect();
-                if let Ok(val) = num_str.parse::<u32>() {
-                    report.cycle_count = Some(val);
-                }
-            }
-        }
-
-        // NAME
-        if (trimmed.contains(">NAME<") || trimmed.contains(">Name<"))
-            && report.battery_name.is_empty()
-        {
-            if let Some(next) = lines.get(i + 1) {
-                let text = strip_html_tags(next).trim().to_string();
-                if !text.is_empty() {
-                    report.battery_name = text;
-                }
-            }
-        }
-
-        // MANUFACTURER
-        if trimmed.contains("MANUFACTURER") || trimmed.contains("Manufacturer") {
-            if report.manufacturer.is_empty() {
-                if let Some(next) = lines.get(i + 1) {
-                    let text = strip_html_tags(next).trim().to_string();
-                    if !text.is_empty() && !text.contains("MANUFACTURER") {
-                        report.manufacturer = text;
+                if label.contains("DESIGN CAPACITY") && report.design_capacity_mwh == 0 {
+                    if let Some(val) = extract_mwh_from_text(value) {
+                        report.design_capacity_mwh = val;
                     }
-                }
-            }
-        }
-
-        // CHEMISTRY
-        if trimmed.contains("CHEMISTRY") || trimmed.contains("Chemistry") {
-            if report.chemistry.is_empty() {
-                if let Some(next) = lines.get(i + 1) {
-                    let text = strip_html_tags(next).trim().to_string();
-                    if !text.is_empty() && !text.contains("CHEMISTRY") {
-                        report.chemistry = text;
+                } else if (label.contains("FULL CHARGE CAPACITY")
+                    || label.contains("LAST FULL CHARGE"))
+                    && report.full_charge_capacity_mwh == 0
+                {
+                    if let Some(val) = extract_mwh_from_text(value) {
+                        report.full_charge_capacity_mwh = val;
                     }
+                } else if label.contains("CYCLE COUNT") && report.cycle_count.is_none() {
+                    let num_str: String =
+                        value.chars().filter(|c| c.is_ascii_digit()).collect();
+                    if let Ok(val) = num_str.parse::<u32>() {
+                        report.cycle_count = Some(val);
+                    }
+                } else if label == "NAME" && report.battery_name.is_empty() {
+                    report.battery_name = value.to_string();
+                } else if label.contains("MANUFACTURER")
+                    && report.manufacturer.is_empty()
+                    && !label.contains("SYSTEM")
+                {
+                    report.manufacturer = value.to_string();
+                } else if label.contains("CHEMISTRY") && report.chemistry.is_empty() {
+                    report.chemistry = value.to_string();
                 }
             }
         }
+    }
 
-        // Capacity history table rows (date, full charge, design capacity)
-        // Format: <td>YYYY-MM-DD</td><td>XX,XXX mWh</td><td>XX,XXX mWh</td>
-        if trimmed.contains("Battery capacity history") || trimmed.contains("Capacity History") {
-            // Parse subsequent table rows
-            for j in (i + 1)..lines.len().min(i + 500) {
-                let row = lines[j].trim();
-                if row.contains("</table>") {
-                    break;
-                }
-                // Look for rows with date pattern
-                if row.contains("<td>") {
-                    let cells: Vec<String> = row
-                        .split("<td>")
-                        .skip(1)
-                        .map(|c| strip_html_tags(&format!("<td>{}", c)))
-                        .collect();
+    // --- Parse "Battery capacity history" table ---
+    // Rows contain: date | full charge capacity | design capacity
+    if let Some(history_start) = normalized.find("Battery capacity history") {
+        let section = &normalized[history_start..];
+        let section_end = section.find("</table>").unwrap_or(section.len());
+        let history_table = &section[..section_end];
 
-                    if cells.len() >= 3 {
-                        let date = cells[0].trim().to_string();
-                        // Validate date-like format
-                        if date.len() >= 8 && date.contains('-') {
-                            let fc = extract_mwh_from_text(&cells[1]).unwrap_or(0);
-                            let dc = extract_mwh_from_text(&cells[2]).unwrap_or(0);
-                            if fc > 0 || dc > 0 {
-                                report.capacity_history.push(CapacityHistoryEntry {
-                                    date,
-                                    full_charge_capacity_mwh: fc,
-                                    design_capacity_mwh: dc,
-                                });
-                            }
+        for row in history_table.split("</tr>") {
+            // Skip header rows
+            if row.contains("<th") || row.contains("thead") {
+                continue;
+            }
+            // Extract cells
+            let cells: Vec<String> = row
+                .split("</td>")
+                .map(|c| strip_html_tags(c))
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty())
+                .collect();
+
+            // Need at least 3 cells: date, full charge, design
+            if cells.len() >= 3 {
+                // Find the date cell (contains a dash and is date-like)
+                let date = cells[0].trim().to_string();
+                if date.len() >= 8 && date.contains('-') {
+                    // The mWh values may be in cells[1] and cells[2], or possibly
+                    // offset if there are extra columns. Find the two mWh values.
+                    let mut mwh_values: Vec<u64> = Vec::new();
+                    for cell in &cells[1..] {
+                        if let Some(val) = extract_mwh_from_text(cell) {
+                            mwh_values.push(val);
                         }
+                    }
+                    if mwh_values.len() >= 2 {
+                        report.capacity_history.push(CapacityHistoryEntry {
+                            date,
+                            full_charge_capacity_mwh: mwh_values[0],
+                            design_capacity_mwh: mwh_values[1],
+                        });
                     }
                 }
             }
@@ -428,28 +416,25 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
     report
 }
 
-fn extract_mwh(s: &str) -> Option<u64> {
-    let text = strip_html_tags(s);
-    extract_mwh_from_text(&text)
-}
-
 fn extract_mwh_from_text(text: &str) -> Option<u64> {
-    // Look for patterns like "41,440 mWh" or "41440 mWh" or just numbers
+    // Look for patterns like "41,440 mWh" or "41440 mWh"
     let cleaned: String = text.replace(",", "").replace(" ", "");
-    // Find "XXXXmWh" or just digits
     if let Some(pos) = cleaned.to_lowercase().find("mwh") {
+        // Walk backwards from the "mwh" position to find the start of the number
         let num_part = &cleaned[..pos];
-        let num_str: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
-        num_str.parse::<u64>().ok()
-    } else {
-        // Just try to parse any number
-        let num_str: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
+        let num_str: String = num_part
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         if !num_str.is_empty() {
-            num_str.parse::<u64>().ok()
-        } else {
-            None
+            return num_str.parse::<u64>().ok();
         }
     }
+    None
 }
 
 fn strip_html_tags(s: &str) -> String {

@@ -249,6 +249,16 @@ pub async fn run_services(
 
     // Run each service
     for (index, queue_item) in enabled_queue.iter().enumerate() {
+        // Check if cancelled before starting next service
+        {
+            let state = SERVICE_STATE.lock().unwrap();
+            if let Some(ref s) = *state {
+                if !s.is_running {
+                    break;
+                }
+            }
+        }
+
         // Update current index
         {
             let mut state = SERVICE_STATE.lock().unwrap();
@@ -305,7 +315,17 @@ pub async fn run_services(
 
     // Complete report
     report.completed_at = Some(Utc::now().to_rfc3339());
-    report.status = if report.results.iter().all(|r| r.success) {
+    // Check if we were cancelled
+    let was_cancelled = {
+        let state = SERVICE_STATE.lock().unwrap();
+        state
+            .as_ref()
+            .map(|s| !s.is_running)
+            .unwrap_or(false)
+    };
+    report.status = if was_cancelled {
+        ServiceRunStatus::Cancelled
+    } else if report.results.iter().all(|r| r.success) {
         ServiceRunStatus::Completed
     } else {
         ServiceRunStatus::Failed
