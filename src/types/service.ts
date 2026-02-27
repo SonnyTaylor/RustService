@@ -63,6 +63,8 @@ export interface ServiceDefinition {
   options: ServiceOptionSchema[];
   /** Icon name (lucide icon identifier) */
   icon: string;
+  /** Resource tags that conflict with other services sharing the same tag (parallel mode) */
+  exclusiveResources: string[];
 }
 
 // =============================================================================
@@ -171,8 +173,12 @@ export interface ServiceReport {
   queue: ServiceQueueItem[];
   /** Results for each service */
   results: ServiceResult[];
-  /** Index of currently running service (for progress) */
+  /** Index of currently running service (for progress, sequential mode) */
   currentServiceIndex?: number;
+  /** Indices of currently running services (parallel mode) */
+  currentServiceIndices?: number[];
+  /** Whether this run used parallel (experimental) execution */
+  parallelMode?: boolean;
   /** Technician who performed the service (business mode) */
   technicianName?: string;
   /** Customer name (business mode) */

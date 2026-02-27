@@ -52,6 +52,7 @@ impl Service for PingTestService {
                 },
             ],
             icon: "wifi".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

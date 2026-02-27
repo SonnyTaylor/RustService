@@ -31,6 +31,7 @@ impl Service for BatteryInfoService {
             required_programs: vec![],
             options: vec![],
             icon: "battery-full".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

@@ -34,6 +34,7 @@ impl Service for WhyNotWin11Service {
             required_programs: vec!["whynotwin11".to_string()],
             options: vec![],
             icon: "monitor-check".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

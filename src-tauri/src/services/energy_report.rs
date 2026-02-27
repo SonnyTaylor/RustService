@@ -46,6 +46,7 @@ impl Service for EnergyReportService {
                 ),
             }],
             icon: "zap".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

@@ -33,6 +33,7 @@ impl Service for BatteryReportService {
             required_programs: vec![], // Built-in Windows tool
             options: vec![],
             icon: "battery-charging".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

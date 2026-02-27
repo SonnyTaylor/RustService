@@ -34,6 +34,7 @@ impl Service for BleachBitService {
             required_programs: vec!["bleachbit".to_string()],
             options: vec![],
             icon: "trash-2".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
         }
     }
 

@@ -40,11 +40,10 @@ impl Service for NetworkConfigService {
                 min: None,
                 max: None,
                 options: None,
-                description: Some(
-                    "Show disabled and disconnected network adapters".to_string(),
-                ),
+                description: Some("Show disabled and disconnected network adapters".to_string()),
             }],
             icon: "globe".to_string(),
+            exclusive_resources: vec![],
         }
     }
 
@@ -74,12 +73,19 @@ impl Service for NetworkConfigService {
         emit_log("Running network configuration analysis...", &mut logs, app);
 
         // Run ipconfig /all
-        emit_log("Gathering adapter details (ipconfig /all)...", &mut logs, app);
+        emit_log(
+            "Gathering adapter details (ipconfig /all)...",
+            &mut logs,
+            app,
+        );
         let ipconfig_output = match Command::new("ipconfig").arg("/all").output() {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 emit_log(
-                    &format!("ipconfig exited with code: {}", output.status.code().unwrap_or(-1)),
+                    &format!(
+                        "ipconfig exited with code: {}",
+                        output.status.code().unwrap_or(-1)
+                    ),
                     &mut logs,
                     app,
                 );
@@ -107,11 +113,7 @@ impl Service for NetworkConfigService {
         {
             Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
             Err(e) => {
-                emit_log(
-                    &format!("Warning: netsh failed: {}", e),
-                    &mut logs,
-                    app,
-                );
+                emit_log(&format!("Warning: netsh failed: {}", e), &mut logs, app);
                 String::new()
             }
         };
@@ -133,10 +135,8 @@ impl Service for NetworkConfigService {
 
         // Filter disabled if not requested
         if !include_disabled {
-            adapters.retain(|a| {
-                a.admin_state != "Disabled"
-                    && !a.media_state.contains("disconnected")
-            });
+            adapters
+                .retain(|a| a.admin_state != "Disabled" && !a.media_state.contains("disconnected"));
         }
 
         let total_adapters = adapters.len();
@@ -179,7 +179,10 @@ impl Service for NetworkConfigService {
                     .find(|(ip, _)| ip == dns)
                     .map(|(_, name)| name.to_string())
                     .unwrap_or_else(|| {
-                        if dns.starts_with("192.168.") || dns.starts_with("10.") || dns.starts_with("172.") {
+                        if dns.starts_with("192.168.")
+                            || dns.starts_with("10.")
+                            || dns.starts_with("172.")
+                        {
                             "Private/Router DNS".to_string()
                         } else {
                             "ISP/Unknown DNS".to_string()
@@ -225,10 +228,7 @@ impl Service for NetworkConfigService {
         let title = if connected.is_empty() {
             "No Connected Network Adapters".to_string()
         } else {
-            format!(
-                "{} adapter(s) connected",
-                connected.len()
-            )
+            format!("{} adapter(s) connected", connected.len())
         };
 
         let description = format!(
@@ -340,7 +340,11 @@ fn parse_ipconfig(text: &str) -> Vec<AdapterInfo> {
         let trimmed = line.trim();
 
         // New adapter section (not indented, ends with ':')
-        if !line.starts_with(' ') && !line.starts_with('\t') && line.contains("adapter") && line.ends_with(':') {
+        if !line.starts_with(' ')
+            && !line.starts_with('\t')
+            && line.contains("adapter")
+            && line.ends_with(':')
+        {
             // Save previous
             if let Some(adapter) = current.take() {
                 adapters.push(adapter);
@@ -397,15 +401,21 @@ fn parse_ipconfig(text: &str) -> Vec<AdapterInfo> {
                     adapter.dhcp_server = val;
                 }
                 collecting_dns = false;
-            } else if trimmed.starts_with("IPv4 Address") || trimmed.starts_with("Autoconfiguration IPv4") {
+            } else if trimmed.starts_with("IPv4 Address")
+                || trimmed.starts_with("Autoconfiguration IPv4")
+            {
                 if let Some(val) = extract_value(trimmed) {
                     adapter.ipv4_address = val.trim_end_matches("(Preferred)").trim().to_string();
                 }
                 collecting_dns = false;
-            } else if trimmed.starts_with("IPv6 Address") || trimmed.starts_with("Link-local IPv6") || trimmed.starts_with("Temporary IPv6") {
+            } else if trimmed.starts_with("IPv6 Address")
+                || trimmed.starts_with("Link-local IPv6")
+                || trimmed.starts_with("Temporary IPv6")
+            {
                 if adapter.ipv6_address.is_empty() {
                     if let Some(val) = extract_value(trimmed) {
-                        adapter.ipv6_address = val.trim_end_matches("(Preferred)").trim().to_string();
+                        adapter.ipv6_address =
+                            val.trim_end_matches("(Preferred)").trim().to_string();
                     }
                 }
                 collecting_dns = false;
@@ -463,10 +473,7 @@ fn parse_netsh_interfaces(text: &str) -> std::collections::HashMap<String, Netsh
         let parts: Vec<&str> = trimmed.splitn(4, char::is_whitespace).collect();
         if parts.len() >= 4 {
             // More robust parsing — split on multiple spaces
-            let columns: Vec<String> = trimmed
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .collect();
+            let columns: Vec<String> = trimmed.split_whitespace().map(|s| s.to_string()).collect();
             if columns.len() >= 4 {
                 let admin_state = columns[0].clone();
                 let interface_type = columns[2].clone();
@@ -494,7 +501,5 @@ fn extract_value(line: &str) -> Option<String> {
 fn looks_like_ip(s: &str) -> bool {
     let trimmed = s.trim();
     // Simple check: contains dots or colons and no spaces
-    !trimmed.contains(' ')
-        && (trimmed.contains('.') || trimmed.contains(':'))
-        && trimmed.len() >= 3
+    !trimmed.contains(' ') && (trimmed.contains('.') || trimmed.contains(':')) && trimmed.len() >= 3
 }

@@ -34,6 +34,7 @@ impl Service for KvrtScanService {
             required_programs: vec!["kvrt".to_string()],
             options: vec![],
             icon: "shield-alert".to_string(),
+            exclusive_resources: vec!["filesystem-scan".to_string()],
         }
     }
 

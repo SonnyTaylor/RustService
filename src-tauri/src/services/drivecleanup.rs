@@ -47,6 +47,7 @@ impl Service for DriveCleanupService {
                 ),
             }],
             icon: "usb".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
         }
     }
 

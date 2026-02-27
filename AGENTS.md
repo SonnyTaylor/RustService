@@ -312,7 +312,7 @@ Modular service automation with 4-step flow: **Presets → Queue → Runner → 
 ### Architecture
 - **Presets**: Pre-configured service bundles (Diagnostics, General, Complete, Custom)
 - **Queue**: Drag-and-drop reordering, enable/disable, configure options
-- **Runner**: Executes services sequentially with real-time log streaming
+- **Runner**: Executes services sequentially or in parallel (experimental) with real-time log streaming
 - **Results**: 3 tabs - Findings (detailed), Printout (technical), Customer Print (simplified)
 
 ### Key Files
@@ -327,10 +327,19 @@ Modular service automation with 4-step flow: **Presets → Queue → Runner → 
 ### Adding a New Service
 1. Add `ServiceDefinition` to `get_all_service_definitions()` in `services.rs`
 2. Implement service logic in `run_service()` match arm
-3. Optionally add to presets in `get_all_presets()`
-4. Add icon to `ICON_MAP` in `ServicePage.tsx` if needed
+3. Set `exclusive_resources` for parallel mode (see below)
+4. Optionally add to presets in `get_all_presets()`
+5. Add icon to `ICON_MAP` in `ServicePage.tsx` if needed
 
 See `docs/adding-services.md` for detailed instructions.
+
+### Parallel Execution (Experimental)
+- **Toggle**: Per-run switch in the queue view footer (not a global setting)
+- **Scheduler**: Resource-based concurrent execution — services with overlapping `exclusive_resources` tags are serialized; non-conflicting services run in parallel on separate threads
+- **Resource tags**: `network-bandwidth`, `cpu-stress`, `disk-exclusive`, `disk-heavy`, `filesystem-scan`
+- **Pause**: Disabled in parallel mode (only cancel supported)
+- **Time tracking**: Individual service durations are measured per-thread — ML models are unaffected
+- **Report**: `ServiceReport.parallelMode` flag + `currentServiceIndices` for multi-active tracking
 
 ### Tauri Commands
 | Command | Description |
@@ -339,7 +348,7 @@ See `docs/adding-services.md` for detailed instructions.
 | `get_service_presets` | Get preset configurations |
 | `validate_service_requirements` | Check if programs installed |
 | `get_service_run_state` | Get current run state (persists across tabs) |
-| `run_services` | Execute service queue |
+| `run_services` | Execute service queue (accepts optional `parallel: bool`) |
 | `cancel_service_run` | Cancel running services |
 | `get_service_report` | Get saved report by ID |
 | `list_service_reports` | List all saved reports |

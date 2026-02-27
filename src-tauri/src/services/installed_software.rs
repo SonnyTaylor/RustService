@@ -40,11 +40,10 @@ impl Service for InstalledSoftwareService {
                 min: None,
                 max: None,
                 options: None,
-                description: Some(
-                    "Include Windows updates and hotfixes in the list".to_string(),
-                ),
+                description: Some("Include Windows updates and hotfixes in the list".to_string()),
             }],
             icon: "package-search".to_string(),
+            exclusive_resources: vec![],
         }
     }
 
@@ -71,7 +70,11 @@ impl Service for InstalledSoftwareService {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        emit_log("Querying installed software from registry...", &mut logs, app);
+        emit_log(
+            "Querying installed software from registry...",
+            &mut logs,
+            app,
+        );
 
         // PowerShell command to read both HKLM and HKCU uninstall keys
         let ps_script = r#"

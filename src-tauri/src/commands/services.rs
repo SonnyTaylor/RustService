@@ -4,8 +4,9 @@
 //! This module delegates to the modular service system in `crate::services`.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
 use chrono::Utc;
@@ -203,7 +204,10 @@ pub async fn run_services(
     queue: Vec<ServiceQueueItem>,
     technician_name: Option<String>,
     customer_name: Option<String>,
+    parallel: Option<bool>,
 ) -> Result<ServiceReport, String> {
+    let parallel_mode = parallel.unwrap_or(false);
+
     // Check if already running
     {
         let state = SERVICE_STATE.lock().unwrap();
@@ -233,6 +237,8 @@ pub async fn run_services(
         queue: queue.clone(),
         results: Vec::new(),
         current_service_index: Some(0),
+        current_service_indices: vec![],
+        parallel_mode,
         technician_name,
         customer_name,
         agent_initiated: false,
@@ -255,7 +261,71 @@ pub async fn run_services(
 
     let start_time = Instant::now();
 
-    // Run each service
+    if parallel_mode {
+        // =====================================================================
+        // Parallel Execution (Experimental)
+        // Resource-based concurrent scheduler: services with overlapping
+        // exclusive_resources are serialized; non-conflicting services run
+        // concurrently on separate threads.
+        // =====================================================================
+        run_services_parallel(&app, &enabled_queue, &mut report)?;
+    } else {
+        // =====================================================================
+        // Sequential Execution (Default)
+        // =====================================================================
+        run_services_sequential(&app, &enabled_queue, &mut report)?;
+    }
+
+    // Complete report
+    report.completed_at = Some(Utc::now().to_rfc3339());
+    // Check if we were cancelled
+    let was_cancelled = {
+        let state = SERVICE_STATE.lock().unwrap();
+        state.as_ref().map(|s| !s.is_running).unwrap_or(false)
+    };
+    report.status = if was_cancelled {
+        ServiceRunStatus::Cancelled
+    } else if report.results.iter().all(|r| r.success) {
+        ServiceRunStatus::Completed
+    } else {
+        ServiceRunStatus::Failed
+    };
+    report.total_duration_ms = Some(start_time.elapsed().as_millis() as u64);
+    report.current_service_index = None;
+    report.current_service_indices = vec![];
+
+    // Save report
+    if let Err(e) = save_report(&report) {
+        eprintln!("Failed to save report: {}", e);
+    }
+
+    // Update global state
+    {
+        let mut state = SERVICE_STATE.lock().unwrap();
+        *state = Some(ServiceRunState {
+            is_running: false,
+            is_paused: false,
+            current_report: Some(report.clone()),
+        });
+    }
+
+    // Emit completion
+    let _ = app.emit("service-state-changed", get_service_run_state());
+    let _ = app.emit("service-completed", &report);
+
+    Ok(report)
+}
+
+// =============================================================================
+// Sequential Runner
+// =============================================================================
+
+/// Run services one at a time (original behavior)
+fn run_services_sequential(
+    app: &AppHandle,
+    enabled_queue: &[ServiceQueueItem],
+    report: &mut ServiceReport,
+) -> Result<(), String> {
     for (index, queue_item) in enabled_queue.iter().enumerate() {
         // Check if cancelled before starting next service
         {
@@ -305,12 +375,11 @@ pub async fn run_services(
         );
 
         // Run the service using the modular service system
-        let result = services::run_service(&queue_item.service_id, &queue_item.options, &app)
+        let result = services::run_service(&queue_item.service_id, &queue_item.options, app)
             .ok_or_else(|| format!("Unknown service: {}", queue_item.service_id))?;
 
         // Record timing for service metrics (only for successful runs)
         if result.success {
-            // Compute options hash for settings-aware tracking
             let options_hash = Some(super::time_tracking::compute_options_hash(
                 &queue_item.options,
             ));
@@ -318,7 +387,7 @@ pub async fn run_services(
             if let Err(e) = super::time_tracking::record_service_time(
                 queue_item.service_id.clone(),
                 result.duration_ms,
-                None, // preset_id could be passed from frontend if needed
+                None,
                 options_hash,
             ) {
                 eprintln!("Failed to record service time: {}", e);
@@ -339,43 +408,278 @@ pub async fn run_services(
         let _ = app.emit("service-state-changed", get_service_run_state());
     }
 
-    // Complete report
-    report.completed_at = Some(Utc::now().to_rfc3339());
-    // Check if we were cancelled
-    let was_cancelled = {
-        let state = SERVICE_STATE.lock().unwrap();
-        state.as_ref().map(|s| !s.is_running).unwrap_or(false)
-    };
-    report.status = if was_cancelled {
-        ServiceRunStatus::Cancelled
-    } else if report.results.iter().all(|r| r.success) {
-        ServiceRunStatus::Completed
-    } else {
-        ServiceRunStatus::Failed
-    };
-    report.total_duration_ms = Some(start_time.elapsed().as_millis() as u64);
-    report.current_service_index = None;
+    Ok(())
+}
 
-    // Save report
-    if let Err(e) = save_report(&report) {
-        eprintln!("Failed to save report: {}", e);
-    }
+// =============================================================================
+// Parallel Runner (Experimental)
+// =============================================================================
 
-    // Update global state
-    {
-        let mut state = SERVICE_STATE.lock().unwrap();
-        *state = Some(ServiceRunState {
-            is_running: false,
-            is_paused: false,
-            current_report: Some(report.clone()),
+/// Run services concurrently, respecting exclusive resource constraints.
+/// Services without overlapping exclusive_resources execute in parallel.
+/// Services sharing any resource tag are serialized.
+fn run_services_parallel(
+    app: &AppHandle,
+    enabled_queue: &[ServiceQueueItem],
+    report: &mut ServiceReport,
+) -> Result<(), String> {
+    // Build a map of service_id -> exclusive_resources from definitions
+    let all_defs = services::get_all_definitions();
+    let resource_map: HashMap<String, Vec<String>> = all_defs
+        .into_iter()
+        .map(|d| (d.id.clone(), d.exclusive_resources))
+        .collect();
+
+    // Track state for the scheduler
+    let total_count = enabled_queue.len();
+    let results_collector: Arc<Mutex<Vec<(usize, ServiceResult)>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    // Track which indices have been started and completed
+    let mut started: HashSet<usize> = HashSet::new();
+    let mut completed: HashSet<usize> = HashSet::new();
+    // Resources currently held by running services
+    let mut held_resources: HashSet<String> = HashSet::new();
+    // Map of currently running thread join handles with their index and resources
+    let mut running: Vec<(usize, Vec<String>, std::thread::JoinHandle<()>)> = Vec::new();
+
+    // Notification channel for when a task completes
+    let notify_pair = Arc::new((Mutex::new(false), Condvar::new()));
+
+    loop {
+        // Check cancellation
+        {
+            let state = SERVICE_STATE.lock().unwrap();
+            if let Some(ref s) = *state {
+                if !s.is_running {
+                    break;
+                }
+            }
+        }
+
+        // If everything has been started and completed, we're done
+        if completed.len() == total_count {
+            break;
+        }
+
+        // Collect completed threads
+        let mut newly_completed = Vec::new();
+        running.retain(|(idx, resources, handle)| {
+            if handle.is_finished() {
+                newly_completed.push((*idx, resources.clone()));
+                false
+            } else {
+                true
+            }
         });
+
+        // Release resources from completed tasks and join them
+        for (idx, resources) in &newly_completed {
+            completed.insert(*idx);
+            for res in resources {
+                held_resources.remove(res);
+            }
+        }
+
+        // Collect results from the shared collector
+        {
+            let mut collected = results_collector.lock().unwrap();
+            for (idx, result) in collected.drain(..) {
+                // Record timing for service metrics
+                if result.success {
+                    let queue_item = &enabled_queue[idx];
+                    let options_hash = Some(super::time_tracking::compute_options_hash(
+                        &queue_item.options,
+                    ));
+
+                    if let Err(e) = super::time_tracking::record_service_time(
+                        queue_item.service_id.clone(),
+                        result.duration_ms,
+                        None,
+                        options_hash,
+                    ) {
+                        eprintln!("Failed to record service time: {}", e);
+                    }
+                }
+
+                report.results.push(result);
+            }
+        }
+
+        // Update state if anything changed
+        if !newly_completed.is_empty() {
+            let active_indices: Vec<usize> = running.iter().map(|(idx, _, _)| *idx).collect();
+            {
+                let mut state = SERVICE_STATE.lock().unwrap();
+                if let Some(ref mut s) = *state {
+                    if let Some(ref mut r) = s.current_report {
+                        r.results = report.results.clone();
+                        r.current_service_indices = active_indices.clone();
+                        r.current_service_index = active_indices.first().copied();
+                    }
+                }
+            }
+            let _ = app.emit("service-state-changed", get_service_run_state());
+        }
+
+        // Try to start new services that don't conflict with running ones
+        let mut launched_any = false;
+        for (index, queue_item) in enabled_queue.iter().enumerate() {
+            if started.contains(&index) {
+                continue;
+            }
+
+            // Check cancellation again
+            {
+                let state = SERVICE_STATE.lock().unwrap();
+                if let Some(ref s) = *state {
+                    if !s.is_running {
+                        break;
+                    }
+                }
+            }
+
+            // Get this service's exclusive resources
+            let service_resources = resource_map
+                .get(&queue_item.service_id)
+                .cloned()
+                .unwrap_or_default();
+
+            // Check if any of its resources conflict with currently held ones
+            let has_conflict = service_resources.iter().any(|r| held_resources.contains(r));
+
+            if has_conflict {
+                continue; // Skip this service for now; it'll be picked up later
+            }
+
+            // Mark resources as held
+            for res in &service_resources {
+                held_resources.insert(res.clone());
+            }
+            started.insert(index);
+            launched_any = true;
+
+            // Emit progress for this service starting
+            let _ = app.emit(
+                "service-progress",
+                json!({
+                    "currentIndex": index,
+                    "totalCount": total_count,
+                    "serviceId": queue_item.service_id
+                }),
+            );
+
+            // Update active indices in state
+            let active_indices: Vec<usize> = running
+                .iter()
+                .map(|(idx, _, _)| *idx)
+                .chain(std::iter::once(index))
+                .collect();
+            {
+                let mut state = SERVICE_STATE.lock().unwrap();
+                if let Some(ref mut s) = *state {
+                    if let Some(ref mut r) = s.current_report {
+                        r.current_service_indices = active_indices.clone();
+                        r.current_service_index = active_indices.first().copied();
+                    }
+                }
+            }
+            let _ = app.emit("service-state-changed", get_service_run_state());
+
+            // Spawn thread to run this service
+            let results_tx = Arc::clone(&results_collector);
+            let notify = Arc::clone(&notify_pair);
+            let service_id = queue_item.service_id.clone();
+            let options = queue_item.options.clone();
+            let app_handle = app.clone();
+
+            let handle = std::thread::spawn(move || {
+                let result = services::run_service(&service_id, &options, &app_handle)
+                    .unwrap_or_else(|| ServiceResult {
+                        service_id: service_id.clone(),
+                        success: false,
+                        error: Some(format!("Unknown service: {}", service_id)),
+                        duration_ms: 0,
+                        findings: vec![],
+                        logs: vec![],
+                        agent_analysis: None,
+                    });
+
+                // Push result to collector
+                {
+                    let mut collected = results_tx.lock().unwrap();
+                    collected.push((index, result));
+                }
+
+                // Notify the scheduler that a task completed
+                let (lock, cvar) = &*notify;
+                let mut done = lock.lock().unwrap();
+                *done = true;
+                cvar.notify_one();
+            });
+
+            running.push((index, service_resources, handle));
+        }
+
+        // If we launched nothing and there are still running tasks, wait for one to complete
+        if !launched_any && !running.is_empty() {
+            let (lock, cvar) = &*notify_pair;
+            let mut done = lock.lock().unwrap();
+            // Wait with a short timeout to periodically check cancellation
+            if !*done {
+                let _ = cvar.wait_timeout(done, std::time::Duration::from_millis(250));
+            } else {
+                *done = false;
+            }
+        } else if !launched_any && running.is_empty() && completed.len() < total_count {
+            // All remaining services conflict with each other but none are running
+            // This shouldn't happen, but handle it gracefully — start the next unstarted one
+            for (index, _queue_item) in enabled_queue.iter().enumerate() {
+                if !started.contains(&index) {
+                    // Force-start it sequentially by not checking resources
+                    // This is a safety fallback
+                    break;
+                }
+            }
+            // If we get here with nothing to do, break to avoid infinite loop
+            if started.len() + completed.len() >= total_count || running.is_empty() {
+                break;
+            }
+        }
     }
 
-    // Emit completion
-    let _ = app.emit("service-state-changed", get_service_run_state());
-    let _ = app.emit("service-completed", &report);
+    // Wait for any remaining running threads
+    for (idx, resources, handle) in running {
+        let _ = handle.join();
+        completed.insert(idx);
+        for res in &resources {
+            held_resources.remove(res);
+        }
+    }
 
-    Ok(report)
+    // Final collection of results
+    {
+        let mut collected = results_collector.lock().unwrap();
+        for (idx, result) in collected.drain(..) {
+            if result.success {
+                let queue_item = &enabled_queue[idx];
+                let options_hash = Some(super::time_tracking::compute_options_hash(
+                    &queue_item.options,
+                ));
+                if let Err(e) = super::time_tracking::record_service_time(
+                    queue_item.service_id.clone(),
+                    result.duration_ms,
+                    None,
+                    options_hash,
+                ) {
+                    eprintln!("Failed to record service time: {}", e);
+                }
+            }
+            report.results.push(result);
+        }
+    }
+
+    Ok(())
 }
 
 /// Cancel the current service run

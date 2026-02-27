@@ -42,6 +42,7 @@ impl Service for DriverAuditService {
                 description: Some("Show all drivers, not just problematic ones".to_string()),
             }],
             icon: "cpu".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

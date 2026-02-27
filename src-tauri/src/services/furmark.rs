@@ -66,6 +66,7 @@ impl Service for FurmarkService {
                 },
             ],
             icon: "flame".to_string(),
+            exclusive_resources: vec!["cpu-stress".to_string()],
         }
     }
 

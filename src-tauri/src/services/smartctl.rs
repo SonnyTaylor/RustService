@@ -32,6 +32,7 @@ impl Service for SmartctlService {
             required_programs: vec!["smartctl".to_string()],
             options: vec![],
             icon: "activity".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

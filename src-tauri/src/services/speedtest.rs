@@ -32,6 +32,7 @@ impl Service for SpeedtestService {
             required_programs: vec!["speedtest".to_string()],
             options: vec![],
             icon: "download".to_string(),
+            exclusive_resources: vec!["network-bandwidth".to_string()],
         }
     }
 

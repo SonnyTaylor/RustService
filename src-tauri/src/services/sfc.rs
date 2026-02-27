@@ -30,6 +30,7 @@ impl Service for SfcService {
             required_programs: vec![],    // Built-in Windows tool
             options: vec![],
             icon: "file-scan".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
         }
     }
 

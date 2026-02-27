@@ -74,6 +74,7 @@ impl Service for HeavyLoadService {
                 },
             ],
             icon: "weight".to_string(),
+            exclusive_resources: vec!["cpu-stress".to_string()],
         }
     }
 

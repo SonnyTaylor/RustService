@@ -42,6 +42,7 @@ impl Service for WinsatService {
                 description: Some("Drive letter to benchmark (e.g., C, D)".to_string()),
             }],
             icon: "gauge".to_string(),
+            exclusive_resources: vec!["cpu-stress".to_string()],
         }
     }
 

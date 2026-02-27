@@ -83,6 +83,7 @@ impl Service for ChkdskService {
                 },
             ],
             icon: "hard-drive-download".to_string(),
+            exclusive_resources: vec!["disk-exclusive".to_string()],
         }
     }
 

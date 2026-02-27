@@ -29,6 +29,7 @@ impl Service for DiskSpaceService {
             required_programs: vec![],
             options: vec![],
             icon: "hard-drive".to_string(),
+            exclusive_resources: vec![],
         }
     }
 

@@ -74,6 +74,11 @@ pub struct ServiceDefinition {
     pub options: Vec<ServiceOptionSchema>,
     /// Icon name (lucide icon identifier)
     pub icon: String,
+    /// Resource tags that conflict with other services sharing the same tag.
+    /// Services with overlapping exclusive_resources will not run concurrently.
+    /// Empty vec means the service can run in parallel with anything.
+    #[serde(default)]
+    pub exclusive_resources: Vec<String>,
 }
 
 // =============================================================================
@@ -221,8 +226,14 @@ pub struct ServiceReport {
     pub queue: Vec<ServiceQueueItem>,
     /// Results for each service (keyed by service_id)
     pub results: Vec<ServiceResult>,
-    /// Index of currently running service (for progress)
+    /// Index of currently running service (for progress, sequential mode)
     pub current_service_index: Option<usize>,
+    /// Indices of currently running services (parallel mode)
+    #[serde(default)]
+    pub current_service_indices: Vec<usize>,
+    /// Whether this run used parallel (experimental) execution
+    #[serde(default)]
+    pub parallel_mode: bool,
     /// Technician who performed the service (business mode)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub technician_name: Option<String>,
