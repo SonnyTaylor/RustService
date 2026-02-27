@@ -10,11 +10,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useReactToPrint } from 'react-to-print';
-import { 
-  Monitor, 
-  Cpu, 
-  MemoryStick, 
-  HardDrive, 
+import {
+  Monitor,
+  Cpu,
+  MemoryStick,
+  HardDrive,
   RefreshCw,
   Server,
   Clock,
@@ -26,7 +26,14 @@ import {
   Network,
   Users,
   Activity,
-  Printer
+  Printer,
+  Shield,
+  History,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,6 +45,21 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 import { 
   SystemInfo, 
@@ -47,6 +69,52 @@ import {
 } from '@/types';
 import { useSettings } from '@/components/settings-context';
 import { PrintableSystemInfo } from '@/components/printable-system-info';
+
+// ============================================================================
+// Disk Health & Restore Point Types
+// ============================================================================
+
+interface SmartAttribute {
+  id: number;
+  name: string;
+  value: number;
+  worst: number;
+  threshold: number;
+  rawValue: string;
+}
+
+interface DiskHealthInfo {
+  device: string;
+  model: string;
+  serial: string;
+  firmware: string;
+  healthPassed: boolean;
+  temperatureC: number | null;
+  powerOnHours: number | null;
+  reallocatedSectors: number | null;
+  pendingSectors: number | null;
+  crcErrors: number | null;
+  wearLevelingPct: number | null;
+  attributes: SmartAttribute[];
+}
+
+interface DiskHealthResponse {
+  disks: DiskHealthInfo[];
+  smartctlFound: boolean;
+  error: string | null;
+}
+
+interface RestorePoint {
+  sequenceNumber: number;
+  description: string;
+  creationTime: string;
+  restoreType: string;
+}
+
+interface RestorePointsResponse {
+  restorePoints: RestorePoint[];
+  error: string | null;
+}
 
 /**
  * Info row component for displaying label-value pairs
@@ -158,6 +226,140 @@ function RefreshOverlay({ visible }: { visible: boolean }) {
   );
 }
 
+// ============================================================================
+// Disk Health Card Component
+// ============================================================================
+
+function DiskHealthCard({ disk }: { disk: DiskHealthInfo }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const healthColor = disk.healthPassed ? 'bg-green-500/20 text-green-600 border-green-500/30' : 'bg-red-500/20 text-red-600 border-red-500/30';
+  const healthLabel = disk.healthPassed ? 'Healthy' : 'Failed';
+
+  // Determine warning conditions
+  const hasWarning = !disk.healthPassed ||
+    (disk.reallocatedSectors !== null && disk.reallocatedSectors > 0) ||
+    (disk.pendingSectors !== null && disk.pendingSectors > 0) ||
+    (disk.temperatureC !== null && disk.temperatureC > 55);
+
+  return (
+    <Card className={hasWarning && disk.healthPassed ? 'border-yellow-500/40' : !disk.healthPassed ? 'border-red-500/40' : ''}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-medium truncate max-w-[70%]">
+            {disk.model}
+          </CardTitle>
+          <Badge className={healthColor}>
+            {healthLabel}
+          </Badge>
+        </div>
+        <CardDescription className="text-xs font-mono">{disk.serial}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        <InfoRow label="Firmware" value={disk.firmware} mono />
+        {disk.temperatureC !== null && (
+          <div className="flex justify-between items-center py-1.5">
+            <span className="text-muted-foreground text-sm">Temperature</span>
+            <Badge variant={disk.temperatureC > 55 ? 'destructive' : disk.temperatureC > 45 ? 'default' : 'secondary'}>
+              {disk.temperatureC}°C
+            </Badge>
+          </div>
+        )}
+        {disk.powerOnHours !== null && (
+          <InfoRow label="Power-On Hours" value={disk.powerOnHours.toLocaleString()} />
+        )}
+        {disk.reallocatedSectors !== null && (
+          <div className="flex justify-between items-center py-1.5">
+            <span className="text-muted-foreground text-sm">Reallocated Sectors</span>
+            <Badge variant={disk.reallocatedSectors > 0 ? 'destructive' : 'secondary'}>
+              {disk.reallocatedSectors}
+            </Badge>
+          </div>
+        )}
+        {disk.pendingSectors !== null && (
+          <div className="flex justify-between items-center py-1.5">
+            <span className="text-muted-foreground text-sm">Pending Sectors</span>
+            <Badge variant={disk.pendingSectors > 0 ? 'destructive' : 'secondary'}>
+              {disk.pendingSectors}
+            </Badge>
+          </div>
+        )}
+        {disk.crcErrors !== null && disk.crcErrors > 0 && (
+          <InfoRow label="CRC Errors" value={disk.crcErrors.toString()} />
+        )}
+        {disk.wearLevelingPct !== null && (
+          <div className="space-y-1 pt-1">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">SSD Life Remaining</span>
+              <Badge variant={disk.wearLevelingPct < 20 ? 'destructive' : disk.wearLevelingPct < 50 ? 'default' : 'secondary'}>
+                {disk.wearLevelingPct}%
+              </Badge>
+            </div>
+            <Progress value={disk.wearLevelingPct} className={`h-2 ${disk.wearLevelingPct < 20 ? '[&>div]:bg-destructive' : ''}`} />
+          </div>
+        )}
+
+        {/* Expandable SMART attributes */}
+        {disk.attributes.length > 0 && (
+          <>
+            <Separator className="my-2" />
+            <Collapsible open={expanded} onOpenChange={setExpanded}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-full justify-between text-xs text-muted-foreground">
+                  All S.M.A.R.T. Attributes ({disk.attributes.length})
+                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ScrollArea className="h-48 mt-2">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-muted-foreground border-b">
+                        <th className="text-left py-1 pr-1">ID</th>
+                        <th className="text-left py-1 pr-1">Attribute</th>
+                        <th className="text-right py-1 pr-1">Val</th>
+                        <th className="text-right py-1 pr-1">Wst</th>
+                        <th className="text-right py-1 pr-1">Thr</th>
+                        <th className="text-right py-1">Raw</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {disk.attributes.map((attr) => (
+                        <tr key={attr.id} className={attr.value <= attr.threshold && attr.threshold > 0 ? 'bg-destructive/10' : ''}>
+                          <td className="py-0.5 pr-1 font-mono text-muted-foreground">{attr.id}</td>
+                          <td className="py-0.5 pr-1 truncate max-w-[120px]">{attr.name}</td>
+                          <td className="py-0.5 pr-1 text-right font-mono">{attr.value}</td>
+                          <td className="py-0.5 pr-1 text-right font-mono">{attr.worst}</td>
+                          <td className="py-0.5 pr-1 text-right font-mono">{attr.threshold}</td>
+                          <td className="py-0.5 text-right font-mono truncate max-w-[80px]">{attr.rawValue}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ScrollArea>
+              </CollapsibleContent>
+            </Collapsible>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================================
+// Restore Point Date Formatting
+// ============================================================================
+
+function formatRestorePointDate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString();
+  } catch {
+    return dateStr;
+  }
+}
+
 /**
  * System Info Page - Main component
  */
@@ -169,6 +371,16 @@ export function SystemInfoPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const [diskHealth, setDiskHealth] = useState<DiskHealthResponse | null>(null);
+  const [diskHealthLoading, setDiskHealthLoading] = useState(false);
+  const [restorePoints, setRestorePoints] = useState<RestorePointsResponse | null>(null);
+  const [restorePointsLoading, setRestorePointsLoading] = useState(false);
+  const [creatingRestorePoint, setCreatingRestorePoint] = useState(false);
+  const [restorePointDesc, setRestorePointDesc] = useState('');
+  const [restorePointDialogOpen, setRestorePointDialogOpen] = useState(false);
+  const [restorePointError, setRestorePointError] = useState<string | null>(null);
+  const [restorePointSuccess, setRestorePointSuccess] = useState<string | null>(null);
 
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -209,10 +421,58 @@ export function SystemInfoPage() {
     }
   }, []);
 
+  // Fetch disk health data
+  const fetchDiskHealth = useCallback(async () => {
+    setDiskHealthLoading(true);
+    try {
+      const result = await invoke<DiskHealthResponse>('get_disk_health');
+      setDiskHealth(result);
+    } catch (err) {
+      setDiskHealth({ disks: [], smartctlFound: false, error: String(err) });
+    } finally {
+      setDiskHealthLoading(false);
+    }
+  }, []);
+
+  // Fetch restore points
+  const fetchRestorePoints = useCallback(async () => {
+    setRestorePointsLoading(true);
+    try {
+      const result = await invoke<RestorePointsResponse>('get_restore_points');
+      setRestorePoints(result);
+    } catch (err) {
+      setRestorePoints({ restorePoints: [], error: String(err) });
+    } finally {
+      setRestorePointsLoading(false);
+    }
+  }, []);
+
+  // Create a restore point
+  const handleCreateRestorePoint = async () => {
+    if (!restorePointDesc.trim()) return;
+    setCreatingRestorePoint(true);
+    setRestorePointError(null);
+    setRestorePointSuccess(null);
+    try {
+      const msg = await invoke<string>('create_restore_point', { description: restorePointDesc.trim() });
+      setRestorePointSuccess(msg);
+      setRestorePointDesc('');
+      setRestorePointDialogOpen(false);
+      // Refresh the list
+      fetchRestorePoints();
+    } catch (err) {
+      setRestorePointError(String(err));
+    } finally {
+      setCreatingRestorePoint(false);
+    }
+  };
+
   // Fetch on mount
   useEffect(() => {
     fetchSystemInfo();
-  }, [fetchSystemInfo]);
+    fetchDiskHealth();
+    fetchRestorePoints();
+  }, [fetchSystemInfo, fetchDiskHealth, fetchRestorePoints]);
 
   // Handle refresh
   const handleRefresh = () => fetchSystemInfo(true);
@@ -796,6 +1056,177 @@ export function SystemInfoPage() {
             </Card>
           ))}
         </div>
+      </div>
+
+      {/* Disk Health (S.M.A.R.T.) Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Disk Health (S.M.A.R.T.)
+          </h3>
+          <Button variant="outline" size="sm" onClick={fetchDiskHealth} disabled={diskHealthLoading}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${diskHealthLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        {diskHealthLoading && !diskHealth && (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+              Scanning disk health...
+            </CardContent>
+          </Card>
+        )}
+
+        {diskHealth && !diskHealth.smartctlFound && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              smartctl not found. Install <span className="font-medium">smartmontools</span> or add smartctl.exe to your programs folder for S.M.A.R.T. health data.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {diskHealth && diskHealth.smartctlFound && diskHealth.disks.length === 0 && (
+          <Card>
+            <CardContent className="py-6 text-center text-muted-foreground text-sm">
+              No S.M.A.R.T. data available. Drives may not support S.M.A.R.T. or may require administrator privileges.
+            </CardContent>
+          </Card>
+        )}
+
+        {diskHealth && diskHealth.disks.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {diskHealth.disks.map((disk, index) => (
+              <DiskHealthCard key={`health-${index}`} disk={disk} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* System Restore Points Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <History className="h-5 w-5" />
+            System Restore Points
+          </h3>
+          <div className="flex items-center gap-2">
+            <Dialog open={restorePointDialogOpen} onOpenChange={setRestorePointDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Restore Point</DialogTitle>
+                  <DialogDescription>
+                    Create a Windows System Restore point. This may require administrator privileges.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <input
+                    type="text"
+                    placeholder="Description (e.g., Before driver update)"
+                    value={restorePointDesc}
+                    onChange={(e) => setRestorePointDesc(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border bg-background text-sm"
+                    maxLength={256}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && restorePointDesc.trim()) {
+                        handleCreateRestorePoint();
+                      }
+                    }}
+                  />
+                  {restorePointError && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">{restorePointError}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={handleCreateRestorePoint}
+                    disabled={!restorePointDesc.trim() || creatingRestorePoint}
+                  >
+                    {creatingRestorePoint && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                    Create Restore Point
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Button variant="outline" size="sm" onClick={fetchRestorePoints} disabled={restorePointsLoading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${restorePointsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {restorePointSuccess && (
+          <Alert>
+            <Shield className="h-4 w-4" />
+            <AlertDescription>{restorePointSuccess}</AlertDescription>
+          </Alert>
+        )}
+
+        {restorePointsLoading && !restorePoints && (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+              Loading restore points...
+            </CardContent>
+          </Card>
+        )}
+
+        {restorePoints && restorePoints.error && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{restorePoints.error}</AlertDescription>
+          </Alert>
+        )}
+
+        {restorePoints && !restorePoints.error && restorePoints.restorePoints.length === 0 && (
+          <Card>
+            <CardContent className="py-6 text-center text-muted-foreground text-sm">
+              No restore points found on this system.
+            </CardContent>
+          </Card>
+        )}
+
+        {restorePoints && restorePoints.restorePoints.length > 0 && (
+          <div className="grid gap-3">
+            {restorePoints.restorePoints
+              .sort((a, b) => b.sequenceNumber - a.sequenceNumber)
+              .map((rp) => (
+                <Card key={rp.sequenceNumber} className="overflow-hidden">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm truncate">{rp.description}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatRestorePointDate(rp.creationTime)}
+                          </span>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {rp.restoreType}
+                          </Badge>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="text-xs ml-2">
+                        #{rp.sequenceNumber}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* Footer with timestamp */}

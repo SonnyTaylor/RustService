@@ -177,7 +177,12 @@ pub fn run() {
             commands::get_conversation,
             commands::save_conversation_messages,
             commands::update_conversation_title,
-            commands::delete_conversation
+            commands::delete_conversation,
+            // Disk health commands
+            commands::get_disk_health,
+            // Restore point commands
+            commands::get_restore_points,
+            commands::create_restore_point
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

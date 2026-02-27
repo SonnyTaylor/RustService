@@ -28,6 +28,7 @@ import {
   Download,
   Bluetooth,
   Usb,
+  Gamepad2,
 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -41,6 +42,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 import type { MouseTestState, DisplayPattern } from '@/types';
+import { GamepadTestTab } from '@/components/component-test/GamepadTestTab';
 
 // ============================================================================
 // CAMERA TEST TAB
@@ -1426,6 +1428,7 @@ const TEST_TABS = [
   { id: 'audio', label: 'Audio', icon: Volume2, component: AudioTestTab },
   { id: 'keyboard', label: 'Keyboard', icon: Keyboard, component: KeyboardTestTab },
   { id: 'mouse', label: 'Mouse', icon: Mouse, component: MouseTestTab },
+  { id: 'gamepad', label: 'Gamepad', icon: Gamepad2, component: GamepadTestTab },
   { id: 'network', label: 'Network', icon: Wifi, component: NetworkTestTab },
   { id: 'display', label: 'Display', icon: Monitor, component: DisplayTestTab },
   { id: 'more', label: 'More', icon: MoreHorizontal, component: MoreTestsTab },
@@ -1442,12 +1445,12 @@ export function ComponentTestPage() {
               Component Testing
             </h2>
             <p className="text-muted-foreground text-sm mt-1">
-              Test hardware components - camera, audio, keyboard, mouse, network, and display
+              Test hardware components - camera, audio, keyboard, mouse, gamepad, network, and display
             </p>
           </div>
 
           <Tabs defaultValue="camera" className="w-full">
-            <TabsList className="grid w-full grid-cols-7 h-auto">
+            <TabsList className="grid w-full grid-cols-8 h-auto">
               {TEST_TABS.map(({ id, label, icon: Icon }) => (
                 <TabsTrigger
                   key={id}
