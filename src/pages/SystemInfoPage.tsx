@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useReactToPrint } from 'react-to-print';
 import { 
   Monitor, 
   Cpu, 
@@ -24,7 +25,8 @@ import {
   Zap,
   Network,
   Users,
-  Activity
+  Activity,
+  Printer
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +45,8 @@ import {
   formatUptime, 
   calculatePercentage 
 } from '@/types';
+import { useSettings } from '@/components/settings-context';
+import { PrintableSystemInfo } from '@/components/printable-system-info';
 
 /**
  * Info row component for displaying label-value pairs
@@ -158,6 +162,7 @@ function RefreshOverlay({ visible }: { visible: boolean }) {
  * System Info Page - Main component
  */
 export function SystemInfoPage() {
+  const { settings } = useSettings();
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +172,12 @@ export function SystemInfoPage() {
 
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `System_Info_${systemInfo?.os.hostname || 'Device'}`,
+  });
 
   /**
    * Fetch system information from backend
@@ -269,6 +280,15 @@ export function SystemInfoPage() {
               Auto refresh
             </Label>
           </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handlePrint}
+            disabled={loading || !systemInfo}
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print Specs
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 
@@ -785,6 +805,16 @@ export function SystemInfoPage() {
           </div>
         </div>
       </ScrollArea>
+
+      {/* Hidden printable component */}
+      <div className="hidden">
+        <div ref={printRef}>
+          <PrintableSystemInfo 
+            systemInfo={systemInfo} 
+            businessSettings={settings.business} 
+          />
+        </div>
+      </div>
     </div>
   );
 }
