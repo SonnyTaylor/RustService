@@ -66,6 +66,8 @@ import {
   Timer,
   AlertCircle,
   FlaskConical,
+  Save,
+  ChevronDown,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -98,6 +100,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { useSettings } from '@/components/settings-context';
 
 import type {
@@ -156,6 +170,7 @@ interface SortableQueueItemProps {
   onOptionsChange: (itemId: string, options: Record<string, unknown>) => void;
   onDuplicate: (itemId: string) => void;
   onRemove: (itemId: string) => void;
+  conflictWith?: string[];
 }
 
 function SortableQueueItem({
@@ -165,6 +180,7 @@ function SortableQueueItem({
   onOptionsChange,
   onDuplicate,
   onRemove,
+  conflictWith,
 }: SortableQueueItemProps) {
   const {
     attributes,
@@ -176,10 +192,12 @@ function SortableQueueItem({
   } = useSortable({ id: item.id });
 
   const [estimatedMs, setEstimatedMs] = useState<number | null>(null);
+  const [estimateLoading, setEstimateLoading] = useState(false);
 
   // Fetch estimated time when options change
   useEffect(() => {
     let active = true;
+    setEstimateLoading(true);
     const fetchEstimate = async () => {
       try {
         const ms = await invoke<number>('get_estimated_time', {
@@ -187,9 +205,13 @@ function SortableQueueItem({
           options: item.options,
           defaultSecs: definition.estimatedDurationSecs,
         });
-        if (active) setEstimatedMs(ms);
+        if (active) {
+          setEstimatedMs(ms);
+          setEstimateLoading(false);
+        }
       } catch (err) {
         console.error('Failed to estimate time:', err);
+        if (active) setEstimateLoading(false);
       }
     };
 
@@ -258,13 +280,27 @@ function SortableQueueItem({
             <h4 className="font-semibold truncate">{definition.name}</h4>
              {/* Accuracy/Time Indicator */}
             <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
-                estimatedMs ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                estimateLoading
+                  ? 'bg-muted text-muted-foreground'
+                  : estimatedMs
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-muted text-muted-foreground'
             }`}>
-              <Clock className="h-3 w-3" />
-              <span>{formatTime(estimatedMs ?? undefined)}</span>
+              {estimateLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Clock className="h-3 w-3" />
+              )}
+              <span>{estimateLoading ? '...' : formatTime(estimatedMs ?? undefined)}</span>
             </div>
           </div>
           <p className="text-sm text-muted-foreground truncate">{definition.description}</p>
+          {conflictWith && conflictWith.length > 0 && (
+            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span className="truncate">Resource conflict with: {conflictWith.join(', ')}</span>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -401,6 +437,7 @@ function SortableQueueItem({
 
 interface PresetsViewProps {
   presets: ServicePreset[];
+  definitions: ServiceDefinition[];
   onSelectPreset: (preset: ServicePreset) => void;
 }
 
@@ -412,57 +449,24 @@ const PRESET_GRADIENTS: Record<string, { from: string; to: string; accent: strin
   custom: { from: 'from-amber-500/20', to: 'to-orange-500/10', accent: 'text-amber-500', bullet: 'bg-amber-500' },
 };
 
-function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
-  // Detailed descriptions for each preset with task counts
-  const presetDetails: Record<string, { tasks: string[]; badge: string; description: string }> = {
-    diagnostics: {
-      description: 'Quick system health check',
-      badge: '5 tasks',
-      tasks: [
-        'SMART Disk Report',
-        'Disk Space Analysis',
-        'Windows Satisfaction Report',
-        'Battery Health',
-        'Network Tests (Ping & Speed)',
-      ],
-    },
-    general: {
-      description: 'Standard maintenance service',
-      badge: '8 tasks',
-      tasks: [
-        'Adware & Malware Removal (ADWCleaner)',
-        'Virus Scanning (KVRT)',
-        'Registry & Junk Cleanup (BleachBit)',
-        'Drive Cleanup (DriveCleanup)',
-        'Browser Notifications Disable',
-        'Startup Programs Disable',
-        'System Diagnostics',
-        'Network Tests',
-      ],
-    },
-    complete: {
-      description: 'Full system maintenance & repair',
-      badge: '12+ tasks',
-      tasks: [
-        'All General Service tasks',
-        'System File Check (SFC Scan)',
-        'Windows Image Repair (DISM)',
-        'Disk Check (ChkDsk)',
-        'Windows Update Check',
-        'Extended Network Testing (10 min iPerf)',
-      ],
-    },
-    custom: {
-      description: 'Build your own service queue',
-      badge: 'Flexible',
-      tasks: [
-        'Pick and choose from all services',
-        'Configure options per service',
-        'Reorder execution queue',
-        'Save as custom preset',
-      ],
-    },
+function PresetsView({ presets, definitions, onSelectPreset }: PresetsViewProps) {
+  const defMap = new Map(definitions.map((d) => [d.id, d]));
+
+  // Fallback descriptions for built-in presets
+  const presetDescriptions: Record<string, string> = {
+    diagnostics: 'Quick system health check',
+    general: 'Standard maintenance service',
+    complete: 'Full system maintenance & repair',
+    custom: 'Build your own service queue',
   };
+
+  // Fallback task lists for presets with no services array (e.g., custom)
+  const customFallbackTasks = [
+    'Pick and choose from all services',
+    'Configure options per service',
+    'Reorder execution queue',
+    'Save as custom preset',
+  ];
 
   return (
     <div className="h-full flex flex-col">
@@ -489,8 +493,20 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {presets.map((preset) => {
               const Icon = getIcon(preset.icon);
-              const details = presetDetails[preset.id] || { tasks: [], badge: '', description: '' };
               const gradient = PRESET_GRADIENTS[preset.id] || PRESET_GRADIENTS.custom;
+              const description = presetDescriptions[preset.id] || preset.description;
+              const enabledServices = preset.services.filter(s => s.enabled);
+              const hasServices = preset.services.length > 0;
+              const taskItems = hasServices
+                ? preset.services.slice(0, 6).map(svc => ({
+                    name: defMap.get(svc.serviceId)?.name ?? svc.serviceId,
+                    enabled: svc.enabled,
+                  }))
+                : customFallbackTasks.slice(0, 6).map(t => ({ name: t, enabled: true }));
+              const totalTasks = hasServices ? preset.services.length : customFallbackTasks.length;
+              const badge = hasServices
+                ? `${enabledServices.length} task${enabledServices.length !== 1 ? 's' : ''}`
+                : 'Flexible';
 
               return (
                 <Card
@@ -510,38 +526,38 @@ function PresetsView({ presets, onSelectPreset }: PresetsViewProps) {
                             {preset.name}
                           </CardTitle>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {details.description}
+                            {description}
                           </p>
                         </div>
                       </div>
                       <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0 mt-1" />
                     </div>
-                    
+
                     {/* Badge */}
                     <div className="mt-3 flex items-center gap-2">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-background/60 backdrop-blur-sm ${gradient.accent}`}>
-                        {details.badge}
+                        {badge}
                       </span>
                     </div>
                   </div>
-                  
+
                   {/* Task List */}
                   <div className="px-5 py-4 flex-1">
                     <ul className="space-y-2">
-                      {details.tasks.slice(0, 6).map((item, idx) => (
-                        <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2 group-hover:text-foreground/80 transition-colors">
-                          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${gradient.bullet}`} />
-                          <span className="leading-tight">{item}</span>
+                      {taskItems.map((task, idx) => (
+                        <li key={idx} className={`text-sm text-muted-foreground flex items-start gap-2 group-hover:text-foreground/80 transition-colors ${!task.enabled ? 'opacity-50' : ''}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${gradient.bullet} ${!task.enabled ? 'opacity-30' : ''}`} />
+                          <span className={`leading-tight ${!task.enabled ? 'line-through' : ''}`}>{task.name}</span>
                         </li>
                       ))}
-                      {details.tasks.length > 6 && (
+                      {totalTasks > 6 && (
                         <li className="text-xs text-muted-foreground italic pl-3.5">
-                          +{details.tasks.length - 6} more tasks...
+                          +{totalTasks - 6} more...
                         </li>
                       )}
                     </ul>
                   </div>
-                  
+
                   {/* Footer CTA */}
                   <div className="px-5 py-3.5 border-t bg-muted/30 group-hover:bg-primary/5 transition-colors">
                     <div className="flex items-center justify-between">
@@ -572,12 +588,14 @@ interface QueueViewProps {
   queue: ServiceQueueItem[];
   definitions: ServiceDefinition[];
   presetName?: string;
+  runError?: string | null;
   onBack: () => void;
   onStart: (parallel: boolean) => void;
   onQueueChange: (queue: ServiceQueueItem[]) => void;
+  onPresetSaved?: () => void;
 }
 
-function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueChange }: QueueViewProps) {
+function QueueView({ queue, definitions, presetName, runError, onBack, onStart, onQueueChange, onPresetSaved }: QueueViewProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -590,6 +608,20 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [addSearchQuery, setAddSearchQuery] = useState('');
   const [parallelMode, setParallelMode] = useState(false);
+  const [disabledOpen, setDisabledOpen] = useState(true);
+
+  // Undo state for remove
+  const [recentlyRemoved, setRecentlyRemoved] = useState<{
+    item: ServiceQueueItem;
+    previousQueue: ServiceQueueItem[];
+    timeoutId: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  // Save preset state
+  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
+  const [savePresetName, setSavePresetName] = useState('');
+  const [savePresetDescription, setSavePresetDescription] = useState('');
+  const [savingPreset, setSavingPreset] = useState(false);
 
   const definitionMap = new Map(definitions.map((d) => [d.id, d]));
 
@@ -603,12 +635,38 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
   const enabledQueue = filteredQueue.filter(q => q.enabled);
   const disabledQueue = filteredQueue.filter(q => !q.enabled);
 
-  // Filter available services for "Add Service" dialog
+  // Resource conflict map (only computed in parallel mode)
+  const conflictMap = new Map<string, string[]>();
+  if (parallelMode) {
+    const enabledItems = queue.filter(q => q.enabled);
+    for (let i = 0; i < enabledItems.length; i++) {
+      const defA = definitionMap.get(enabledItems[i].serviceId);
+      if (!defA || defA.exclusiveResources.length === 0) continue;
+      const conflicts: string[] = [];
+      for (let j = 0; j < enabledItems.length; j++) {
+        if (i === j) continue;
+        const defB = definitionMap.get(enabledItems[j].serviceId);
+        if (!defB) continue;
+        const shared = defA.exclusiveResources.filter(r => defB.exclusiveResources.includes(r));
+        if (shared.length > 0) conflicts.push(defB.name);
+      }
+      if (conflicts.length > 0) conflictMap.set(enabledItems[i].id, conflicts);
+    }
+  }
+
+  // Filter available services for "Add Service" dialog, grouped by category
   const availableServices = definitions.filter((def) => {
       if (!addSearchQuery) return true;
-      return def.name.toLowerCase().includes(addSearchQuery.toLowerCase()) || 
+      return def.name.toLowerCase().includes(addSearchQuery.toLowerCase()) ||
              def.description.toLowerCase().includes(addSearchQuery.toLowerCase());
   });
+
+  const groupedServices = availableServices.reduce<Record<string, ServiceDefinition[]>>((acc, def) => {
+    const cat = def.category || 'Other';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(def);
+    return acc;
+  }, {});
 
   const handleAddNewService = (serviceId: string) => {
     const def = definitionMap.get(serviceId);
@@ -637,6 +695,10 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
     if (over && active.id !== over.id) {
       const oldIndex = queue.findIndex((q) => q.id === active.id);
       const newIndex = queue.findIndex((q) => q.id === over.id);
+
+      // Guard: bail if either item not found
+      if (oldIndex === -1 || newIndex === -1) return;
+
       const newQueue = arrayMove(queue, oldIndex, newIndex).map((item, index) => ({
         ...item,
         order: index,
@@ -683,9 +745,60 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
   };
 
   const handleRemove = (itemId: string) => {
-      const newQueue = queue.filter(q => q.id !== itemId).map((item, idx) => ({ ...item, order: idx }));
-      onQueueChange(newQueue);
-  }
+    // Clear any pending undo
+    if (recentlyRemoved) {
+      clearTimeout(recentlyRemoved.timeoutId);
+      setRecentlyRemoved(null);
+    }
+
+    const previousQueue = [...queue];
+    const removedItem = queue.find(q => q.id === itemId);
+    const newQueue = queue.filter(q => q.id !== itemId).map((item, idx) => ({ ...item, order: idx }));
+    onQueueChange(newQueue);
+
+    if (removedItem) {
+      const timeoutId = setTimeout(() => {
+        setRecentlyRemoved(null);
+      }, 5000);
+      setRecentlyRemoved({ item: removedItem, previousQueue, timeoutId });
+    }
+  };
+
+  const handleUndo = () => {
+    if (recentlyRemoved) {
+      clearTimeout(recentlyRemoved.timeoutId);
+      onQueueChange(recentlyRemoved.previousQueue);
+      setRecentlyRemoved(null);
+    }
+  };
+
+  const handleSavePreset = async () => {
+    if (!savePresetName.trim() || savingPreset) return;
+    setSavingPreset(true);
+    try {
+      const preset: ServicePreset = {
+        id: `custom-${crypto.randomUUID().slice(0, 8)}`,
+        name: savePresetName.trim(),
+        description: savePresetDescription.trim() || `Custom preset with ${enabledCount} services`,
+        services: queue.filter(q => q.enabled).map(q => ({
+          serviceId: q.serviceId,
+          enabled: true,
+          options: q.options,
+        })),
+        icon: 'settings-2',
+        color: 'amber',
+      };
+      await invoke('save_service_preset', { preset });
+      setShowSavePresetDialog(false);
+      setSavePresetName('');
+      setSavePresetDescription('');
+      if (onPresetSaved) onPresetSaved();
+    } catch (err) {
+      console.error('Failed to save preset:', err);
+    } finally {
+      setSavingPreset(false);
+    }
+  };
 
   const enabledCount = queue.filter((q) => q.enabled).length;
   const totalDuration = queue
@@ -722,12 +835,55 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-3">
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: true })))}>
+                  Enable All
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: false })))}>
+                  Disable All
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => onQueueChange([])}
+                >
+                  Clear Queue
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button onClick={() => setIsAddDialogOpen(true)} size="sm" className="gap-2 h-9 px-4">
                 <Plus className="h-3.5 w-3.5" />
                 Add
             </Button>
         </div>
       </div>
+
+      {/* Queue Summary */}
+      {enabledCount > 0 && (
+        <div className="mx-4 mt-3 p-3 rounded-lg border bg-muted/20 grid grid-cols-3 gap-3 text-center">
+          <div>
+            <div className="text-lg font-bold text-primary">{enabledCount}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Services</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold">
+              {totalDuration < 60 ? `${totalDuration}s` : `${(totalDuration / 60).toFixed(1)}m`}
+            </div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Est. Time</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold">
+              {new Set(queue.filter(q => q.enabled).map(q => definitionMap.get(q.serviceId)?.category).filter(Boolean)).size}
+            </div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Categories</div>
+          </div>
+        </div>
+      )}
 
       {/* Queue List */}
       <ScrollArea className="flex-1 min-h-0 px-4 py-4">
@@ -761,19 +917,26 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
                             onOptionsChange={handleOptionsChange}
                             onDuplicate={handleDuplicate}
                             onRemove={handleRemove}
+                            conflictWith={conflictMap.get(item.id)}
                         />
                         );
                     })}
                   </div>
               </div>
 
-              {/* Disabled Services */}
+              {/* Disabled Services (Collapsible) */}
               {disabledQueue.length > 0 && (
-                  <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-                          Disabled Services
-                      </h3>
-                      <div className="space-y-3 opacity-60">
+                  <Collapsible open={disabledOpen} onOpenChange={setDisabledOpen}>
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center gap-2 w-full px-1 py-1 hover:bg-muted/50 rounded-md transition-colors">
+                        <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${disabledOpen ? 'rotate-90' : ''}`} />
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          Disabled Services ({disabledQueue.length})
+                        </h3>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-3 opacity-60 mt-2">
                         {disabledQueue.map((item) => {
                             const def = definitionMap.get(item.serviceId);
                             if (!def) return null;
@@ -790,7 +953,8 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
                             );
                         })}
                       </div>
-                  </div>
+                    </CollapsibleContent>
+                  </Collapsible>
               )}
               
               {filteredQueue.length === 0 && (
@@ -804,12 +968,46 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
         </DndContext>
       </ScrollArea>
 
+      {/* Undo Bar */}
+      {recentlyRemoved && (() => {
+        const def = definitionMap.get(recentlyRemoved.item.serviceId);
+        return (
+          <div className="mx-4 mb-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border bg-muted/50 text-sm animate-in slide-in-from-bottom-2">
+            <span className="text-muted-foreground">
+              Removed <strong>{def?.name ?? 'service'}</strong>
+            </span>
+            <Button variant="link" size="sm" className="h-auto p-0 text-primary" onClick={handleUndo}>
+              Undo
+            </Button>
+          </div>
+        );
+      })()}
+
+      {/* Run Error Alert */}
+      {runError && (
+        <Alert variant="destructive" className="mx-4 mb-2">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{runError}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Footer */}
       <div className="p-6 pt-4 border-t bg-muted/30">
         <div className="flex items-center gap-4">
           <Button variant="outline" onClick={onBack} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Back
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSavePresetDialog(true)}
+            disabled={enabledCount === 0}
+            className="gap-2"
+          >
+            <Save className="h-4 w-4" />
+            Save Preset
           </Button>
 
           {/* Parallel Mode Toggle */}
@@ -837,22 +1035,35 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
               <TooltipContent side="top" className="max-w-xs">
                 <p className="font-medium">Parallel Execution (Experimental)</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Run non-conflicting services simultaneously. Services that share resources 
+                  Run non-conflicting services simultaneously. Services that share resources
                   (e.g., network tests, stress tests) still run sequentially to ensure accurate results.
                 </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          <Button
-            onClick={() => onStart(parallelMode)}
-            disabled={enabledCount === 0}
-            className="flex-1 gap-2 h-12 text-base font-semibold"
-            size="lg"
-          >
-            <Play className="h-5 w-5" />
-            Start Service ({enabledCount} {enabledCount === 1 ? 'task' : 'tasks'})
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex-1">
+                  <Button
+                    onClick={() => onStart(parallelMode)}
+                    disabled={enabledCount === 0}
+                    className="w-full gap-2 h-12 text-base font-semibold"
+                    size="lg"
+                  >
+                    <Play className="h-5 w-5" />
+                    Start Service ({enabledCount} {enabledCount === 1 ? 'task' : 'tasks'})
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {enabledCount === 0 && (
+                <TooltipContent>
+                  <p>Enable at least one service in the queue to start</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -878,44 +1089,103 @@ function QueueView({ queue, definitions, presetName, onBack, onStart, onQueueCha
           </div>
 
           <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-2 py-2">
-                  {availableServices.map((def) => {
-                      const Icon = getIcon(def.icon);
-                      return (
-                          <div 
-                              key={def.id} 
+              <div className="space-y-4 py-2">
+                  {Object.entries(groupedServices).map(([category, services]) => (
+                    <div key={category}>
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-2">
+                        {category}
+                      </h4>
+                      <div className="space-y-2">
+                        {services.map((def) => {
+                          const Icon = getIcon(def.icon);
+                          return (
+                            <div
+                              key={def.id}
                               className="flex items-start gap-4 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
                               onClick={() => handleAddNewService(def.id)}
-                          >
+                            >
                               <div className="p-2 rounded-lg bg-primary/10 text-primary mt-1">
-                                  <Icon className="h-5 w-5" />
+                                <Icon className="h-5 w-5" />
                               </div>
                               <div className="flex-1">
-                                  <h4 className="font-semibold text-sm">{def.name}</h4>
-                                  <p className="text-xs text-muted-foreground line-clamp-2">{def.description}</p>
-                                  <div className="flex items-center gap-2 mt-1.5">
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground uppercase tracking-wider">
-                                          {def.category}
-                                      </span>
-                                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                          <Clock className="h-3 w-3" />
-                                          ~{def.estimatedDurationSecs}s
-                                      </span>
-                                  </div>
+                                <h4 className="font-semibold text-sm">{def.name}</h4>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{def.description}</p>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    ~{def.estimatedDurationSecs}s
+                                  </span>
+                                </div>
                               </div>
                               <Button size="sm" variant="ghost" className="self-center">
-                                  Add
+                                Add
                               </Button>
-                          </div>
-                      );
-                  })}
-                  {availableServices.length === 0 && (
-                      <div className="text-center py-8 text-muted-foreground">
-                          No services found matching "{addSearchQuery}"
+                            </div>
+                          );
+                        })}
                       </div>
+                    </div>
+                  ))}
+                  {availableServices.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Search className="h-8 w-8 mx-auto mb-3 opacity-50" />
+                      <p className="font-medium">No services found</p>
+                      <p className="text-sm mt-1">
+                        {addSearchQuery
+                          ? `No services match "${addSearchQuery}". Try a different search term.`
+                          : 'No services are available.'}
+                      </p>
+                      {addSearchQuery && (
+                        <Button variant="link" size="sm" onClick={() => setAddSearchQuery('')} className="mt-2">
+                          Clear search
+                        </Button>
+                      )}
+                    </div>
                   )}
               </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Preset Dialog */}
+      <Dialog open={showSavePresetDialog} onOpenChange={setShowSavePresetDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as Preset</DialogTitle>
+            <DialogDescription>
+              Save the current enabled services ({enabledCount}) as a reusable preset.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="preset-name">Name</Label>
+              <Input
+                id="preset-name"
+                placeholder="My Custom Preset"
+                value={savePresetName}
+                onChange={(e) => setSavePresetName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="preset-desc">Description (optional)</Label>
+              <Input
+                id="preset-desc"
+                placeholder="What this preset is for..."
+                value={savePresetDescription}
+                onChange={(e) => setSavePresetDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSavePresetDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePreset} disabled={!savePresetName.trim() || savingPreset}>
+              {savingPreset && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Save Preset
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -933,6 +1203,7 @@ interface RunnerViewProps {
   onCancel: () => void;
   onBack: () => void;
   queue: ServiceQueueItem[];
+  cancelError?: string | null;
 }
 
 /** Format milliseconds into a human-readable duration string */
@@ -947,7 +1218,7 @@ function formatDuration(ms: number): string {
   return `${hours}h ${mins}m`;
 }
 
-function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: RunnerViewProps) {
+function RunnerView({ report, definitions, logs, onCancel, onBack, queue, cancelError }: RunnerViewProps) {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -1108,7 +1379,7 @@ function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: Runn
           </div>
 
           {/* Control Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-end gap-1">
             <Button
               variant="destructive"
               size="sm"
@@ -1118,6 +1389,9 @@ function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: Runn
               <Square className="h-3.5 w-3.5" />
               Stop
             </Button>
+            {cancelError && (
+              <p className="text-xs text-destructive">{cancelError}</p>
+            )}
           </div>
         </div>
 
@@ -1402,7 +1676,13 @@ export function ServicePage() {
 
   const [missingRequirements, setMissingRequirements] = useState<Record<string, string[]> | null>(null);
   const [showMissingDialog, setShowMissingDialog] = useState(false);
-  
+
+  // Error states
+  const [listenerError, setListenerError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
   // Business mode dialog state
   const [showStartDialog, setShowStartDialog] = useState(false);
   const [selectedTechnician, setSelectedTechnician] = useState<string>('');
@@ -1411,27 +1691,51 @@ export function ServicePage() {
   // Load initial data and check for running service
   const loadData = useCallback(async () => {
     try {
-      const [presetsData, defsData, stateData] = await Promise.all([
+      const [presetsResult, defsResult, stateResult] = await Promise.allSettled([
         invoke<ServicePreset[]>('get_service_presets'),
         invoke<ServiceDefinition[]>('get_service_definitions'),
         invoke<ServiceRunState>('get_service_run_state'),
       ]);
 
-      setPresets(presetsData);
-      setDefinitions(defsData);
+      const errors: string[] = [];
 
-      // Restore state if service was running
-      if (stateData.isRunning && stateData.currentReport) {
-        setReport(stateData.currentReport);
-        setQueue(stateData.currentReport.queue.map(q => ({ ...q, id: q.id || crypto.randomUUID() })));
-        setPhase('running');
-      } else if (stateData.currentReport && stateData.currentReport.status !== 'running') {
-        setReport(stateData.currentReport);
-        setQueue(stateData.currentReport.queue.map(q => ({ ...q, id: q.id || crypto.randomUUID() })));
-        setPhase('results');
+      if (presetsResult.status === 'fulfilled') {
+        setPresets(presetsResult.value);
+      } else {
+        errors.push('Failed to load presets');
+        console.error('Presets load error:', presetsResult.reason);
+      }
+
+      if (defsResult.status === 'fulfilled') {
+        setDefinitions(defsResult.value);
+      } else {
+        errors.push('Failed to load service definitions');
+        console.error('Definitions load error:', defsResult.reason);
+      }
+
+      if (stateResult.status === 'fulfilled') {
+        const stateData = stateResult.value;
+        // Restore state if service was running
+        if (stateData.isRunning && stateData.currentReport) {
+          setReport(stateData.currentReport);
+          setQueue(stateData.currentReport.queue.map((q, i) => ({ ...q, id: q.id || `${q.serviceId}-${i}` })));
+          setPhase('running');
+        } else if (stateData.currentReport && stateData.currentReport.status !== 'running') {
+          setReport(stateData.currentReport);
+          setQueue(stateData.currentReport.queue.map((q, i) => ({ ...q, id: q.id || `${q.serviceId}-${i}` })));
+          setPhase('results');
+        }
+      } else {
+        errors.push('Failed to load service state');
+        console.error('State load error:', stateResult.reason);
+      }
+
+      if (errors.length > 0) {
+        setLoadError(errors.join('. '));
       }
     } catch (error) {
       console.error('Failed to load service data:', error);
+      setLoadError('Failed to load service data. Try reloading.');
     } finally {
       setIsLoading(false);
     }
@@ -1493,7 +1797,10 @@ export function ServicePage() {
       unsubscribers.push(unsubState);
     };
 
-    setupListeners();
+    setupListeners().catch((err) => {
+      console.error('Failed to set up service event listeners:', err);
+      setListenerError('Service event listeners failed to initialize. Try reloading the page.');
+    });
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
@@ -1591,6 +1898,8 @@ export function ServicePage() {
     try {
       setShowStartDialog(false);
       setLogs([]);
+      setRunError(null);
+      setCancelError(null);
       setPhase('running');
 
       // Safety check: validate requirements again right before starting
@@ -1607,7 +1916,7 @@ export function ServicePage() {
         }
       }
 
-      const result = await invoke<ServiceReport>('run_services', { 
+      const result = await invoke<ServiceReport>('run_services', {
         queue,
         technicianName: technicianName || null,
         customerName: custName || null,
@@ -1617,6 +1926,7 @@ export function ServicePage() {
       setPhase('results');
     } catch (error) {
       console.error('Service run failed:', error);
+      setRunError(`Service run failed: ${error instanceof Error ? error.message : String(error)}`);
       setPhase('queue');
     }
   };
@@ -1630,10 +1940,12 @@ export function ServicePage() {
 
   const handleCancel = async () => {
     try {
+      setCancelError(null);
       await invoke('cancel_service_run');
       setPhase('queue');
     } catch (error) {
       console.error('Failed to cancel:', error);
+      setCancelError('Failed to cancel the service run. It may still be running.');
     }
   };
 
@@ -1656,17 +1968,27 @@ export function ServicePage() {
 
   return (
     <div className="h-full overflow-hidden min-h-0 flex flex-col">
+      {/* Error Banners */}
+      {(listenerError || loadError) && (
+        <Alert variant="destructive" className="mx-4 mt-4 shrink-0">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{listenerError || loadError}</AlertDescription>
+        </Alert>
+      )}
+
       {phase === 'presets' && (
-        <PresetsView presets={presets} onSelectPreset={handleSelectPreset} />
+        <PresetsView presets={presets} definitions={definitions} onSelectPreset={handleSelectPreset} />
       )}
       {phase === 'queue' && (
         <QueueView
           queue={queue}
           definitions={definitions}
           presetName={selectedPresetName}
+          runError={runError}
           onBack={handleBack}
           onStart={handleStart}
           onQueueChange={setQueue}
+          onPresetSaved={() => invoke<ServicePreset[]>('get_service_presets').then(setPresets).catch(() => {})}
         />
       )}
       {phase === 'running' && (
@@ -1677,6 +1999,7 @@ export function ServicePage() {
           onCancel={handleCancel}
           onBack={handleBack}
           queue={queue}
+          cancelError={cancelError}
         />
       )}
       {phase === 'results' && report && (
