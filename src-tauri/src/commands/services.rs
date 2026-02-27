@@ -302,7 +302,7 @@ pub async fn run_services(
 
         report.results.push(result);
 
-        // Update state with latest results
+        // Update state with latest results and emit to frontend
         {
             let mut state = SERVICE_STATE.lock().unwrap();
             if let Some(ref mut s) = *state {
@@ -311,6 +311,7 @@ pub async fn run_services(
                 }
             }
         }
+        let _ = app.emit("service-state-changed", get_service_run_state());
     }
 
     // Complete report

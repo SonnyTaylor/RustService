@@ -92,7 +92,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
                 <span className="text-sm text-muted-foreground">Download</span>
               </div>
               <div className={`text-3xl font-bold ${getSpeedColor(downloadMbps)}`}>
-                {downloadMbps?.toFixed(1) ?? '—'}
+                {downloadMbps != null ? downloadMbps.toFixed(1) : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Mbps</div>
             </div>
@@ -104,7 +104,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
                 <span className="text-sm text-muted-foreground">Upload</span>
               </div>
               <div className={`text-3xl font-bold ${getSpeedColor(uploadMbps)}`}>
-                {uploadMbps?.toFixed(1) ?? '—'}
+                {uploadMbps != null ? uploadMbps.toFixed(1) : '—'}
               </div>
               <div className="text-xs text-muted-foreground">Mbps</div>
             </div>
@@ -115,7 +115,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             <div className="p-3 rounded-lg bg-muted/30 border">
               <p className="text-xs text-muted-foreground">Ping</p>
               <p className={`text-lg font-bold ${getPingColor(pingMs)}`}>
-                {pingMs?.toFixed(0) ?? '—'} ms
+                {pingMs != null ? pingMs.toFixed(0) : '—'} ms
               </p>
             </div>
             {jitterMs !== undefined && (

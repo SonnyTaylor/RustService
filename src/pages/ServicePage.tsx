@@ -1060,8 +1060,8 @@ function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: Runn
         <div className="p-4 space-y-4">
           {/* Active Task Card */}
           {currentDef && (
-            <Card className="border-primary/30 bg-primary/5 overflow-hidden">
-              <div className="p-4">
+            <Card className="border-primary/30 bg-primary/5 overflow-hidden !p-0 !gap-0">
+              <div className="px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <div className="p-2.5 rounded-xl bg-primary/20 text-primary">
@@ -1111,7 +1111,7 @@ function RunnerView({ report, definitions, logs, onCancel, onBack, queue }: Runn
               </Button>
             </div>
 
-            {serviceStatuses.map(({ item, def, result, status, index }) => {
+            {serviceStatuses.map(({ item, def, result, status }) => {
               if (!def) return null;
               const Icon = getIcon(def.icon);
               const isActive = status === 'running';
