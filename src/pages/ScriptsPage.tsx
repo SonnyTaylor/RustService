@@ -20,6 +20,7 @@ import {
   Loader2,
   Terminal,
   Shield,
+  Sparkles,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,8 @@ import {
 
 import type { Script, ScriptSortOption, ScriptType } from '@/types/scripts';
 import { SCRIPT_SORT_OPTIONS, SCRIPT_TYPE_OPTIONS } from '@/types/scripts';
+import { useSettings } from '@/components/settings-context';
+import { isAiConfigured, aiGenerateScript } from '@/lib/ai-features';
 
 // =============================================================================
 // Helper Functions
@@ -315,6 +318,161 @@ function ScriptDialog({
 }
 
 // =============================================================================
+// AI Script Dialog Component
+// =============================================================================
+
+interface AIScriptDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onGenerated: (data: {
+    name: string;
+    description: string;
+    scriptType: ScriptType;
+    content: string;
+    runAsAdmin: boolean;
+  }) => void;
+}
+
+function AIScriptDialog({ open, onOpenChange, onGenerated }: AIScriptDialogProps) {
+  const { settings } = useSettings();
+  const [prompt, setPrompt] = useState('');
+  const [scriptType, setScriptType] = useState<ScriptType>('powershell');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setPrompt('');
+      setError(null);
+      setIsGenerating(false);
+    } else {
+      abortController?.abort();
+    }
+  }, [open]);
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) {
+      setError('Please describe what the script should do');
+      return;
+    }
+    setIsGenerating(true);
+    setError(null);
+
+    const controller = new AbortController();
+    setAbortController(controller);
+
+    try {
+      const result = await aiGenerateScript(prompt.trim(), scriptType, settings.agent, controller.signal);
+      onOpenChange(false);
+      onGenerated({
+        name: result.name,
+        description: result.description,
+        scriptType,
+        content: result.content,
+        runAsAdmin: result.runAsAdmin,
+      });
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setIsGenerating(false);
+      setAbortController(null);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-500" />
+            Generate Script with AI
+          </DialogTitle>
+          <DialogDescription>
+            Describe what you want the script to do and AI will generate it for you.
+            You can review and edit before saving.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Script Type */}
+          <div className="space-y-2">
+            <Label>Script Type</Label>
+            <Select
+              value={scriptType}
+              onValueChange={(v) => setScriptType(v as ScriptType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SCRIPT_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    <div className="flex items-center gap-2">
+                      <Terminal className="h-4 w-4" />
+                      {opt.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Prompt */}
+          <div className="space-y-2">
+            <Label htmlFor="ai-prompt">What should the script do?</Label>
+            <Textarea
+              id="ai-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  handleGenerate();
+                }
+              }}
+              placeholder="e.g. Clean temporary files and browser caches to free up disk space"
+              className="h-28 resize-none"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              Press Ctrl+Enter to generate
+            </p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 text-destructive text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isGenerating}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleGenerate}
+            disabled={isGenerating || !prompt.trim()}
+            className="gap-2 bg-purple-600 hover:bg-purple-700"
+          >
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {isGenerating ? 'Generating...' : 'Generate Script'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// =============================================================================
 // Script Card Component
 // =============================================================================
 
@@ -450,12 +608,21 @@ function EmptyState({ onAddClick }: { onAddClick: () => void }) {
 // =============================================================================
 
 export function ScriptsPage() {
+  const { settings } = useSettings();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<ScriptSortOption>('name-asc');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingScript, setEditingScript] = useState<Script | null>(null);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiGeneratedData, setAiGeneratedData] = useState<{
+    name: string;
+    description: string;
+    scriptType: ScriptType;
+    content: string;
+    runAsAdmin: boolean;
+  } | null>(null);
 
   // Load scripts
   useEffect(() => {
@@ -491,7 +658,30 @@ export function ScriptsPage() {
   // Handlers
   const handleAddScript = () => {
     setEditingScript(null);
+    setAiGeneratedData(null);
     setDialogOpen(true);
+  };
+
+  const handleAiGenerated = (data: {
+    name: string;
+    description: string;
+    scriptType: ScriptType;
+    content: string;
+    runAsAdmin: boolean;
+  }) => {
+    // Pre-fill the regular script dialog with AI-generated content
+    setAiGeneratedData(data);
+    setEditingScript(null);
+    setDialogOpen(true);
+  };
+
+  const handleOpenAiDialog = () => {
+    if (!isAiConfigured(settings.agent)) {
+      // Show error inline - no toast available
+      console.error('AI not configured. Set up a provider in Settings → AI Agent.');
+      return;
+    }
+    setAiDialogOpen(true);
   };
 
   const handleEditScript = (script: Script) => {
@@ -604,6 +794,11 @@ export function ScriptsPage() {
             </SelectContent>
           </Select>
 
+          <Button onClick={handleOpenAiDialog} variant="outline" className="gap-2 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10">
+            <Sparkles className="h-4 w-4" />
+            Generate with AI
+          </Button>
+
           <Button onClick={handleAddScript}>
             <Plus className="h-4 w-4 mr-2" />
             Add Script
@@ -638,9 +833,19 @@ export function ScriptsPage() {
       {/* Add/Edit Dialog */}
       <ScriptDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        script={editingScript}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setAiGeneratedData(null);
+        }}
+        script={editingScript || (aiGeneratedData ? ({ ...aiGeneratedData, id: '', runCount: 0, createdAt: '', lastRun: null } as Script) : null)}
         onSave={handleSaveScript}
+      />
+
+      {/* AI Script Generator Dialog */}
+      <AIScriptDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        onGenerated={handleAiGenerated}
       />
     </div>
   );
