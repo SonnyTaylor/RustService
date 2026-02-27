@@ -5,15 +5,20 @@
 
 mod adwcleaner;
 mod battery_info;
+mod battery_report;
 mod bleachbit;
 mod chkdsk;
 mod disk_space;
 mod dism;
+mod driver_audit;
 mod drivecleanup;
+mod energy_report;
 mod furmark;
 mod heavyload;
+mod installed_software;
 mod iperf;
 mod kvrt_scan;
+mod network_config;
 mod ping_test;
 mod sfc;
 mod smartctl;
@@ -68,6 +73,11 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(chkdsk::ChkdskService),
         Box::new(furmark::FurmarkService),
         Box::new(windows_update::WindowsUpdateService),
+        Box::new(energy_report::EnergyReportService),
+        Box::new(battery_report::BatteryReportService),
+        Box::new(driver_audit::DriverAuditService),
+        Box::new(installed_software::InstalledSoftwareService),
+        Box::new(network_config::NetworkConfigService),
     ];
 
     services
@@ -137,6 +147,21 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     enabled: true,
                     options: serde_json::json!({}),
                 },
+                PresetServiceConfig {
+                    service_id: "energy-report".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"duration": 10}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-report".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "network-config".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
             ],
             icon: "stethoscope".to_string(),
             color: "blue".to_string(),
@@ -178,6 +203,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                 },
                 PresetServiceConfig {
                     service_id: "battery-info".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "network-config".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -264,6 +294,31 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "windows-update".to_string(),
                     enabled: true,
                     options: serde_json::json!({"install_updates": true, "include_drivers": true}),
+                },
+                PresetServiceConfig {
+                    service_id: "energy-report".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"duration": 10}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-report".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "driver-audit".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"show_all": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "installed-software".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"include_updates": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "network-config".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
                 },
             ],
             icon: "shield-check".to_string(),
@@ -368,6 +423,31 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "stinger".to_string(),
                     enabled: false,
                     options: serde_json::json!({"action": "report", "include_pups": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "energy-report".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"duration": 10}),
+                },
+                PresetServiceConfig {
+                    service_id: "battery-report".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
+                    service_id: "driver-audit".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"show_all": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "installed-software".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"include_updates": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "network-config".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"include_disabled": false}),
                 },
             ],
             icon: "settings-2".to_string(),

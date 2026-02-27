@@ -6,14 +6,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  Copy, 
-  Check, 
-  X, 
-  ExternalLink, 
-  Terminal, 
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Check,
+  X,
+  ExternalLink,
+  Terminal,
   Loader2,
   Play,
   AlertCircle,
@@ -67,6 +67,7 @@ export function TerminalOutputBlock({
   const isPending = status === 'pending_approval';
   const isError = status === 'error' || (exitCode !== undefined && exitCode !== 0);
   const isSuccess = status === 'success' && !isError;
+  const displayOutput = output || error || '';
 
   return (
     <div className={cn(
@@ -127,33 +128,19 @@ export function TerminalOutputBlock({
         </div>
 
         {/* Output (Collapsible) */}
-        {expanded && (output || error) && (
+        {expanded && displayOutput && (
           <div className="pl-8 pr-4 pb-2 max-h-[250px] overflow-y-auto">
-            {output && error ? (
-              <>
-                <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-                  {output}
-                </pre>
-                <div className="mt-2 pt-2 border-t border-red-500/20">
-                  <span className="text-[10px] uppercase tracking-wider text-red-400/70 font-medium">stderr</span>
-                  <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed text-destructive mt-1">
-                    {error}
-                  </pre>
-                </div>
-              </>
-            ) : (
-              <pre className={cn(
-                "whitespace-pre-wrap break-words text-xs leading-relaxed",
-                isError ? "text-destructive" : "text-muted-foreground"
-              )}>
-                {output || error}
-              </pre>
-            )}
+            <pre className={cn(
+              "whitespace-pre-wrap break-words text-xs leading-relaxed",
+              isError ? "text-destructive" : "text-muted-foreground"
+            )}>
+              {displayOutput}
+            </pre>
           </div>
         )}
 
         {/* Scrollbar track visible indicator */}
-        {expanded && (output || error) && ((output?.length ?? 0) + (error?.length ?? 0)) > 500 && (
+        {expanded && displayOutput && displayOutput.length > 500 && (
           <div className="absolute right-0 top-10 bottom-0 w-1.5 bg-muted/60" />
         )}
       </div>
@@ -164,7 +151,7 @@ export function TerminalOutputBlock({
           <Terminal className="h-3 w-3" />
           <span>Terminal command</span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           {isRunning && (
             <span className="flex items-center gap-1.5 text-blue-500">
@@ -172,7 +159,7 @@ export function TerminalOutputBlock({
               Running...
             </span>
           )}
-          
+
           {isPending && (
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1 text-yellow-600 font-medium">
@@ -209,7 +196,7 @@ export function TerminalOutputBlock({
               )}
             </div>
           )}
-          
+
           {!isRunning && !isPending && (
             <span className={cn(
               "flex items-center gap-1",

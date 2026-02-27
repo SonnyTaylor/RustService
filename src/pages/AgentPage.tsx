@@ -123,7 +123,7 @@ interface Message {
 export function AgentPage() {
   const { settings } = useSettings();
   const { fadeInUp } = useAnimation();
-  
+
   // State
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -143,12 +143,9 @@ export function AgentPage() {
 
   const agentHistoryRef = useRef<CoreMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const userHasScrolledUpRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
   const messagesRef = useRef<Message[]>([]);
-  const conversationIdRef = useRef<string | null>(null);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
 
   const agentSettings = settings.agent;
@@ -173,7 +170,6 @@ export function AgentPage() {
       { id: 'grep', name: 'Grep', desc: 'Search text across files' },
       { id: 'glob', name: 'Glob', desc: 'Find files by pattern' },
       { id: 'list_programs', name: 'Programs', desc: 'List portable tools' },
-      { id: 'find_exe', name: 'Find Exe', desc: 'Locate CLI executables' },
       { id: 'list_instruments', name: 'Instruments', desc: 'List available scripts' },
       { id: 'run_instrument', name: 'Run Instrument', desc: 'Execute a script' },
       { id: 'search_web', name: 'Web Search', desc: 'Search the internet' },
@@ -181,33 +177,14 @@ export function AgentPage() {
     ].map(tool => ({ ...tool, enabled: enabled.has(tool.id) }));
   }, [settings.agent.searchProvider]);
 
-  // Auto-scroll — only when user is near the bottom, not when they've scrolled up to read
+  // Auto-scroll
   useEffect(() => {
-    if (!userHasScrolledUpRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Track whether user has scrolled away from the bottom
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      userHasScrolledUpRef.current = distanceFromBottom > 100;
-    };
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-
-  useEffect(() => {
-    conversationIdRef.current = currentConversationId;
-  }, [currentConversationId]);
 
   // Connect to MCP servers when settings change (stabilized to prevent reconnection loop)
   useEffect(() => {
@@ -217,7 +194,7 @@ export function AgentPage() {
     mcpServersKeyRef.current = key;
 
     const enabledServers = mcpServers.filter(s => s.enabled && s.url);
-    
+
     if (enabledServers.length > 0) {
       setMcpState(prev => ({ ...prev, isConnecting: true }));
       connectMCPServers(mcpServers).then(({ state }) => {
@@ -239,27 +216,26 @@ export function AgentPage() {
 
   // Save conversation to backend
   const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
-    const convId = conversationIdRef.current;
-    if (!convId || msgs.length === 0) return;
+    if (!currentConversationId || msgs.length === 0) return;
 
     try {
       // Convert messages to ConversationMessage format
       const conversationMessages: ConversationMessage[] = history.map((msg, index) => ({
         id: generateId(),
-        conversationId: convId,
+        conversationId: currentConversationId,
         role: msg.role,
         content: JSON.stringify(msg.content),
         createdAt: msgs[Math.floor(index / 2)]?.createdAt || new Date().toISOString(),
       }));
 
       await invoke('save_conversation_messages', {
-        conversationId: convId,
+        conversationId: currentConversationId,
         messages: conversationMessages,
       });
     } catch (err) {
       console.error('Failed to save conversation:', err);
     }
-  }, []);
+  }, [currentConversationId]);
 
   // Load a conversation
   const loadConversation = useCallback(async (conversation: Conversation) => {
@@ -358,7 +334,6 @@ export function AgentPage() {
         // 'tool' messages are consumed via the toolResults lookup, not shown directly
       }
 
-      conversationIdRef.current = conversation.id;
       setCurrentConversationId(conversation.id);
       setConversationTitle(conversation.title);
       setMessages(uiMessages);
@@ -369,24 +344,26 @@ export function AgentPage() {
     }
   }, []);
 
-  // Reset to a fresh chat (no DB row created until first message is sent)
-  const startNewConversation = useCallback(() => {
-    conversationIdRef.current = null;
-    setCurrentConversationId(null);
-    setConversationTitle('New Chat');
-    setMessages([]);
-    agentHistoryRef.current = [];
-    isFirstMessageRef.current = true;
+  // Start a new conversation
+  const startNewConversation = useCallback(async () => {
+    try {
+      const conversation = await invoke<Conversation>('create_conversation', { title: null });
+      setCurrentConversationId(conversation.id);
+      setConversationTitle('New Chat');
+      setMessages([]);
+      agentHistoryRef.current = [];
+      isFirstMessageRef.current = true;
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
+    }
   }, []);
 
-  // Lazily ensure a conversation exists in the DB — called on first message send
-  const ensureConversation = useCallback(async (title: string): Promise<string> => {
-    if (conversationIdRef.current) return conversationIdRef.current;
-    const conversation = await invoke<Conversation>('create_conversation', { title });
-    conversationIdRef.current = conversation.id;
-    setCurrentConversationId(conversation.id);
-    return conversation.id;
-  }, []);
+  // Create initial conversation on mount if none exists
+  useEffect(() => {
+    if (!currentConversationId && isConfigured) {
+      startNewConversation();
+    }
+  }, [currentConversationId, isConfigured, startNewConversation]);
 
   /**
    * Validate tool call arguments and return error if invalid
@@ -457,7 +434,7 @@ export function AgentPage() {
 
   const mapToolToActivityType = (toolName: string): ActivityType => {
     if (toolName.startsWith('mcp_')) return 'mcp_tool';
-    switch(toolName) {
+    switch (toolName) {
       case 'execute_command': return 'ran_command';
       case 'write_file': return 'write_file';
       case 'edit_file': return 'edit_file';
@@ -465,8 +442,7 @@ export function AgentPage() {
       case 'move_file': return 'move_file';
       case 'copy_file': return 'copy_file';
       case 'list_dir': return 'list_dir';
-      case 'list_programs': return 'list_programs';
-      case 'find_exe': return 'find_exe';
+      case 'list_programs': return 'list_dir';
       case 'list_instruments': return 'list_dir';
       case 'run_instrument': return 'ran_command';
       case 'generate_file': return 'generate_file';
@@ -493,13 +469,13 @@ export function AgentPage() {
         return '';
       }
     };
-    
+
     switch (toolName) {
       case 'execute_command':
         return { command: typeof args.command === 'string' ? args.command : '' };
       case 'write_file':
-        return { 
-          path: getPath(args.path), 
+        return {
+          path: getPath(args.path),
           filename: getFilename(args.path),
           content: typeof args.content === 'string' ? args.content : undefined
         };
@@ -507,8 +483,8 @@ export function AgentPage() {
         return {
           path: getPath(args.path),
           filename: getFilename(args.path),
-          oldString: typeof args.oldString === 'string' ? args.oldString : undefined,
-          newString: typeof args.newString === 'string' ? args.newString : undefined,
+          oldString: typeof args.oldString === 'string' ? truncate(args.oldString) : undefined,
+          newString: typeof args.newString === 'string' ? truncate(args.newString) : undefined,
           all: typeof args.all === 'boolean' ? args.all : undefined,
         };
       case 'read_file':
@@ -525,9 +501,7 @@ export function AgentPage() {
       case 'list_dir':
         return { path: getPath(args.path) };
       case 'list_programs':
-        return {};
-      case 'find_exe':
-        return { query: typeof args.query === 'string' ? args.query : '' };
+        return { path: 'data/programs' };
       case 'list_instruments':
         return { path: 'data/instruments' };
       case 'grep':
@@ -586,12 +560,10 @@ export function AgentPage() {
   ): Promise<CoreMessage> => {
     // Update UI to show running state
     updateActivityInParts(null, toolCallId, { status: 'running' as ActivityStatus });
-    // Yield to event loop so React commits the batched state update before executing
-    await new Promise(resolve => setTimeout(resolve, 0));
 
     let result: string;
     let isError = false;
-    
+
     try {
       const validation = validateToolCall(toolName, args);
       if (!validation.valid) {
@@ -599,72 +571,72 @@ export function AgentPage() {
         isError = true;
       } else {
         switch (toolName) {
-        case 'execute_command': {
-          const command = String(args.command || '');
-          console.log('[Agent YOLO] Auto-executing command:', command);
-          const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
-            command, 
-            reason: String(args.reason || 'YOLO mode - auto-approved')
-          });
-          result = res.output || res.error || 'Command executed successfully.';
-          isError = !!res.error;
-          break;
-        }
-        case 'write_file': {
-          await invoke('agent_write_file', { 
-            path: String(args.path || ''),
-            content: String(args.content || ''),
-          });
-          result = `Successfully wrote to ${args.path}`;
-          break;
-        }
-        case 'edit_file': {
-          const res = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', {
-            path: String(args.path || ''),
-            old_string: String(args.oldString || ''),
-            new_string: String(args.newString || ''),
-            all: Boolean(args.all),
-          });
-          result = res.message || `Edited ${args.path} (${res.replacements} replacements)`;
-          isError = res.status !== 'success';
-          break;
-        }
-        case 'generate_file': {
-          const attachment = await invoke<FileAttachment>('generate_agent_file', {
-            filename: String(args.filename || 'generated.txt'),
-            content: String(args.content || ''),
-            description: String(args.description || ''),
-            mime_type: typeof (args as any).mime_type === 'string' ? (args as any).mime_type : undefined,
-            tool_call_id: toolCallId,
-            approved: true,
-          });
-          result = `Generated ${attachment.originalName}`;
-          updateActivityInParts(null, toolCallId, {
-            filename: attachment.originalName,
-            path: attachment.storedPath,
-            size: attachment.size,
-          });
-          break;
-        }
-        case 'move_file': {
-          await invoke('agent_move_file', { 
-            src: String(args.src || ''), 
-            dest: String(args.dest || '') 
-          });
-          result = `Moved ${args.src} to ${args.dest}`;
-          break;
-        }
-        case 'copy_file': {
-          await invoke('agent_copy_file', { 
-            src: String(args.src || ''), 
-            dest: String(args.dest || '') 
-          });
-          result = `Copied ${args.src} to ${args.dest}`;
-          break;
-        }
-        default:
-          result = `Unknown HITL tool: ${toolName}`;
-          isError = true;
+          case 'execute_command': {
+            const command = String(args.command || '');
+            console.log('[Agent YOLO] Auto-executing command:', command);
+            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
+              command,
+              reason: String(args.reason || 'YOLO mode - auto-approved')
+            });
+            result = res.output || res.error || 'Command executed successfully.';
+            isError = !!res.error;
+            break;
+          }
+          case 'write_file': {
+            await invoke('agent_write_file', {
+              path: String(args.path || ''),
+              content: String(args.content || ''),
+            });
+            result = `Successfully wrote to ${args.path}`;
+            break;
+          }
+          case 'edit_file': {
+            const res = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', {
+              path: String(args.path || ''),
+              old_string: String(args.oldString || ''),
+              new_string: String(args.newString || ''),
+              all: Boolean(args.all),
+            });
+            result = res.message || `Edited ${args.path} (${res.replacements} replacements)`;
+            isError = res.status !== 'success';
+            break;
+          }
+          case 'generate_file': {
+            const attachment = await invoke<FileAttachment>('generate_agent_file', {
+              filename: String(args.filename || 'generated.txt'),
+              content: String(args.content || ''),
+              description: String(args.description || ''),
+              mime_type: typeof (args as any).mime_type === 'string' ? (args as any).mime_type : undefined,
+              tool_call_id: toolCallId,
+              approved: true,
+            });
+            result = `Generated ${attachment.originalName}`;
+            updateActivityInParts(null, toolCallId, {
+              filename: attachment.originalName,
+              path: attachment.storedPath,
+              size: attachment.size,
+            });
+            break;
+          }
+          case 'move_file': {
+            await invoke('agent_move_file', {
+              src: String(args.src || ''),
+              dest: String(args.dest || '')
+            });
+            result = `Moved ${args.src} to ${args.dest}`;
+            break;
+          }
+          case 'copy_file': {
+            await invoke('agent_copy_file', {
+              src: String(args.src || ''),
+              dest: String(args.dest || '')
+            });
+            result = `Copied ${args.src} to ${args.dest}`;
+            break;
+          }
+          default:
+            result = `Unknown HITL tool: ${toolName}`;
+            isError = true;
         }
       }
     } catch (error) {
@@ -678,8 +650,6 @@ export function AgentPage() {
       output: result,
       error: isError ? result : undefined,
     });
-    // Yield to event loop so React commits the batched state update before the next tool executes
-    await new Promise(resolve => setTimeout(resolve, 0));
 
     // Add tool result to history and continue loop
     const toolResultMsg: CoreMessage = {
@@ -761,7 +731,7 @@ export function AgentPage() {
       const toolCallValidation = new Map<string, { valid: boolean; error?: string }>();
 
       const updateMsg = () => {
-        setMessages(prev => prev.map(m => 
+        setMessages(prev => prev.map(m =>
           m.id === assistantMsgId ? { ...m, content: fullContent, parts: [...parts] } : m
         ));
       };
@@ -784,27 +754,27 @@ export function AgentPage() {
           historyTextContent += part.text;
           parts[currentTextPartIdx] = { type: 'text', content: currentTextContent };
           updateMsg();
-        } 
+        }
         else if (part.type === 'tool-call') {
           // Track tool call
           finalToolCalls.push(part);
-          
+
           const args = ((part as any).args ?? (part as any).input ?? {}) as Record<string, unknown>;
-          
+
           // Validate tool call args
           const validation = validateToolCall(part.toolName, args);
           if (!validation.valid) {
             console.warn('[Agent] Malformed tool call:', part.toolName, 'Args:', args, 'Error:', validation.error);
           }
           toolCallValidation.set(part.toolCallId, { valid: validation.valid, error: validation.error });
-          
+
           const activityType = mapToolToActivityType(part.toolName);
           const activityDetails = extractActivityDetails(part.toolName, args);
-          
+
           // Check if this tool requires approval based on approval mode
           const approvalMode = agentSettings?.approvalMode || 'always';
           const requiresApproval = shouldRequireApproval(part.toolName, approvalMode);
-          
+
           const newActivity = {
             id: part.toolCallId,
             timestamp: new Date().toISOString(),
@@ -832,7 +802,7 @@ export function AgentPage() {
           const resultData = (part as any).result ?? (part as any).output;
           let output: string;
           let isError = false;
-          
+
           if (typeof resultData === 'string') {
             output = resultData;
           } else if (resultData && typeof resultData === 'object') {
@@ -887,14 +857,14 @@ export function AgentPage() {
           }))
         ]
       };
-      
+
       const baseHistory = [...currentHistory, assistantMessage, ...toolResultMessages];
       agentHistoryRef.current = baseHistory;
-      
+
       // Check for HITL tool calls that need handling
       const hitlCalls = finalToolCalls.filter(tc => isHITLTool(tc.toolName));
       const approvalMode = agentSettings?.approvalMode || 'always';
-      
+
       if (hitlCalls.length === 0) {
         if (allowAutoContinue && toolResultMessages.length > 0 && !historyTextContent.trim()) {
           await runAgentLoop(baseHistory, { allowAutoContinue: false, reuseMessageId: assistantMsgId });
@@ -956,7 +926,7 @@ export function AgentPage() {
       }
 
       console.error('Agent loop error:', error);
-      setMessages(prev => prev.map(m => 
+      setMessages(prev => prev.map(m =>
         m.id === assistantMsgId
           ? { ...m, content: m.content + `\n\n*[Error: ${error}]*`, parts: [...(m.parts || []), { type: 'text', content: `\n\n*[Error: ${error}]*` }] }
           : m
@@ -964,7 +934,7 @@ export function AgentPage() {
       setIsLoading(false);
     }
   };
-  
+
   // Stop the agentic loop
   const stopAgentLoop = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -976,13 +946,13 @@ export function AgentPage() {
     const history = agentHistoryRef.current;
     const lastMsg = history[history.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') return;
-    
+
     // Handle both array content and single content
     const contentArray = Array.isArray(lastMsg.content) ? lastMsg.content : [];
     const toolCall = contentArray.find(
       (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
     );
-    
+
     if (!toolCall) {
       console.error('Tool call not found for activity:', activityId);
       return;
@@ -996,7 +966,7 @@ export function AgentPage() {
     let result: string;
     let isError = false;
     const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
-    
+
     // Validate args before execution
     const validation = validateToolCall(toolCall.toolName, args);
     if (!validation.valid) {
@@ -1009,8 +979,8 @@ export function AgentPage() {
           case 'execute_command': {
             const command = String(args.command || '');
             console.log('[Agent] Executing command:', command);
-            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', { 
-              command, 
+            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
+              command,
               reason: String(args.reason || 'User approved')
             });
             result = res.output || res.error || 'Command executed successfully.';
@@ -1018,7 +988,7 @@ export function AgentPage() {
             break;
           }
           case 'write_file': {
-            await invoke('agent_write_file', { 
+            await invoke('agent_write_file', {
               path: String(args.path || ''),
               content: String(args.content || ''),
             });
@@ -1054,17 +1024,17 @@ export function AgentPage() {
             break;
           }
           case 'move_file': {
-            await invoke('agent_move_file', { 
-              src: String(args.src || ''), 
-              dest: String(args.dest || '') 
+            await invoke('agent_move_file', {
+              src: String(args.src || ''),
+              dest: String(args.dest || '')
             });
             result = `Successfully moved ${args.src} to ${args.dest}`;
             break;
           }
           case 'copy_file': {
-            await invoke('agent_copy_file', { 
-              src: String(args.src || ''), 
-              dest: String(args.dest || '') 
+            await invoke('agent_copy_file', {
+              src: String(args.src || ''),
+              dest: String(args.dest || '')
             });
             result = `Successfully copied ${args.src} to ${args.dest}`;
             break;
@@ -1100,7 +1070,7 @@ export function AgentPage() {
           : { type: 'text' as const, value: result },
       }]
     };
-    
+
     const newHistory = [...history, toolResultMsg];
     agentHistoryRef.current = newHistory;
 
@@ -1113,12 +1083,12 @@ export function AgentPage() {
     const history = agentHistoryRef.current;
     const lastMsg = history[history.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant') return;
-    
+
     const contentArray = Array.isArray(lastMsg.content) ? lastMsg.content : [];
     const toolCall = contentArray.find(
       (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
     );
-    
+
     if (!toolCall) {
       console.error('Tool call not found for activity:', activityId);
       return;
@@ -1184,17 +1154,15 @@ export function AgentPage() {
     const newHistory = [...agentHistoryRef.current, userMsg];
     agentHistoryRef.current = newHistory;
 
-    // Create conversation in DB on first message (lazy creation avoids "New Chat" spam)
-    if (isFirstMessageRef.current) {
+    // Update title on first message
+    if (isFirstMessageRef.current && currentConversationId) {
       isFirstMessageRef.current = false;
       const title = text.length > 50 ? text.substring(0, 50) + '...' : text;
       setConversationTitle(title);
-      try {
-        const convId = await ensureConversation(title);
-        setCurrentConversationId(convId);
-      } catch (err) {
-        console.error('Failed to create conversation:', err);
-      }
+      invoke('update_conversation_title', {
+        conversationId: currentConversationId,
+        title,
+      }).catch(err => console.error('Failed to update title:', err));
     }
 
     // Start loop
@@ -1277,12 +1245,16 @@ export function AgentPage() {
   const clearChat = async () => {
     abortControllerRef.current?.abort();
     setIsLoading(false);
+    setMessages([]);
+    agentHistoryRef.current = [];
+    isFirstMessageRef.current = true;
     try {
       await invoke('clear_pending_commands');
+      // Start a fresh conversation
+      await startNewConversation();
     } catch (err) {
-      console.error('Failed to clear pending commands:', err);
+      console.error('Failed to clear chat:', err);
     }
-    startNewConversation();
   };
 
   if (!isConfigured) {
@@ -1298,9 +1270,9 @@ export function AgentPage() {
       {/* Header */}
       <header className="flex items-center justify-between p-3 border-b bg-background z-10">
         <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={() => setShowRightSidebar(!showRightSidebar)}>
-                <Menu className="h-4 w-4" />
-            </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={() => setShowRightSidebar(!showRightSidebar)}>
+            <Menu className="h-4 w-4" />
+          </Button>
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
             <Bot className="h-4 w-4 text-primary" />
           </div>
@@ -1323,23 +1295,23 @@ export function AgentPage() {
         </div>
 
         <div className="flex items-center gap-2">
-            <div className="hidden md:block">
-             <ApprovalModeIndicator mode={agentSettings?.approvalMode || 'always'} />
-            </div>
-            {isLoading && (
-              <Badge variant="outline" className="gap-1.5 text-blue-500 bg-blue-500/10 border-blue-500/30 animate-pulse h-6">
-                <Zap className="h-3 w-3" />
-                Thinking...
-              </Badge>
-            )}
-            {isLoading && (
-                <Button variant="outline" size="sm" onClick={stopAgentLoop} className="h-7 text-red-500 border-red-500/30 hover:bg-red-500/10">
-                    <Square className="h-3 w-3 mr-1" /> Stop
-                </Button>
-            )}
-            <Button variant="ghost" size="icon" className="h-8 w-8 hidden lg:flex" onClick={() => setShowRightSidebar(!showRightSidebar)}>
-                {showRightSidebar ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+          <div className="hidden md:block">
+            <ApprovalModeIndicator mode={agentSettings?.approvalMode || 'always'} />
+          </div>
+          {isLoading && (
+            <Badge variant="outline" className="gap-1.5 text-blue-500 bg-blue-500/10 border-blue-500/30 animate-pulse h-6">
+              <Zap className="h-3 w-3" />
+              Thinking...
+            </Badge>
+          )}
+          {isLoading && (
+            <Button variant="outline" size="sm" onClick={stopAgentLoop} className="h-7 text-red-500 border-red-500/30 hover:bg-red-500/10">
+              <Square className="h-3 w-3 mr-1" /> Stop
             </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-8 w-8 hidden lg:flex" onClick={() => setShowRightSidebar(!showRightSidebar)}>
+            {showRightSidebar ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+          </Button>
         </div>
       </header>
 
@@ -1347,7 +1319,7 @@ export function AgentPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Center Chat Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-4 max-w-3xl mx-auto w-full space-y-4">
               {messages.length === 0 ? (
                 <div className="flex items-center justify-center min-h-[400px]">

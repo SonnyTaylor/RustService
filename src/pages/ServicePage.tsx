@@ -54,6 +54,10 @@ import {
   PackageCheck,
   FileSearch,
   CloudDownload,
+  Zap,
+  BatteryCharging,
+  PackageSearch,
+  Globe,
   Copy,
   Search,
   Plus,
@@ -119,6 +123,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   'package-check': PackageCheck,
   'file-scan': FileSearch,
   'cloud-download': CloudDownload,
+  zap: Zap,
+  'battery-charging': BatteryCharging,
+  'package-search': PackageSearch,
+  globe: Globe,
 };
 
 function getIcon(iconName: string) {

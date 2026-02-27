@@ -29,6 +29,11 @@ import { WindowsUpdateRenderer } from './WindowsUpdateRenderer';
 import { ChkdskRenderer } from './ChkdskRenderer';
 import { FurmarkRenderer } from './FurmarkRenderer';
 import { StingerRenderer } from './StingerRenderer';
+import { EnergyReportRenderer } from './EnergyReportRenderer';
+import { BatteryReportRenderer } from './BatteryReportRenderer';
+import { DriverAuditRenderer } from './DriverAuditRenderer';
+import { InstalledSoftwareRenderer } from './InstalledSoftwareRenderer';
+import { NetworkConfigRenderer } from './NetworkConfigRenderer';
 
 // =============================================================================
 // Types
@@ -70,6 +75,11 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'chkdsk': ChkdskRenderer,
   'furmark': FurmarkRenderer,
   'stinger': StingerRenderer,
+  'energy-report': EnergyReportRenderer,
+  'battery-report': BatteryReportRenderer,
+  'driver-audit': DriverAuditRenderer,
+  'installed-software': InstalledSoftwareRenderer,
+  'network-config': NetworkConfigRenderer,
 };
 
 /**
