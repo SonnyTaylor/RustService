@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use std::time::Instant;
 
 use chrono::Utc;
@@ -18,7 +18,8 @@ use super::required_programs::validate_required_programs;
 use super::settings::{get_settings, save_settings};
 use crate::services;
 use crate::types::{
-    ServiceDefinition, ServicePreset, ServiceQueueItem, ServiceReport, ServiceRunState,
+    FindingSeverity, FindingSeverityCounts, ReportStatistics, ServiceDefinition, ServiceFinding,
+    ServicePreset, ServiceQueueItem, ServiceReport, ServiceResult, ServiceRunState,
     ServiceRunStatus,
 };
 
@@ -28,6 +29,9 @@ use crate::types::{
 
 /// Global state for the currently running service
 static SERVICE_STATE: Mutex<Option<ServiceRunState>> = Mutex::new(None);
+
+/// Condition variable for pause/resume support
+static PAUSE_CONDVAR: Condvar = Condvar::new();
 
 // =============================================================================
 // Report Storage
@@ -231,6 +235,9 @@ pub async fn run_services(
         current_service_index: Some(0),
         technician_name,
         customer_name,
+        agent_initiated: false,
+        agent_summary: None,
+        health_score: None,
     };
 
     // Update global state
@@ -238,6 +245,7 @@ pub async fn run_services(
         let mut state = SERVICE_STATE.lock().unwrap();
         *state = Some(ServiceRunState {
             is_running: true,
+            is_paused: false,
             current_report: Some(report.clone()),
         });
     }
@@ -252,6 +260,23 @@ pub async fn run_services(
         // Check if cancelled before starting next service
         {
             let state = SERVICE_STATE.lock().unwrap();
+            if let Some(ref s) = *state {
+                if !s.is_running {
+                    break;
+                }
+            }
+        }
+
+        // Wait while paused (agent intervention)
+        {
+            let mut state = SERVICE_STATE.lock().unwrap();
+            while state
+                .as_ref()
+                .map_or(false, |s| s.is_paused && s.is_running)
+            {
+                state = PAUSE_CONDVAR.wait(state).unwrap();
+            }
+            // Re-check cancellation after resuming from pause
             if let Some(ref s) = *state {
                 if !s.is_running {
                     break;
@@ -319,10 +344,7 @@ pub async fn run_services(
     // Check if we were cancelled
     let was_cancelled = {
         let state = SERVICE_STATE.lock().unwrap();
-        state
-            .as_ref()
-            .map(|s| !s.is_running)
-            .unwrap_or(false)
+        state.as_ref().map(|s| !s.is_running).unwrap_or(false)
     };
     report.status = if was_cancelled {
         ServiceRunStatus::Cancelled
@@ -344,6 +366,7 @@ pub async fn run_services(
         let mut state = SERVICE_STATE.lock().unwrap();
         *state = Some(ServiceRunState {
             is_running: false,
+            is_paused: false,
             current_report: Some(report.clone()),
         });
     }
@@ -442,4 +465,433 @@ pub fn clear_all_reports() -> Result<u32, String> {
     }
 
     Ok(deleted_count)
+}
+
+// =============================================================================
+// Pause / Resume Commands
+// =============================================================================
+
+/// Pause the current service run (takes effect between services)
+#[tauri::command]
+pub fn pause_service_run(app: AppHandle) -> Result<(), String> {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    if let Some(ref mut s) = *state {
+        if s.is_running && !s.is_paused {
+            s.is_paused = true;
+            if let Some(ref mut report) = s.current_report {
+                report.status = ServiceRunStatus::Paused;
+            }
+            drop(state);
+            let _ = app.emit("service-state-changed", get_service_run_state());
+            return Ok(());
+        }
+    }
+    Err("No active service run to pause".to_string())
+}
+
+/// Resume a paused service run
+#[tauri::command]
+pub fn resume_service_run(app: AppHandle) -> Result<(), String> {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    if let Some(ref mut s) = *state {
+        if s.is_running && s.is_paused {
+            s.is_paused = false;
+            if let Some(ref mut report) = s.current_report {
+                report.status = ServiceRunStatus::Running;
+            }
+            PAUSE_CONDVAR.notify_all();
+            drop(state);
+            let _ = app.emit("service-state-changed", get_service_run_state());
+            return Ok(());
+        }
+    }
+    Err("No paused service run to resume".to_string())
+}
+
+// =============================================================================
+// Report Editing Commands (for agent)
+// =============================================================================
+
+/// Load a report from disk (helper)
+fn load_report(report_id: &str) -> Result<ServiceReport, String> {
+    let file_path = get_reports_dir().join(format!("{}.json", report_id));
+    let json =
+        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read report: {}", e))?;
+    serde_json::from_str(&json).map_err(|e| format!("Failed to parse report: {}", e))
+}
+
+/// Edit an existing finding in a report
+#[tauri::command]
+pub fn edit_report_finding(
+    report_id: String,
+    service_id: String,
+    finding_index: usize,
+    severity: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    recommendation: Option<String>,
+) -> Result<(), String> {
+    let mut report = load_report(&report_id)?;
+
+    let result = report
+        .results
+        .iter_mut()
+        .find(|r| r.service_id == service_id)
+        .ok_or_else(|| format!("Service result not found: {}", service_id))?;
+
+    let finding = result
+        .findings
+        .get_mut(finding_index)
+        .ok_or_else(|| format!("Finding index out of range: {}", finding_index))?;
+
+    if let Some(sev) = severity {
+        finding.severity = match sev.as_str() {
+            "info" => FindingSeverity::Info,
+            "success" => FindingSeverity::Success,
+            "warning" => FindingSeverity::Warning,
+            "error" => FindingSeverity::Error,
+            "critical" => FindingSeverity::Critical,
+            _ => return Err(format!("Invalid severity: {}", sev)),
+        };
+    }
+    if let Some(t) = title {
+        finding.title = t;
+    }
+    if let Some(d) = description {
+        finding.description = d;
+    }
+    if let Some(r) = recommendation {
+        finding.recommendation = Some(r);
+    }
+
+    save_report(&report)
+}
+
+/// Add a new finding to a service result in a report
+#[tauri::command]
+pub fn add_report_finding(
+    report_id: String,
+    service_id: String,
+    severity: String,
+    title: String,
+    description: String,
+    recommendation: Option<String>,
+) -> Result<(), String> {
+    let mut report = load_report(&report_id)?;
+
+    let result = report
+        .results
+        .iter_mut()
+        .find(|r| r.service_id == service_id)
+        .ok_or_else(|| format!("Service result not found: {}", service_id))?;
+
+    let sev = match severity.as_str() {
+        "info" => FindingSeverity::Info,
+        "success" => FindingSeverity::Success,
+        "warning" => FindingSeverity::Warning,
+        "error" => FindingSeverity::Error,
+        "critical" => FindingSeverity::Critical,
+        _ => return Err(format!("Invalid severity: {}", severity)),
+    };
+
+    result.findings.push(ServiceFinding {
+        severity: sev,
+        title,
+        description,
+        recommendation,
+        data: None,
+    });
+
+    save_report(&report)
+}
+
+/// Remove a finding from a service result in a report
+#[tauri::command]
+pub fn remove_report_finding(
+    report_id: String,
+    service_id: String,
+    finding_index: usize,
+) -> Result<(), String> {
+    let mut report = load_report(&report_id)?;
+
+    let result = report
+        .results
+        .iter_mut()
+        .find(|r| r.service_id == service_id)
+        .ok_or_else(|| format!("Service result not found: {}", service_id))?;
+
+    if finding_index >= result.findings.len() {
+        return Err(format!("Finding index out of range: {}", finding_index));
+    }
+
+    result.findings.remove(finding_index);
+    save_report(&report)
+}
+
+/// Set agent-generated executive summary on a report
+#[tauri::command]
+pub fn set_report_summary(report_id: String, summary: String) -> Result<(), String> {
+    let mut report = load_report(&report_id)?;
+    report.agent_summary = Some(summary);
+    save_report(&report)
+}
+
+/// Set agent-generated analysis for a specific service result
+#[tauri::command]
+pub fn set_service_analysis(
+    report_id: String,
+    service_id: String,
+    analysis: String,
+) -> Result<(), String> {
+    let mut report = load_report(&report_id)?;
+
+    let result = report
+        .results
+        .iter_mut()
+        .find(|r| r.service_id == service_id)
+        .ok_or_else(|| format!("Service result not found: {}", service_id))?;
+
+    result.agent_analysis = Some(analysis);
+    save_report(&report)
+}
+
+/// Set the health score on a report
+#[tauri::command]
+pub fn set_report_health_score(report_id: String, score: u8) -> Result<(), String> {
+    if score > 100 {
+        return Err("Health score must be 0-100".to_string());
+    }
+    let mut report = load_report(&report_id)?;
+    report.health_score = Some(score);
+    save_report(&report)
+}
+
+// =============================================================================
+// Report Statistics
+// =============================================================================
+
+/// Compute statistics for a report
+fn compute_report_statistics(report: &ServiceReport) -> ReportStatistics {
+    let total_services = report.results.len();
+    let passed = report.results.iter().filter(|r| r.success).count();
+    let failed = total_services - passed;
+
+    let total_duration_ms = report.results.iter().map(|r| r.duration_ms).sum::<u64>();
+    let avg_duration_ms = if total_services > 0 {
+        total_duration_ms / total_services as u64
+    } else {
+        0
+    };
+
+    let slowest_service = report
+        .results
+        .iter()
+        .max_by_key(|r| r.duration_ms)
+        .map(|r| (r.service_id.clone(), r.duration_ms));
+
+    let fastest_service = report
+        .results
+        .iter()
+        .min_by_key(|r| r.duration_ms)
+        .map(|r| (r.service_id.clone(), r.duration_ms));
+
+    let mut counts = FindingSeverityCounts {
+        info: 0,
+        success: 0,
+        warning: 0,
+        error: 0,
+        critical: 0,
+    };
+
+    for result in &report.results {
+        for finding in &result.findings {
+            match finding.severity {
+                FindingSeverity::Info => counts.info += 1,
+                FindingSeverity::Success => counts.success += 1,
+                FindingSeverity::Warning => counts.warning += 1,
+                FindingSeverity::Error => counts.error += 1,
+                FindingSeverity::Critical => counts.critical += 1,
+            }
+        }
+    }
+
+    let total_findings =
+        counts.info + counts.success + counts.warning + counts.error + counts.critical;
+
+    // Health score: start at 100, penalize for issues
+    let raw_score: i32 = 100
+        - (counts.critical as i32 * 30)
+        - (counts.error as i32 * 15)
+        - (counts.warning as i32 * 5)
+        + (counts.success as i32 * 2);
+    let health_score = raw_score.clamp(0, 100) as u8;
+
+    ReportStatistics {
+        total_services,
+        passed,
+        failed,
+        total_duration_ms,
+        avg_duration_ms,
+        slowest_service,
+        fastest_service,
+        findings_by_severity: counts,
+        total_findings,
+        health_score,
+    }
+}
+
+/// Get computed statistics for a report
+#[tauri::command]
+pub fn get_report_statistics(report_id: String) -> Result<ReportStatistics, String> {
+    let report = load_report(&report_id)?;
+    Ok(compute_report_statistics(&report))
+}
+
+// =============================================================================
+// PDF Report Generation
+// =============================================================================
+
+/// Generate a PDF report and return the file path
+#[tauri::command]
+pub fn generate_report_pdf(
+    report_id: String,
+    output_path: Option<String>,
+) -> Result<String, String> {
+    let report = load_report(&report_id)?;
+    let stats = compute_report_statistics(&report);
+
+    // Determine output path
+    let pdf_path = match output_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => get_reports_dir().join(format!("{}.pdf", report.id)),
+    };
+
+    // Build PDF content as formatted text
+    let mut lines: Vec<String> = Vec::new();
+
+    // Header
+    lines.push("═══════════════════════════════════════════════════════".to_string());
+    lines.push("                   SERVICE REPORT                     ".to_string());
+    lines.push("═══════════════════════════════════════════════════════".to_string());
+    lines.push(String::new());
+    lines.push(format!("Report ID:    {}", report.id));
+    lines.push(format!("Date:         {}", report.started_at));
+    if let Some(ref name) = report.technician_name {
+        lines.push(format!("Technician:   {}", name));
+    }
+    if let Some(ref name) = report.customer_name {
+        lines.push(format!("Customer:     {}", name));
+    }
+    lines.push(format!("Status:       {:?}", report.status));
+    if let Some(score) = report.health_score {
+        lines.push(format!("Health Score: {}/100", score));
+    }
+    lines.push(String::new());
+
+    // Statistics
+    lines.push("───────────────────────────────────────────────────────".to_string());
+    lines.push("  STATISTICS                                          ".to_string());
+    lines.push("───────────────────────────────────────────────────────".to_string());
+    lines.push(format!("Services Run:     {}", stats.total_services));
+    lines.push(format!("Passed:           {}", stats.passed));
+    lines.push(format!("Failed:           {}", stats.failed));
+    lines.push(format!(
+        "Total Duration:   {:.1}s",
+        stats.total_duration_ms as f64 / 1000.0
+    ));
+    lines.push(format!(
+        "Avg per Service:  {:.1}s",
+        stats.avg_duration_ms as f64 / 1000.0
+    ));
+    lines.push(String::new());
+    lines.push(format!(
+        "Findings:  {} critical, {} errors, {} warnings, {} info, {} success",
+        stats.findings_by_severity.critical,
+        stats.findings_by_severity.error,
+        stats.findings_by_severity.warning,
+        stats.findings_by_severity.info,
+        stats.findings_by_severity.success
+    ));
+    lines.push(String::new());
+
+    // Agent Summary
+    if let Some(ref summary) = report.agent_summary {
+        lines.push("───────────────────────────────────────────────────────".to_string());
+        lines.push("  AI ANALYSIS SUMMARY                                 ".to_string());
+        lines.push("───────────────────────────────────────────────────────".to_string());
+        lines.push(summary.clone());
+        lines.push(String::new());
+    }
+
+    // Per-service results
+    let definitions = services::get_all_definitions();
+    let def_map: HashMap<String, &crate::types::ServiceDefinition> =
+        definitions.iter().map(|d| (d.id.clone(), d)).collect();
+
+    for result in &report.results {
+        let service_name = def_map
+            .get(&result.service_id)
+            .map(|d| d.name.as_str())
+            .unwrap_or(&result.service_id);
+
+        lines.push("───────────────────────────────────────────────────────".to_string());
+        lines.push(format!(
+            "  {} — {}",
+            service_name,
+            if result.success { "PASSED" } else { "FAILED" }
+        ));
+        lines.push(format!(
+            "  Duration: {:.1}s",
+            result.duration_ms as f64 / 1000.0
+        ));
+        lines.push("───────────────────────────────────────────────────────".to_string());
+
+        if let Some(ref err) = result.error {
+            lines.push(format!("  ERROR: {}", err));
+        }
+
+        for finding in &result.findings {
+            let sev = match finding.severity {
+                FindingSeverity::Info => "INFO",
+                FindingSeverity::Success => "OK",
+                FindingSeverity::Warning => "WARN",
+                FindingSeverity::Error => "ERROR",
+                FindingSeverity::Critical => "CRITICAL",
+            };
+            lines.push(format!("  [{}] {}", sev, finding.title));
+            if !finding.description.is_empty() {
+                lines.push(format!("         {}", finding.description));
+            }
+            if let Some(ref rec) = finding.recommendation {
+                lines.push(format!("         → {}", rec));
+            }
+        }
+
+        if let Some(ref analysis) = result.agent_analysis {
+            lines.push(String::new());
+            lines.push(format!("  AI Analysis: {}", analysis));
+        }
+
+        lines.push(String::new());
+    }
+
+    // Footer
+    lines.push("═══════════════════════════════════════════════════════".to_string());
+    lines.push(format!(
+        "Generated by RustService AI Agent — {}",
+        Utc::now().to_rfc3339()
+    ));
+    lines.push("═══════════════════════════════════════════════════════".to_string());
+
+    let content = lines.join("\n");
+
+    // Ensure parent directory exists
+    if let Some(parent) = pdf_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {}", e))?;
+    }
+
+    // Write as a text-based report file (portable across all systems)
+    fs::write(&pdf_path, &content).map_err(|e| format!("Failed to write report: {}", e))?;
+
+    Ok(pdf_path.to_string_lossy().to_string())
 }

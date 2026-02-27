@@ -88,6 +88,7 @@ impl Service for BatteryReportService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -125,6 +126,7 @@ impl Service for BatteryReportService {
                 duration_ms: start.elapsed().as_millis() as u64,
                 findings,
                 logs,
+                agent_analysis: None,
             };
         }
 
@@ -151,6 +153,7 @@ impl Service for BatteryReportService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -160,13 +163,13 @@ impl Service for BatteryReportService {
         let parsed = parse_battery_html(&html_content);
 
         // Calculate health percentage
-        let health_percent = if parsed.design_capacity_mwh > 0 && parsed.full_charge_capacity_mwh > 0
-        {
-            (parsed.full_charge_capacity_mwh as f64 / parsed.design_capacity_mwh as f64 * 100.0)
-                .min(100.0)
-        } else {
-            0.0
-        };
+        let health_percent =
+            if parsed.design_capacity_mwh > 0 && parsed.full_charge_capacity_mwh > 0 {
+                (parsed.full_charge_capacity_mwh as f64 / parsed.design_capacity_mwh as f64 * 100.0)
+                    .min(100.0)
+            } else {
+                0.0
+            };
 
         emit_log(
             &format!(
@@ -195,7 +198,10 @@ impl Service for BatteryReportService {
         } else if health_percent > 0.0 {
             (
                 FindingSeverity::Error,
-                format!("Battery Health: {:.1}% — Replace Recommended", health_percent),
+                format!(
+                    "Battery Health: {:.1}% — Replace Recommended",
+                    health_percent
+                ),
             )
         } else {
             (
@@ -216,9 +222,7 @@ impl Service for BatteryReportService {
         );
 
         let recommendation = if health_percent < 50.0 && health_percent > 0.0 {
-            Some(
-                "Battery has significantly degraded. Consider replacing the battery.".to_string(),
-            )
+            Some("Battery has significantly degraded. Consider replacing the battery.".to_string())
         } else if health_percent < 80.0 && health_percent > 0.0 {
             Some("Battery is showing wear. Monitor capacity over time.".to_string())
         } else {
@@ -268,6 +272,7 @@ impl Service for BatteryReportService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }
@@ -307,11 +312,7 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
     // powercfg /batteryreport output wraps lines at ~80 columns, which can split
     // fields like "FULL CHARGE CAPACITY" across two lines. Normalizing first avoids
     // all line-boundary parsing issues.
-    let normalized = html
-        .lines()
-        .map(|l| l.trim())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let normalized = html.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ");
 
     // --- Parse the "Installed batteries" table for battery metadata ---
     // The table has rows like:
@@ -349,8 +350,7 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
                         report.full_charge_capacity_mwh = val;
                     }
                 } else if label.contains("CYCLE COUNT") && report.cycle_count.is_none() {
-                    let num_str: String =
-                        value.chars().filter(|c| c.is_ascii_digit()).collect();
+                    let num_str: String = value.chars().filter(|c| c.is_ascii_digit()).collect();
                     if let Ok(val) = num_str.parse::<u32>() {
                         report.cycle_count = Some(val);
                     }

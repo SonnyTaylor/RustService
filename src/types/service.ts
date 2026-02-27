@@ -148,10 +148,12 @@ export interface ServiceResult {
   findings: ServiceFinding[];
   /** Log output from the service */
   logs: string[];
+  /** Agent-generated analysis for this service result */
+  agentAnalysis?: string;
 }
 
 /** Status of a service run */
-export type ServiceRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ServiceRunStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
 /** A complete service run report */
 export interface ServiceReport {
@@ -175,6 +177,12 @@ export interface ServiceReport {
   technicianName?: string;
   /** Customer name (business mode) */
   customerName?: string;
+  /** Whether this run was initiated by the AI agent */
+  agentInitiated?: boolean;
+  /** Agent-generated executive summary */
+  agentSummary?: string;
+  /** Agent-computed health score (0-100) */
+  healthScore?: number;
 }
 
 // =============================================================================
@@ -185,6 +193,8 @@ export interface ServiceReport {
 export interface ServiceRunState {
   /** Whether a service run is currently active */
   isRunning: boolean;
+  /** Whether the run is currently paused (agent intervention) */
+  isPaused: boolean;
   /** Current report being generated */
   currentReport?: ServiceReport;
 }
@@ -225,7 +235,45 @@ export const SEVERITY_INFO: Record<FindingSeverity, { label: string; color: stri
 export const STATUS_INFO: Record<ServiceRunStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: 'gray' },
   running: { label: 'Running', color: 'blue' },
+  paused: { label: 'Paused', color: 'orange' },
   completed: { label: 'Completed', color: 'green' },
   failed: { label: 'Failed', color: 'red' },
   cancelled: { label: 'Cancelled', color: 'yellow' },
 };
+
+// =============================================================================
+// Report Statistics
+// =============================================================================
+
+/** Finding counts grouped by severity */
+export interface FindingSeverityCounts {
+  info: number;
+  success: number;
+  warning: number;
+  error: number;
+  critical: number;
+}
+
+/** Computed statistics for a service report */
+export interface ReportStatistics {
+  /** Total number of services run */
+  totalServices: number;
+  /** Number that succeeded */
+  passed: number;
+  /** Number that failed */
+  failed: number;
+  /** Total duration in ms */
+  totalDurationMs: number;
+  /** Average per-service duration in ms */
+  avgDurationMs: number;
+  /** Slowest service [id, durationMs] */
+  slowestService?: [string, number];
+  /** Fastest service [id, durationMs] */
+  fastestService?: [string, number];
+  /** Finding counts by severity */
+  findingsBySeverity: FindingSeverityCounts;
+  /** Total number of findings */
+  totalFindings: number;
+  /** Computed health score 0-100 */
+  healthScore: number;
+}

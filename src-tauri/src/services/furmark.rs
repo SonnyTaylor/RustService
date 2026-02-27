@@ -112,6 +112,7 @@ impl Service for FurmarkService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -127,6 +128,7 @@ impl Service for FurmarkService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -203,6 +205,7 @@ impl Service for FurmarkService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -240,6 +243,7 @@ impl Service for FurmarkService {
                 duration_ms: start.elapsed().as_millis() as u64,
                 findings,
                 logs,
+                agent_analysis: None,
             };
         }
 
@@ -350,6 +354,7 @@ impl Service for FurmarkService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

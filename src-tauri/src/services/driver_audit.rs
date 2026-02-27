@@ -39,9 +39,7 @@ impl Service for DriverAuditService {
                 min: None,
                 max: None,
                 options: None,
-                description: Some(
-                    "Show all drivers, not just problematic ones".to_string(),
-                ),
+                description: Some("Show all drivers, not just problematic ones".to_string()),
             }],
             icon: "cpu".to_string(),
         }
@@ -98,6 +96,7 @@ impl Service for DriverAuditService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -127,11 +126,7 @@ impl Service for DriverAuditService {
         let stopped: Vec<&DriverInfo> = drivers.iter().filter(|d| d.state == "Stopped").collect();
         let problem: Vec<&DriverInfo> = drivers
             .iter()
-            .filter(|d| {
-                d.status != "OK"
-                    || d.state == "Degraded"
-                    || d.state == "Unknown"
-            })
+            .filter(|d| d.status != "OK" || d.state == "Degraded" || d.state == "Unknown")
             .collect();
 
         emit_log(
@@ -164,10 +159,7 @@ impl Service for DriverAuditService {
 
         // Build driver data for renderer
         let driver_data: Vec<serde_json::Value> = if show_all {
-            drivers
-                .iter()
-                .map(|d| driver_to_json(d))
-                .collect()
+            drivers.iter().map(|d| driver_to_json(d)).collect()
         } else {
             // Only include problematic + stopped (useful) drivers
             drivers
@@ -229,6 +221,7 @@ impl Service for DriverAuditService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }
@@ -308,9 +301,7 @@ fn parse_driverquery_csv(csv_text: &str) -> Vec<DriverInfo> {
 
 fn find_column(header: &[String], names: &[&str]) -> Option<usize> {
     for name in names {
-        if let Some(idx) = header.iter().position(|h| {
-            h.eq_ignore_ascii_case(name)
-        }) {
+        if let Some(idx) = header.iter().position(|h| h.eq_ignore_ascii_case(name)) {
             return Some(idx);
         }
     }

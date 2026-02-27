@@ -20,6 +20,8 @@ import {
   Printer,
   Users,
   ChevronRight,
+  Bot,
+  Heart,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -425,7 +427,7 @@ export function ServiceReportView({
       {/* Summary Card */}
       <Card className="bg-gradient-to-br from-card to-muted/30 border-2">
         <CardContent className="pt-6">
-          <div className="grid grid-cols-4 gap-4 text-center">
+          <div className={`grid gap-4 text-center ${report.healthScore != null ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <div>
               <p className="text-3xl font-bold">{totalCount}</p>
               <p className="text-sm text-muted-foreground">Services</p>
@@ -442,9 +444,39 @@ export function ServiceReportView({
               <p className="text-3xl font-bold">{totalDuration}s</p>
               <p className="text-sm text-muted-foreground">Duration</p>
             </div>
+            {report.healthScore != null && (
+              <div>
+                <p className={`text-3xl font-bold ${
+                  report.healthScore >= 80 ? 'text-green-500' :
+                  report.healthScore >= 50 ? 'text-yellow-500' : 'text-red-500'
+                }`}>
+                  {report.healthScore}
+                </p>
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                  <Heart className="h-3 w-3" /> Health
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Agent Summary */}
+      {report.agentSummary && (
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 rounded-md bg-blue-500/10">
+                <Bot className="h-4 w-4 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-500 mb-1">AI Analysis Summary</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{report.agentSummary}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Findings by Service - Use custom renderer if available */}
       {report.results.map((result) => {
@@ -511,6 +543,17 @@ export function ServiceReportView({
               {result.findings.length === 0 && (
                 <p className="text-sm text-muted-foreground italic py-2">No findings</p>
               )}
+              {result.agentAnalysis && (
+                <div className="mt-3 px-3 py-2 rounded-lg border border-blue-500/20 bg-blue-500/5">
+                  <div className="flex items-start gap-2">
+                    <Bot className="h-4 w-4 mt-0.5 text-blue-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-blue-500 mb-0.5">AI Analysis</p>
+                      <p className="text-sm text-muted-foreground">{result.agentAnalysis}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         );
@@ -533,6 +576,11 @@ export function ServiceReportView({
               <XCircle className="h-4 w-4 text-red-500" />
             )}
             <span className="font-semibold">{headerTitle}</span>
+            {report.agentInitiated && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-500 flex items-center gap-1">
+                <Bot className="h-3 w-3" /> Agent
+              </span>
+            )}
             <span className="text-xs text-muted-foreground">
               {successCount}/{totalCount} in {totalDuration}s
             </span>

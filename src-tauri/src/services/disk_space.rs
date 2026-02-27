@@ -180,6 +180,7 @@ impl Service for DiskSpaceService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { streamChat } from '@/lib/agent-chat';
 import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
 import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, type MCPManagerState } from '@/lib/mcp-manager';
@@ -14,9 +15,11 @@ import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage, type MessagePart } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
 import { ConversationSelector } from '@/components/agent/ConversationSelector';
+import { ServiceRunMonitor } from '@/components/agent/ServiceRunMonitor';
 import type { ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages } from '@/types/agent';
 import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
 import type { FileAttachment } from '@/types/file-attachment';
+import type { ServiceReport, ServiceRunState as ServiceRunStateType, ServiceResult } from '@/types/service';
 import {
   Bot,
   Send,
@@ -134,6 +137,16 @@ export function AgentPage() {
   const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const mcpServersKeyRef = useRef<string>('');
+
+  // Service supervision state
+  const [activeServiceRun, setActiveServiceRun] = useState<{
+    reportId: string;
+    startedAt: string;
+    lastResultCount: number;
+    assistantMsgId: string | null;
+  } | null>(null);
+  const activeServiceRunRef = useRef(activeServiceRun);
+  activeServiceRunRef.current = activeServiceRun;
   const [mcpState, setMcpState] = useState<MCPManagerState>({
     servers: [],
     toolCount: 0,
@@ -365,6 +378,92 @@ export function AgentPage() {
     }
   }, [currentConversationId, isConfigured, startNewConversation]);
 
+  // Service supervision: listen for service events and inject updates into agent loop
+  useEffect(() => {
+    if (!activeServiceRun) return;
+
+    const unlisteners: Promise<UnlistenFn>[] = [];
+
+    // Listen for state changes (service completed, progress updates)
+    unlisteners.push(
+      listen<ServiceRunStateType>('service-state-changed', (event) => {
+        const run = activeServiceRunRef.current;
+        if (!run) return;
+
+        const state = event.payload;
+        const report = state.currentReport;
+        if (!report) return;
+
+        // Check if new results have appeared since last check
+        const newResultCount = report.results.length;
+        if (newResultCount > run.lastResultCount) {
+          // Get the new results
+          const newResults = report.results.slice(run.lastResultCount);
+          setActiveServiceRun(prev => prev ? { ...prev, lastResultCount: newResultCount } : null);
+
+          // Inject each new result as an update into the agent conversation
+          for (const result of newResults) {
+            const updateContent = formatServiceResultForAgent(result);
+            const updateMsg: CoreMessage = {
+              role: 'user',
+              content: `[SERVICE UPDATE] ${result.serviceId} completed:\n${updateContent}`,
+            };
+            const history = [...agentHistoryRef.current, updateMsg];
+            agentHistoryRef.current = history;
+
+            // Wake up the agent to react to this update
+            runAgentLoop(history, {
+              allowAutoContinue: true,
+              reuseMessageId: run.assistantMsgId,
+            });
+          }
+        }
+      })
+    );
+
+    // Listen for run completion
+    unlisteners.push(
+      listen<ServiceReport>('service-completed', (event) => {
+        const run = activeServiceRunRef.current;
+        if (!run) return;
+
+        const report = event.payload;
+        const summaryMsg: CoreMessage = {
+          role: 'user',
+          content: `[SERVICE RUN COMPLETE] Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${report.results.length}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`,
+        };
+        const history = [...agentHistoryRef.current, summaryMsg];
+        agentHistoryRef.current = history;
+        setActiveServiceRun(null);
+
+        // Wake agent for post-run review
+        runAgentLoop(history, { allowAutoContinue: true });
+      })
+    );
+
+    return () => {
+      unlisteners.forEach(p => p.then(fn => fn()));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeServiceRun?.reportId]);
+
+  /** Format a service result into a concise text summary for the agent */
+  function formatServiceResultForAgent(result: ServiceResult): string {
+    const lines: string[] = [];
+    lines.push(`Status: ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    if (result.error) lines.push(`Error: ${result.error}`);
+    lines.push(`Duration: ${(result.durationMs / 1000).toFixed(1)}s`);
+    lines.push(`Findings (${result.findings.length}):`);
+    for (const f of result.findings.slice(0, 10)) {
+      lines.push(`  [${f.severity.toUpperCase()}] ${f.title}: ${f.description}`);
+      if (f.recommendation) lines.push(`    → ${f.recommendation}`);
+    }
+    if (result.findings.length > 10) {
+      lines.push(`  ... and ${result.findings.length - 10} more findings`);
+    }
+    return lines.join('\n');
+  }
+
   /**
    * Validate tool call arguments and return error if invalid
    */
@@ -450,6 +549,24 @@ export function AgentPage() {
       case 'glob': return 'searched';
       case 'search_web': return 'web_search';
       case 'get_system_info': return 'get_system_info';
+      // Service tools
+      case 'run_service_queue': return 'ran_command';
+      case 'pause_service': return 'ran_command';
+      case 'resume_service': return 'ran_command';
+      case 'cancel_service': return 'ran_command';
+      case 'list_services': return 'list_dir';
+      case 'list_service_presets': return 'list_dir';
+      case 'check_service_requirements': return 'searched';
+      case 'get_service_status': return 'get_system_info';
+      case 'get_service_report': return 'read_file';
+      case 'get_report_statistics': return 'get_system_info';
+      case 'edit_finding': return 'edit_file';
+      case 'add_finding': return 'write_file';
+      case 'remove_finding': return 'edit_file';
+      case 'set_report_summary': return 'write_file';
+      case 'set_service_analysis': return 'write_file';
+      case 'set_health_score': return 'write_file';
+      case 'generate_report_pdf': return 'generate_file';
       default: return 'ran_command';
     }
   };
@@ -634,6 +751,50 @@ export function AgentPage() {
             result = `Copied ${args.src} to ${args.dest}`;
             break;
           }
+          case 'run_service_queue': {
+            const queue = (args.queue as Array<{ service_id: string; enabled: boolean; order: number; options?: Record<string, unknown> }>)?.map(q => ({
+              serviceId: q.service_id,
+              enabled: q.enabled,
+              order: q.order,
+              options: q.options || {},
+            })) || [];
+            // Fire-and-forget: start the run, don't await completion
+            const reportPromise = invoke<ServiceReport>('run_services', {
+              queue,
+              technician_name: args.technician_name ? String(args.technician_name) : null,
+              customer_name: args.customer_name ? String(args.customer_name) : null,
+            });
+            // Get the report ID from state immediately
+            await new Promise(r => setTimeout(r, 500));
+            const state = await invoke<ServiceRunStateType>('get_service_run_state');
+            const reportId = state.currentReport?.id || 'unknown';
+            setActiveServiceRun({
+              reportId,
+              startedAt: new Date().toISOString(),
+              lastResultCount: 0,
+              assistantMsgId: null,
+            });
+            // Don't await the full run — let events handle progress
+            reportPromise.catch(err => console.error('[Agent] Service run error:', err));
+            result = JSON.stringify({ status: 'started', report_id: reportId, message: `Service run started with ${queue.filter(q => q.enabled).length} services` });
+            break;
+          }
+          case 'pause_service': {
+            await invoke('pause_service_run');
+            result = JSON.stringify({ status: 'success', message: 'Service run paused' });
+            break;
+          }
+          case 'resume_service': {
+            await invoke('resume_service_run');
+            result = JSON.stringify({ status: 'success', message: 'Service run resumed' });
+            break;
+          }
+          case 'cancel_service': {
+            await invoke('cancel_service_run');
+            setActiveServiceRun(null);
+            result = JSON.stringify({ status: 'success', message: 'Service run cancelled' });
+            break;
+          }
           default:
             result = `Unknown HITL tool: ${toolName}`;
             isError = true;
@@ -717,7 +878,8 @@ export function AgentPage() {
         messages: currentHistory,
         settings: agentSettings!,
         tools,
-        abortSignal: abortControllerRef.current.signal
+        abortSignal: abortControllerRef.current.signal,
+        maxSteps: activeServiceRunRef.current ? 30 : 10,
       });
 
       // Track accumulated state for this turn — all in ONE message
@@ -1037,6 +1199,47 @@ export function AgentPage() {
               dest: String(args.dest || '')
             });
             result = `Successfully copied ${args.src} to ${args.dest}`;
+            break;
+          }
+          case 'run_service_queue': {
+            const queue = (args.queue as Array<{ service_id: string; enabled: boolean; order: number; options?: Record<string, unknown> }>)?.map(q => ({
+              serviceId: q.service_id,
+              enabled: q.enabled,
+              order: q.order,
+              options: q.options || {},
+            })) || [];
+            const reportPromise = invoke<ServiceReport>('run_services', {
+              queue,
+              technician_name: args.technician_name ? String(args.technician_name) : null,
+              customer_name: args.customer_name ? String(args.customer_name) : null,
+            });
+            await new Promise(r => setTimeout(r, 500));
+            const state = await invoke<ServiceRunStateType>('get_service_run_state');
+            const reportId = state.currentReport?.id || 'unknown';
+            setActiveServiceRun({
+              reportId,
+              startedAt: new Date().toISOString(),
+              lastResultCount: 0,
+              assistantMsgId: findMessageIdForActivity(activityId) || null,
+            });
+            reportPromise.catch(err => console.error('[Agent] Service run error:', err));
+            result = JSON.stringify({ status: 'started', report_id: reportId, message: `Service run started with ${queue.filter(q => q.enabled).length} services` });
+            break;
+          }
+          case 'pause_service': {
+            await invoke('pause_service_run');
+            result = JSON.stringify({ status: 'success', message: 'Service run paused' });
+            break;
+          }
+          case 'resume_service': {
+            await invoke('resume_service_run');
+            result = JSON.stringify({ status: 'success', message: 'Service run resumed' });
+            break;
+          }
+          case 'cancel_service': {
+            await invoke('cancel_service_run');
+            setActiveServiceRun(null);
+            result = JSON.stringify({ status: 'success', message: 'Service run cancelled' });
             break;
           }
           default: {
@@ -1381,6 +1584,24 @@ export function AgentPage() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
+              )}
+              {/* Service Run Monitor */}
+              {activeServiceRun && (
+                <ServiceRunMonitor
+                  reportId={activeServiceRun.reportId}
+                  onPause={async () => {
+                    try { await invoke('pause_service_run'); } catch (e) { console.error(e); }
+                  }}
+                  onResume={async () => {
+                    try { await invoke('resume_service_run'); } catch (e) { console.error(e); }
+                  }}
+                  onCancel={async () => {
+                    try {
+                      await invoke('cancel_service_run');
+                      setActiveServiceRun(null);
+                    } catch (e) { console.error(e); }
+                  }}
+                />
               )}
               {/* Invisible element to scroll to */}
               <div ref={messagesEndRef} />

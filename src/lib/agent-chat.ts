@@ -132,6 +132,8 @@ export interface StreamChatOptions {
   tools?: ToolSet;
   systemPrompt?: string;
   abortSignal?: AbortSignal;
+  /** Max tool steps before stopping (default: 10, use higher for service supervision) */
+  maxSteps?: number;
 }
 
 export interface StreamChatResult {
@@ -252,7 +254,49 @@ Get-ChildItem "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Measure-Objec
 - If a command fails with a syntax error, FIX IT and retry immediately
 - When showing file listings or system data, format as a clean markdown table
 - Never apologize excessively - just fix the issue and move on
-- NEVER run more than ONE tool call per response step`;
+- NEVER run more than ONE tool call per response step
+
+## SERVICE AUTOMATION
+
+You can run diagnostic and maintenance services on the system. Services are modular tools (disk checks, malware scans, system file repair, etc.) that execute sequentially in a queue.
+
+### Running Services
+1. **Discover**: Use \`list_services\` to see available services and \`list_service_presets\` for preset bundles
+2. **Validate**: Use \`check_service_requirements\` to verify required programs are installed
+3. **Propose**: Describe the queue you'll run and WHY each service is included
+4. **Execute**: Use \`run_service_queue\` to start the run (user must approve)
+5. **Supervise**: You'll receive updates as each service completes — monitor for issues
+6. **Intervene**: If a service fails or reports critical findings, use \`pause_service\` and investigate
+7. **Report**: After completion, review all findings, write analysis, and generate a PDF
+
+### Supervision Protocol
+When monitoring a running service queue:
+- After each service completes, you'll receive its results as a service update
+- Briefly acknowledge each result (1-2 sentences)
+- If severity is **error** or **critical**: explain the issue, consider pausing to investigate
+- If a service fails entirely: note it and decide whether remaining services should continue
+- After all services complete: do a comprehensive review
+
+### Report Writing
+After a service run completes:
+1. Call \`get_report_statistics\` for an overview
+2. Review each service's findings with \`get_service_report\`
+3. Write per-service analysis with \`set_service_analysis\` (plain language, actionable)
+4. Edit findings if needed with \`edit_finding\` (make customer-friendly)
+5. Write an executive summary with \`set_report_summary\`
+6. Set a health score with \`set_health_score\` (0-100)
+7. Generate the final report with \`generate_report_pdf\`
+8. Present the PDF path to the user with key findings summarized
+
+### Symptom-to-Service Mapping
+When users describe problems, map their symptoms to appropriate services:
+- **Slow/laggy**: disk-space, bleachbit, sfc, dism, drivecleanup
+- **Crashes/BSOD**: chkdsk, sfc, dism, driver-audit, smartctl
+- **Virus/malware**: kvrt-scan, adwcleaner, stinger, bleachbit
+- **Network issues**: ping-test, speedtest, network-config
+- **Battery problems**: battery-info, battery-report, energy-report
+- **Disk issues**: disk-space, smartctl, chkdsk, bleachbit, drivecleanup
+- **General checkup**: ping-test, disk-space, sfc, dism, driver-audit, smartctl, network-config`;
 
 /**
  * Stream a chat response from the AI provider
@@ -260,7 +304,7 @@ Get-ChildItem "$env:TEMP" -Recurse -ErrorAction SilentlyContinue | Measure-Objec
 export async function streamChat(
   options: StreamChatOptions,
 ): Promise<StreamChatResult> {
-  const { messages, settings, tools, abortSignal } = options;
+  const { messages, settings, tools, abortSignal, maxSteps = 10 } = options;
 
   let { systemPrompt } = options;
   if (!systemPrompt)
@@ -300,9 +344,9 @@ export async function streamChat(
     messages: sanitizedMessages,
     // Only pass tools if there are any defined - some models don't support tools
     ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
-    // Enable multi-step tool calling - stop after 10 steps max
-    // This allows the model to call tools, get results, and continue generating
-    stopWhen: stepCountIs(10),
+    // Enable multi-step tool calling - configurable step limit
+    // Higher limit used during service supervision (30 steps)
+    stopWhen: stepCountIs(maxSteps),
     abortSignal,
   });
 

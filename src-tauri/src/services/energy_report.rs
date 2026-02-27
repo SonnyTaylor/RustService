@@ -27,8 +27,9 @@ impl Service for EnergyReportService {
         ServiceDefinition {
             id: "energy-report".to_string(),
             name: "Energy Report".to_string(),
-            description: "Analyze power efficiency and identify battery drain issues using powercfg"
-                .to_string(),
+            description:
+                "Analyze power efficiency and identify battery drain issues using powercfg"
+                    .to_string(),
             category: "diagnostics".to_string(),
             estimated_duration_secs: 75, // duration + processing
             required_programs: vec![],   // Built-in Windows tool
@@ -77,10 +78,7 @@ impl Service for EnergyReportService {
         let output_path_str = output_path.to_string_lossy().to_string();
 
         emit_log(
-            &format!(
-                "Starting energy efficiency trace ({} seconds)...",
-                duration
-            ),
+            &format!("Starting energy efficiency trace ({} seconds)...", duration),
             &mut logs,
             app,
         );
@@ -125,6 +123,7 @@ impl Service for EnergyReportService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -170,6 +169,7 @@ impl Service for EnergyReportService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -254,9 +254,7 @@ impl Service for EnergyReportService {
             title: overall_title,
             description: overall_description,
             recommendation: if !parsed.errors.is_empty() {
-                Some(
-                    "Review the power errors and adjust power settings accordingly.".to_string(),
-                )
+                Some("Review the power errors and adjust power settings accordingly.".to_string())
             } else {
                 None
             },
@@ -293,6 +291,7 @@ impl Service for EnergyReportService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

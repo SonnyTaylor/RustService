@@ -118,6 +118,7 @@ $apps | ConvertTo-Json -Depth 3
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -302,6 +303,7 @@ $apps | ConvertTo-Json -Depth 3
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

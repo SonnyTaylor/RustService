@@ -69,6 +69,7 @@ impl Service for SmartctlService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -79,6 +80,7 @@ impl Service for SmartctlService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -269,6 +271,7 @@ impl Service for SmartctlService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }
