@@ -24,7 +24,15 @@ export type ActivityType =
   | 'get_system_info'
   | 'mcp_tool'
   | 'generate_file'
-  | 'attach_files';
+  | 'attach_files'
+  | 'service_queue_started'
+  | 'service_paused'
+  | 'service_resumed'
+  | 'service_cancelled'
+  | 'service_query'
+  | 'service_report'
+  | 'service_edit'
+  | 'service_pdf';
 
 /**
  * Status of an activity
@@ -210,6 +218,78 @@ export interface AttachFilesActivity extends BaseActivity {
 }
 
 /**
+ * Service queue started activity (run_service_queue)
+ */
+export interface ServiceQueueStartedActivity extends BaseActivity {
+  type: 'service_queue_started';
+  serviceCount: number;
+  reportId?: string;
+  reason?: string;
+}
+
+/**
+ * Service paused activity (pause_service)
+ */
+export interface ServicePausedActivity extends BaseActivity {
+  type: 'service_paused';
+  reason?: string;
+}
+
+/**
+ * Service resumed activity (resume_service)
+ */
+export interface ServiceResumedActivity extends BaseActivity {
+  type: 'service_resumed';
+  reason?: string;
+}
+
+/**
+ * Service cancelled activity (cancel_service)
+ */
+export interface ServiceCancelledActivity extends BaseActivity {
+  type: 'service_cancelled';
+  reason?: string;
+}
+
+/**
+ * Service query activity (list_services, list_service_presets, check_service_requirements, get_service_status)
+ */
+export interface ServiceQueryActivity extends BaseActivity {
+  type: 'service_query';
+  queryType: string;
+  detail?: string;
+}
+
+/**
+ * Service report activity (get_service_report, get_report_statistics)
+ */
+export interface ServiceReportActivity extends BaseActivity {
+  type: 'service_report';
+  reportAction: string;
+  reportId?: string;
+}
+
+/**
+ * Service edit activity (edit_finding, add_finding, remove_finding, set_report_summary, set_service_analysis, set_health_score)
+ */
+export interface ServiceEditActivity extends BaseActivity {
+  type: 'service_edit';
+  editAction: string;
+  detail?: string;
+}
+
+/**
+ * Service PDF generation activity (generate_report_pdf)
+ */
+export interface ServicePdfActivity extends BaseActivity {
+  type: 'service_pdf';
+  reportId?: string;
+  filename?: string;
+  path?: string;
+  size?: number;
+}
+
+/**
  * Union type of all activities
  */
 export type AgentActivity =
@@ -229,13 +309,25 @@ export type AgentActivity =
   | GetSystemInfoActivity
   | McpToolActivity
   | GenerateFileActivity
-  | AttachFilesActivity;
+  | AttachFilesActivity
+  | ServiceQueueStartedActivity
+  | ServicePausedActivity
+  | ServiceResumedActivity
+  | ServiceCancelledActivity
+  | ServiceQueryActivity
+  | ServiceReportActivity
+  | ServiceEditActivity
+  | ServicePdfActivity;
 
 /**
  * Helper to check if an activity requires approval
  */
 export function isHITLActivity(activity: AgentActivity): boolean {
-  return ['ran_command', 'edit_file', 'write_file', 'generate_file', 'move_file', 'copy_file'].includes(activity.type);
+  return [
+    'ran_command', 'edit_file', 'write_file', 'generate_file', 'move_file', 'copy_file',
+    'service_queue_started', 'service_paused', 'service_resumed', 'service_cancelled',
+    'service_pdf',
+  ].includes(activity.type);
 }
 
 /**

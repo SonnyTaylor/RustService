@@ -11,6 +11,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { streamChat } from '@/lib/agent-chat';
 import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
 import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, type MCPManagerState } from '@/lib/mcp-manager';
+import { AgentLoopQueue, type LoopRequest } from '@/lib/agent-loop-queue';
+import { AgentHeartbeat, type HeartbeatStatus } from '@/lib/agent-heartbeat';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage, type MessagePart } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
@@ -35,7 +37,9 @@ import {
   PanelRightClose,
   PanelRight,
   Paperclip,
-  X
+  X,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -160,6 +164,25 @@ export function AgentPage() {
   const isFirstMessageRef = useRef(true);
   const messagesRef = useRef<Message[]>([]);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
+
+  // Agent loop queue — ensures only one loop runs at a time
+  const loopQueueRef = useRef<AgentLoopQueue>(null!);
+  if (!loopQueueRef.current) {
+    // Placeholder fn, updated below once runAgentLoop is defined
+    loopQueueRef.current = new AgentLoopQueue(async () => {});
+  }
+
+  // Agent heartbeat — detects stalled loops
+  const heartbeatRef = useRef<AgentHeartbeat>(null!);
+  const [heartbeatStatus, setHeartbeatStatus] = useState<HeartbeatStatus>('idle');
+  if (!heartbeatRef.current) {
+    heartbeatRef.current = new AgentHeartbeat();
+    heartbeatRef.current.onStatusChange(setHeartbeatStatus);
+  }
+
+  // Multi-HITL resolution tracking
+  const pendingHITLCallsRef = useRef<Map<string, Set<string>>>(new Map());
+  const hitlToolResultsRef = useRef<Map<string, CoreMessage[]>>(new Map());
 
   const agentSettings = settings.agent;
   const currentProvider = agentSettings?.provider || 'openai';
@@ -378,7 +401,7 @@ export function AgentPage() {
     }
   }, [currentConversationId, isConfigured, startNewConversation]);
 
-  // Service supervision: listen for service events and inject updates into agent loop
+  // Service supervision: listen for service events and inject updates via queue
   useEffect(() => {
     if (!activeServiceRun) return;
 
@@ -397,26 +420,30 @@ export function AgentPage() {
         // Check if new results have appeared since last check
         const newResultCount = report.results.length;
         if (newResultCount > run.lastResultCount) {
-          // Get the new results
           const newResults = report.results.slice(run.lastResultCount);
           setActiveServiceRun(prev => prev ? { ...prev, lastResultCount: newResultCount } : null);
 
-          // Inject each new result as an update into the agent conversation
-          for (const result of newResults) {
-            const updateContent = formatServiceResultForAgent(result);
-            const updateMsg: CoreMessage = {
-              role: 'user',
-              content: `[SERVICE UPDATE] ${result.serviceId} completed:\n${updateContent}`,
-            };
-            const history = [...agentHistoryRef.current, updateMsg];
-            agentHistoryRef.current = history;
+          // Combine ALL new results into a single update message
+          const combinedContent = newResults
+            .map(r => `${r.serviceId} completed:\n${formatServiceResultForAgent(r)}`)
+            .join('\n\n---\n\n');
 
-            // Wake up the agent to react to this update
-            runAgentLoop(history, {
+          const updateMsg: CoreMessage = {
+            role: 'user',
+            content: `[SERVICE UPDATE — ${newResults.length} service(s) completed]\n\n${combinedContent}`,
+          };
+          const history = [...agentHistoryRef.current, updateMsg];
+          agentHistoryRef.current = history;
+
+          // Route through queue instead of calling runAgentLoop directly
+          loopQueueRef.current.enqueue({
+            history,
+            options: {
               allowAutoContinue: true,
               reuseMessageId: run.assistantMsgId,
-            });
-          }
+            },
+            serviceUpdate: { content: combinedContent },
+          });
         }
       })
     );
@@ -428,16 +455,20 @@ export function AgentPage() {
         if (!run) return;
 
         const report = event.payload;
+        const summaryContent = `Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${report.results.length}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`;
         const summaryMsg: CoreMessage = {
           role: 'user',
-          content: `[SERVICE RUN COMPLETE] Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${report.results.length}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`,
+          content: `[SERVICE RUN COMPLETE] ${summaryContent}`,
         };
         const history = [...agentHistoryRef.current, summaryMsg];
         agentHistoryRef.current = history;
         setActiveServiceRun(null);
 
-        // Wake agent for post-run review
-        runAgentLoop(history, { allowAutoContinue: true });
+        // Route through queue for post-run review
+        loopQueueRef.current.enqueue({
+          history,
+          options: { allowAutoContinue: true },
+        });
       })
     );
 
@@ -549,24 +580,24 @@ export function AgentPage() {
       case 'glob': return 'searched';
       case 'search_web': return 'web_search';
       case 'get_system_info': return 'get_system_info';
-      // Service tools
-      case 'run_service_queue': return 'ran_command';
-      case 'pause_service': return 'ran_command';
-      case 'resume_service': return 'ran_command';
-      case 'cancel_service': return 'ran_command';
-      case 'list_services': return 'list_dir';
-      case 'list_service_presets': return 'list_dir';
-      case 'check_service_requirements': return 'searched';
-      case 'get_service_status': return 'get_system_info';
-      case 'get_service_report': return 'read_file';
-      case 'get_report_statistics': return 'get_system_info';
-      case 'edit_finding': return 'edit_file';
-      case 'add_finding': return 'write_file';
-      case 'remove_finding': return 'edit_file';
-      case 'set_report_summary': return 'write_file';
-      case 'set_service_analysis': return 'write_file';
-      case 'set_health_score': return 'write_file';
-      case 'generate_report_pdf': return 'generate_file';
+      // Service tools — dedicated activity types
+      case 'run_service_queue': return 'service_queue_started';
+      case 'pause_service': return 'service_paused';
+      case 'resume_service': return 'service_resumed';
+      case 'cancel_service': return 'service_cancelled';
+      case 'list_services': return 'service_query';
+      case 'list_service_presets': return 'service_query';
+      case 'check_service_requirements': return 'service_query';
+      case 'get_service_status': return 'service_query';
+      case 'get_service_report': return 'service_report';
+      case 'get_report_statistics': return 'service_report';
+      case 'edit_finding': return 'service_edit';
+      case 'add_finding': return 'service_edit';
+      case 'remove_finding': return 'service_edit';
+      case 'set_report_summary': return 'service_edit';
+      case 'set_service_analysis': return 'service_edit';
+      case 'set_health_score': return 'service_edit';
+      case 'generate_report_pdf': return 'service_pdf';
       default: return 'ran_command';
     }
   };
@@ -631,6 +662,43 @@ export function AgentPage() {
         return {};
       case 'run_instrument':
         return { command: `Running instrument: ${typeof args.name === 'string' ? args.name : 'unknown'}` };
+      // Service tools
+      case 'run_service_queue': {
+        const queue = Array.isArray(args.queue) ? args.queue : [];
+        return { serviceCount: queue.filter((q: any) => q.enabled !== false).length, reason: typeof args.reason === 'string' ? args.reason : undefined };
+      }
+      case 'pause_service':
+        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
+      case 'resume_service':
+        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
+      case 'cancel_service':
+        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
+      case 'list_services':
+        return { queryType: 'List services' };
+      case 'list_service_presets':
+        return { queryType: 'List presets' };
+      case 'check_service_requirements':
+        return { queryType: 'Check requirements', detail: typeof args.service_id === 'string' ? args.service_id : undefined };
+      case 'get_service_status':
+        return { queryType: 'Service status' };
+      case 'get_service_report':
+        return { reportAction: 'Get report', reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
+      case 'get_report_statistics':
+        return { reportAction: 'Get statistics', reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
+      case 'edit_finding':
+        return { editAction: 'Edit finding', detail: typeof args.title === 'string' ? args.title : undefined };
+      case 'add_finding':
+        return { editAction: 'Add finding', detail: typeof args.title === 'string' ? args.title : undefined };
+      case 'remove_finding':
+        return { editAction: 'Remove finding', detail: typeof args.title === 'string' ? args.title : undefined };
+      case 'set_report_summary':
+        return { editAction: 'Set summary' };
+      case 'set_service_analysis':
+        return { editAction: 'Set analysis', detail: typeof args.service_id === 'string' ? args.service_id : undefined };
+      case 'set_health_score':
+        return { editAction: 'Set health score', detail: typeof args.score === 'number' ? `Score: ${args.score}` : undefined };
+      case 'generate_report_pdf':
+        return { reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
       default:
         if (toolName.startsWith('mcp_')) {
           return { toolName, arguments: stringifyArgs() };
@@ -835,6 +903,7 @@ export function AgentPage() {
     options?: { allowAutoContinue?: boolean; reuseMessageId?: string | null }
   ) => {
     setIsLoading(true);
+    heartbeatRef.current.start();
     abortControllerRef.current = new AbortController();
     const allowAutoContinue = options?.allowAutoContinue ?? true;
 
@@ -900,6 +969,8 @@ export function AgentPage() {
 
       // Process the stream
       for await (const part of result.fullStream) {
+        heartbeatRef.current.ping();
+
         if (abortControllerRef.current?.signal.aborted) {
           break;
         }
@@ -1031,6 +1102,7 @@ export function AgentPage() {
         if (allowAutoContinue && toolResultMessages.length > 0 && !historyTextContent.trim()) {
           await runAgentLoop(baseHistory, { allowAutoContinue: false, reuseMessageId: assistantMsgId });
         } else {
+          heartbeatRef.current.stop();
           setIsLoading(false);
         }
       } else if (approvalMode === 'yolo') {
@@ -1063,6 +1135,12 @@ export function AgentPage() {
         agentHistoryRef.current = newHistory;
         await runAgentLoop(newHistory, { reuseMessageId: assistantMsgId });
       } else {
+        // Multi-HITL: track all pending HITL calls so we only resume after all are resolved
+        const hitlCallIds = new Set(hitlCalls.map(tc => tc.toolCallId));
+        pendingHITLCallsRef.current.set(assistantMsgId, hitlCallIds);
+        hitlToolResultsRef.current.set(assistantMsgId, []);
+
+        heartbeatRef.current.stop();
         setIsLoading(false); // Paused for manual HITL approval
       }
 
@@ -1072,6 +1150,7 @@ export function AgentPage() {
         if (createdNewMessage) {
           setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId));
         }
+        heartbeatRef.current.stop();
         setIsLoading(false);
         return;
       }
@@ -1083,6 +1162,7 @@ export function AgentPage() {
         if (createdNewMessage) {
           setMessages(prev => prev.filter(msg => msg.id !== assistantMsgId || (msg.parts && msg.parts.length > 0)));
         }
+        heartbeatRef.current.stop();
         setIsLoading(false);
         return;
       }
@@ -1093,6 +1173,7 @@ export function AgentPage() {
           ? { ...m, content: m.content + `\n\n*[Error: ${error}]*`, parts: [...(m.parts || []), { type: 'text', content: `\n\n*[Error: ${error}]*` }] }
           : m
       ));
+      heartbeatRef.current.stop();
       setIsLoading(false);
     }
   };
@@ -1100,8 +1181,13 @@ export function AgentPage() {
   // Stop the agentic loop
   const stopAgentLoop = useCallback(() => {
     abortControllerRef.current?.abort();
+    heartbeatRef.current.stop();
+    loopQueueRef.current.clear();
     setIsLoading(false);
   }, []);
+
+  // Keep the queue's run function reference up to date
+  loopQueueRef.current.setRunFn(runAgentLoop);
 
   const handleActivityApprove = async (activityId: string) => {
     // 1. Find the pending tool call in history
@@ -1261,7 +1347,7 @@ export function AgentPage() {
       error: isError ? result : undefined,
     });
 
-    // 5. Update History with Tool Result
+    // 5. Build tool result message
     const toolResultMsg: CoreMessage = {
       role: 'tool',
       content: [{
@@ -1274,11 +1360,34 @@ export function AgentPage() {
       }]
     };
 
-    const newHistory = [...history, toolResultMsg];
-    agentHistoryRef.current = newHistory;
+    // 6. Multi-HITL: accumulate result, only resume when all calls resolved
+    const msgId = findMessageIdForActivity(activityId);
+    const pendingSet = [...pendingHITLCallsRef.current.entries()].find(([, set]) => set.has(activityId));
 
-    // 6. Resume Loop (new assistant message)
-    await runAgentLoop(newHistory, { reuseMessageId: findMessageIdForActivity(activityId) });
+    if (pendingSet) {
+      const [pendingMsgId, callIds] = pendingSet;
+      callIds.delete(activityId);
+      const accumulated = hitlToolResultsRef.current.get(pendingMsgId) || [];
+      accumulated.push(toolResultMsg);
+      hitlToolResultsRef.current.set(pendingMsgId, accumulated);
+
+      if (callIds.size === 0) {
+        // All HITL calls resolved — resume with ALL accumulated results
+        pendingHITLCallsRef.current.delete(pendingMsgId);
+        const allResults = hitlToolResultsRef.current.get(pendingMsgId) || [];
+        hitlToolResultsRef.current.delete(pendingMsgId);
+
+        const newHistory = [...history, ...allResults];
+        agentHistoryRef.current = newHistory;
+        await runAgentLoop(newHistory, { reuseMessageId: msgId });
+      }
+      // else: still waiting for other HITL calls, don't resume yet
+    } else {
+      // No multi-HITL tracking (single call) — resume immediately
+      const newHistory = [...history, toolResultMsg];
+      agentHistoryRef.current = newHistory;
+      await runAgentLoop(newHistory, { reuseMessageId: msgId });
+    }
   };
 
   const handleActivityReject = async (activityId: string) => {
@@ -1306,7 +1415,7 @@ export function AgentPage() {
       error: rejectionMessage,
     });
 
-    // 3. Update History with rejection
+    // 3. Build rejection tool result
     const toolResultMsg: CoreMessage = {
       role: 'tool',
       content: [{
@@ -1317,12 +1426,36 @@ export function AgentPage() {
       }]
     };
 
-    const newHistory = [...history, toolResultMsg];
-    agentHistoryRef.current = newHistory;
+    // 4. Multi-HITL: accumulate result, only resume when all calls resolved
+    const msgId = findMessageIdForActivity(activityId);
+    const pendingSet = [...pendingHITLCallsRef.current.entries()].find(([, set]) => set.has(activityId));
 
-    // 4. Resume Loop so AI can respond to the rejection (new assistant message)
-    setIsLoading(true);
-    await runAgentLoop(newHistory, { reuseMessageId: findMessageIdForActivity(activityId) });
+    if (pendingSet) {
+      const [pendingMsgId, callIds] = pendingSet;
+      callIds.delete(activityId);
+      const accumulated = hitlToolResultsRef.current.get(pendingMsgId) || [];
+      accumulated.push(toolResultMsg);
+      hitlToolResultsRef.current.set(pendingMsgId, accumulated);
+
+      if (callIds.size === 0) {
+        // All HITL calls resolved — resume with ALL accumulated results
+        pendingHITLCallsRef.current.delete(pendingMsgId);
+        const allResults = hitlToolResultsRef.current.get(pendingMsgId) || [];
+        hitlToolResultsRef.current.delete(pendingMsgId);
+
+        const newHistory = [...history, ...allResults];
+        agentHistoryRef.current = newHistory;
+        setIsLoading(true);
+        await runAgentLoop(newHistory, { reuseMessageId: msgId });
+      }
+      // else: still waiting for other HITL calls
+    } else {
+      // No multi-HITL tracking — resume immediately
+      const newHistory = [...history, toolResultMsg];
+      agentHistoryRef.current = newHistory;
+      setIsLoading(true);
+      await runAgentLoop(newHistory, { reuseMessageId: msgId });
+    }
   };
 
 
@@ -1447,6 +1580,10 @@ export function AgentPage() {
 
   const clearChat = async () => {
     abortControllerRef.current?.abort();
+    heartbeatRef.current.stop();
+    loopQueueRef.current.clear();
+    pendingHITLCallsRef.current.clear();
+    hitlToolResultsRef.current.clear();
     setIsLoading(false);
     setMessages([]);
     agentHistoryRef.current = [];
@@ -1501,14 +1638,37 @@ export function AgentPage() {
           <div className="hidden md:block">
             <ApprovalModeIndicator mode={agentSettings?.approvalMode || 'always'} />
           </div>
-          {isLoading && (
-            <Badge variant="outline" className="gap-1.5 text-blue-500 bg-blue-500/10 border-blue-500/30 animate-pulse h-6">
+          {heartbeatStatus === 'stalled' && (
+            <Badge variant="outline" className="gap-1.5 text-destructive bg-destructive/10 border-destructive/30 h-6">
+              <AlertTriangle className="h-3 w-3" />
+              Stalled
+            </Badge>
+          )}
+          {heartbeatStatus === 'stalled' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-chart-4 border-chart-4/30 hover:bg-chart-4/10"
+              onClick={() => {
+                stopAgentLoop();
+                // Force restart with current history
+                const history = agentHistoryRef.current;
+                if (history.length > 0) {
+                  runAgentLoop(history, { allowAutoContinue: true });
+                }
+              }}
+            >
+              <RotateCcw className="h-3 w-3 mr-1" /> Force Restart
+            </Button>
+          )}
+          {isLoading && heartbeatStatus !== 'stalled' && (
+            <Badge variant="outline" className="gap-1.5 text-primary bg-primary/10 border-primary/30 animate-pulse h-6">
               <Zap className="h-3 w-3" />
               Thinking...
             </Badge>
           )}
           {isLoading && (
-            <Button variant="outline" size="sm" onClick={stopAgentLoop} className="h-7 text-red-500 border-red-500/30 hover:bg-red-500/10">
+            <Button variant="outline" size="sm" onClick={stopAgentLoop} className="h-7 text-destructive border-destructive/30 hover:bg-destructive/10">
               <Square className="h-3 w-3 mr-1" /> Stop
             </Button>
           )}

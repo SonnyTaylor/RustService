@@ -3,6 +3,7 @@
  *
  * Collapsible terminal output display matching Claude/Cursor style.
  * Shows working directory, command, output, and exit code.
+ * Uses CSS variable theme classes for consistent styling.
  */
 
 import { useState, useEffect } from 'react';
@@ -72,16 +73,16 @@ export function TerminalOutputBlock({
   return (
     <div className={cn(
       "my-2 rounded-lg border overflow-hidden font-mono text-sm",
-      isPending && "border-yellow-500/40 bg-yellow-500/10",
-      isRunning && "border-blue-500/40 bg-blue-500/10",
-      isError && "border-red-500/30 bg-red-500/5",
-      isSuccess && "border-green-500/30 bg-green-500/5",
+      isPending && "border-chart-4/40 bg-chart-4/10",
+      isRunning && "border-primary/40 bg-primary/5",
+      isError && "border-destructive/30 bg-destructive/5",
+      isSuccess && "border-chart-2/30 bg-chart-2/5",
       !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-muted/60"
     )}>
       {/* Working Directory Header */}
       {workingDirectory && (
         <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border/30 flex items-center gap-1">
-          <span className="text-green-500">⊞</span>
+          <span className="text-chart-2">{'\u229E'}</span>
           <span>Working directory:</span>
           <span className="text-foreground/80">{workingDirectory}</span>
         </div>
@@ -115,7 +116,7 @@ export function TerminalOutputBlock({
         <div className="pl-8 pr-10 py-2">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground shrink-0">
-              …\{workingDirectory?.split('\\').slice(-1)[0] || 'shell'} &gt;
+              {'\u2026'}\\{workingDirectory?.split('\\').slice(-1)[0] || 'shell'} &gt;
             </span>
             {command ? (
               <span className="text-foreground/90 break-all">{command}</span>
@@ -154,7 +155,7 @@ export function TerminalOutputBlock({
 
         <div className="flex items-center gap-2">
           {isRunning && (
-            <span className="flex items-center gap-1.5 text-blue-500">
+            <span className="flex items-center gap-1.5 text-primary">
               <Loader2 className="h-3 w-3 animate-spin" />
               Running...
             </span>
@@ -162,7 +163,7 @@ export function TerminalOutputBlock({
 
           {isPending && (
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-yellow-600 font-medium">
+              <span className="flex items-center gap-1 text-chart-4 font-medium">
                 <AlertCircle className="h-3 w-3" />
                 Approval Required
               </span>
@@ -170,7 +171,7 @@ export function TerminalOutputBlock({
                 <Button
                   size="sm"
                   variant="default"
-                  className="h-7 px-3 bg-green-600 hover:bg-green-700 text-white gap-1"
+                  className="h-7 px-3 gap-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     onApprove();
@@ -184,7 +185,7 @@ export function TerminalOutputBlock({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 px-3 border-red-500/50 text-red-400 hover:bg-red-500/10 gap-1"
+                  className="h-7 px-3 gap-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReject();
@@ -200,7 +201,7 @@ export function TerminalOutputBlock({
           {!isRunning && !isPending && (
             <span className={cn(
               "flex items-center gap-1",
-              isError ? 'text-destructive' : 'text-green-600'
+              isError ? 'text-destructive' : 'text-chart-2'
             )}>
               {isError ? (
                 <X className="h-3 w-3" />

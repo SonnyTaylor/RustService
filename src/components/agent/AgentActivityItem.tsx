@@ -3,6 +3,7 @@
  *
  * Displays individual agent actions in the Claude/Cursor style.
  * Each activity type has its own icon and format.
+ * Uses CSS variable theme classes for consistent styling.
  */
 
 import { useState } from 'react';
@@ -29,6 +30,13 @@ import {
   ChevronDown,
   ChevronRight,
   Package,
+  Pause,
+  RotateCcw,
+  XCircle,
+  ClipboardList,
+  FileBarChart,
+  PenLine,
+  FileOutput,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -49,39 +57,56 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
   const baseConfig = (() => {
     switch (type) {
       case 'analyzed_directory':
-        return { Icon: Folder, label: 'Analyzed', color: 'text-amber-400' };
+        return { Icon: Folder, label: 'Analyzed', color: 'text-chart-4' };
       case 'searched':
-        return { Icon: Search, label: 'Searched', color: 'text-blue-400' };
+        return { Icon: Search, label: 'Searched', color: 'text-chart-1' };
       case 'analyzed_file':
         return { Icon: FileText, label: 'Analyzed', color: 'text-muted-foreground' };
       case 'ran_command':
-        return { Icon: Terminal, label: 'Ran', color: 'text-green-400' };
+        return { Icon: Terminal, label: 'Ran', color: 'text-chart-2' };
       case 'read_file':
-        return { Icon: BookOpen, label: 'Read', color: 'text-cyan-400' };
+        return { Icon: BookOpen, label: 'Read', color: 'text-primary' };
       case 'edit_file':
-        return { Icon: FileEdit, label: 'Edit', color: 'text-purple-400' };
+        return { Icon: FileEdit, label: 'Edit', color: 'text-chart-5' };
       case 'write_file':
-        return { Icon: FileEdit, label: 'Write to', color: 'text-purple-400' };
+        return { Icon: FileEdit, label: 'Write to', color: 'text-chart-5' };
       case 'move_file':
-        return { Icon: FolderInput, label: 'Move', color: 'text-orange-400' };
+        return { Icon: FolderInput, label: 'Move', color: 'text-chart-4' };
       case 'copy_file':
-        return { Icon: Copy, label: 'Copy', color: 'text-teal-400' };
+        return { Icon: Copy, label: 'Copy', color: 'text-primary' };
       case 'list_dir':
-        return { Icon: Folder, label: 'Listed', color: 'text-amber-400' };
+        return { Icon: Folder, label: 'Listed', color: 'text-chart-4' };
       case 'list_programs':
-        return { Icon: Package, label: 'Programs', color: 'text-amber-400' };
+        return { Icon: Package, label: 'Programs', color: 'text-chart-4' };
       case 'find_exe':
-        return { Icon: Search, label: 'Found exe', color: 'text-cyan-400' };
+        return { Icon: Search, label: 'Found exe', color: 'text-primary' };
       case 'web_search':
-        return { Icon: Globe, label: 'Searched web', color: 'text-indigo-400' };
+        return { Icon: Globe, label: 'Searched web', color: 'text-chart-5' };
       case 'get_system_info':
-        return { Icon: Cpu, label: 'System info', color: 'text-cyan-400' };
+        return { Icon: Cpu, label: 'System info', color: 'text-primary' };
       case 'mcp_tool':
-        return { Icon: Plug, label: 'MCP tool', color: 'text-blue-400' };
+        return { Icon: Plug, label: 'MCP tool', color: 'text-chart-1' };
       case 'generate_file':
-        return { Icon: FilePlus, label: 'Generated', color: 'text-purple-400' };
+        return { Icon: FilePlus, label: 'Generated', color: 'text-chart-5' };
       case 'attach_files':
-        return { Icon: Paperclip, label: 'Attached', color: 'text-teal-400' };
+        return { Icon: Paperclip, label: 'Attached', color: 'text-primary' };
+      // Service activity types
+      case 'service_queue_started':
+        return { Icon: Play, label: 'Service Queue', color: 'text-chart-2' };
+      case 'service_paused':
+        return { Icon: Pause, label: 'Paused', color: 'text-chart-4' };
+      case 'service_resumed':
+        return { Icon: RotateCcw, label: 'Resumed', color: 'text-chart-2' };
+      case 'service_cancelled':
+        return { Icon: XCircle, label: 'Cancelled', color: 'text-destructive' };
+      case 'service_query':
+        return { Icon: ClipboardList, label: 'Service Query', color: 'text-chart-1' };
+      case 'service_report':
+        return { Icon: FileBarChart, label: 'Report', color: 'text-chart-1' };
+      case 'service_edit':
+        return { Icon: PenLine, label: 'Edit Report', color: 'text-chart-5' };
+      case 'service_pdf':
+        return { Icon: FileOutput, label: 'PDF Report', color: 'text-chart-5' };
       default:
         return { Icon: FileText, label: 'Action', color: 'text-muted-foreground' };
     }
@@ -92,10 +117,10 @@ function getActivityConfig(type: AgentActivity['type'], status: ActivityStatus) 
     return { ...baseConfig, Icon: Loader2, iconClass: 'animate-spin' };
   }
   if (status === 'error') {
-    return { ...baseConfig, Icon: X, color: 'text-red-400' };
+    return { ...baseConfig, Icon: X, color: 'text-destructive' };
   }
   if (status === 'success') {
-    return { ...baseConfig, Icon: Check, color: 'text-green-400' };
+    return { ...baseConfig, Icon: Check, color: 'text-chart-2' };
   }
 
   return baseConfig;
@@ -113,7 +138,7 @@ function StatusIndicator({ status, output, error, expanded, onToggle }: {
 }) {
   if (status === 'running') {
     return (
-      <span className="text-blue-400 text-xs flex items-center gap-1">
+      <span className="text-chart-1 text-xs flex items-center gap-1">
         <Loader2 className="h-3 w-3 animate-spin" />
         Running...
       </span>
@@ -121,7 +146,7 @@ function StatusIndicator({ status, output, error, expanded, onToggle }: {
   }
   if (status === 'pending_approval') {
     return (
-      <span className="text-yellow-500 text-xs flex items-center gap-1">
+      <span className="text-chart-4 text-xs flex items-center gap-1">
         <AlertCircle className="h-3 w-3" />
         Approval Required
       </span>
@@ -132,7 +157,7 @@ function StatusIndicator({ status, output, error, expanded, onToggle }: {
     const isLong = text.length > 80;
     return (
       <span
-        className={cn("text-red-400 text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:text-red-300")}
+        className={cn("text-destructive text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:opacity-80")}
         title={!expanded ? text : undefined}
         onClick={isLong ? onToggle : undefined}
       >
@@ -144,7 +169,7 @@ function StatusIndicator({ status, output, error, expanded, onToggle }: {
     const isLong = output.length > 80;
     return (
       <span
-        className={cn("text-green-400 text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:text-green-300")}
+        className={cn("text-chart-2 text-xs", !expanded && "truncate max-w-[200px]", isLong && "cursor-pointer hover:opacity-80")}
         title={!expanded ? output : undefined}
         onClick={isLong ? onToggle : undefined}
       >
@@ -176,22 +201,135 @@ function EditFilePreview({ oldString, newString }: { oldString?: string; newStri
         <div className="mt-2 space-y-2">
           {oldString && (
             <div>
-              <div className="text-xs text-red-400 mb-1">- Remove:</div>
-              <pre className="text-xs bg-red-500/10 border border-red-500/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-red-300">
+              <div className="text-xs text-destructive mb-1">- Remove:</div>
+              <pre className="text-xs bg-destructive/10 border border-destructive/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-destructive">
                 {oldString}
               </pre>
             </div>
           )}
           {newString && (
             <div>
-              <div className="text-xs text-green-400 mb-1">+ Add:</div>
-              <pre className="text-xs bg-green-500/10 border border-green-500/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-green-300">
+              <div className="text-xs text-chart-2 mb-1">+ Add:</div>
+              <pre className="text-xs bg-chart-2/10 border border-chart-2/20 rounded p-2 max-h-[150px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-chart-2">
                 {newString}
               </pre>
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Service activity block (for service_queue_started, service_paused, service_resumed, service_cancelled)
+ */
+function ServiceActivityBlock({
+  activity,
+  onApprove,
+  onReject,
+}: {
+  activity: AgentActivity;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  const config = getActivityConfig(activity.type, activity.status);
+  const isPending = activity.status === 'pending_approval';
+  const isRunning = activity.status === 'running';
+  const isError = activity.status === 'error';
+  const isSuccess = activity.status === 'success';
+
+  let description = '';
+  let reason = '';
+
+  if (activity.type === 'service_queue_started') {
+    description = `Start service queue (${activity.serviceCount} services)`;
+    reason = activity.reason || '';
+  } else if (activity.type === 'service_paused') {
+    description = 'Pause service run';
+    reason = activity.reason || '';
+  } else if (activity.type === 'service_resumed') {
+    description = 'Resume service run';
+    reason = activity.reason || '';
+  } else if (activity.type === 'service_cancelled') {
+    description = 'Cancel service run';
+    reason = activity.reason || '';
+  } else if (activity.type === 'service_pdf') {
+    description = `Generate PDF report${activity.filename ? `: ${activity.filename}` : ''}`;
+  }
+
+  return (
+    <div className={cn(
+      "my-2 rounded-lg border p-3 text-sm",
+      isPending && "border-primary/40 bg-primary/5",
+      isRunning && "border-primary/40 bg-primary/5",
+      isError && "border-destructive/30 bg-destructive/5",
+      isSuccess && "border-chart-2/30 bg-chart-2/5",
+      !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-muted/60"
+    )}>
+      <div className="flex items-center gap-3">
+        <config.Icon className={cn(
+          'h-4 w-4 shrink-0',
+          config.color,
+          'iconClass' in config && config.iconClass
+        )} />
+
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-foreground truncate">{config.label}</div>
+          <div className="text-xs text-muted-foreground truncate">{description}</div>
+          {reason && (
+            <div className="text-xs text-muted-foreground/70 truncate mt-0.5 italic">{reason}</div>
+          )}
+        </div>
+
+        {isPending && (
+          <div className="flex items-center gap-2 shrink-0">
+            {onApprove && (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 px-3 gap-1"
+                onClick={onApprove}
+              >
+                <Play className="h-3 w-3" />
+                Run
+              </Button>
+            )}
+            {onReject && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-3 gap-1"
+                onClick={onReject}
+              >
+                <X className="h-3 w-3" />
+                Deny
+              </Button>
+            )}
+          </div>
+        )}
+
+        {isRunning && (
+          <span className="text-chart-1 text-xs flex items-center gap-1 shrink-0">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Running...
+          </span>
+        )}
+
+        {isSuccess && (
+          <span className="text-chart-2 text-xs flex items-center gap-1 shrink-0">
+            <Check className="h-3 w-3" />
+            Done
+          </span>
+        )}
+
+        {isError && (
+          <span className="text-destructive text-xs shrink-0">
+            <X className="h-3 w-3 inline mr-1" />
+            {activity.error || 'Failed'}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -226,23 +364,23 @@ function FileOperationBlock({
   } else if (activity.type === 'edit_file') {
     const oldSnippet = formatSnippet(activity.oldString);
     const newSnippet = formatSnippet(activity.newString);
-    const change = oldSnippet || newSnippet ? `Replace "${oldSnippet}" → "${newSnippet}"` : 'Edit file contents';
-    description = activity.path ? `${activity.path} · ${change}` : change;
+    const change = oldSnippet || newSnippet ? `Replace "${oldSnippet}" \u2192 "${newSnippet}"` : 'Edit file contents';
+    description = activity.path ? `${activity.path} \u00b7 ${change}` : change;
   } else if (activity.type === 'generate_file') {
     description = `Generate file: ${activity.filename}`;
   } else if (activity.type === 'move_file') {
-    description = `Move ${activity.src} → ${activity.dest}`;
+    description = `Move ${activity.src} \u2192 ${activity.dest}`;
   } else if (activity.type === 'copy_file') {
-    description = `Copy ${activity.src} → ${activity.dest}`;
+    description = `Copy ${activity.src} \u2192 ${activity.dest}`;
   }
 
   return (
     <div className={cn(
       "my-2 rounded-lg border p-3 text-sm",
-      isPending && "border-yellow-500/40 bg-yellow-500/10",
-      isRunning && "border-blue-500/40 bg-blue-500/10",
-      isError && "border-red-500/30 bg-red-500/10",
-      isSuccess && "border-green-500/30 bg-green-500/10",
+      isPending && "border-chart-4/40 bg-chart-4/10",
+      isRunning && "border-primary/40 bg-primary/5",
+      isError && "border-destructive/30 bg-destructive/5",
+      isSuccess && "border-chart-2/30 bg-chart-2/5",
       !isPending && !isRunning && !isError && !isSuccess && "border-border/50 bg-muted/60"
     )}>
       <div className="flex items-center gap-3">
@@ -263,7 +401,7 @@ function FileOperationBlock({
               <Button
                 size="sm"
                 variant="default"
-                className="h-7 px-3 bg-green-600 hover:bg-green-700 text-white gap-1"
+                className="h-7 px-3 gap-1"
                 onClick={onApprove}
               >
                 <Play className="h-3 w-3" />
@@ -274,7 +412,7 @@ function FileOperationBlock({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 px-3 border-red-500/50 text-red-400 hover:bg-red-500/10 gap-1"
+                className="h-7 px-3 gap-1"
                 onClick={onReject}
               >
                 <X className="h-3 w-3" />
@@ -285,21 +423,21 @@ function FileOperationBlock({
         )}
 
         {isRunning && (
-          <span className="text-blue-400 text-xs flex items-center gap-1 shrink-0">
+          <span className="text-chart-1 text-xs flex items-center gap-1 shrink-0">
             <Loader2 className="h-3 w-3 animate-spin" />
             Running...
           </span>
         )}
 
         {isSuccess && (
-          <span className="text-green-400 text-xs flex items-center gap-1 shrink-0">
+          <span className="text-chart-2 text-xs flex items-center gap-1 shrink-0">
             <Check className="h-3 w-3" />
             Done
           </span>
         )}
 
         {isError && (
-          <span className="text-red-400 text-xs shrink-0">
+          <span className="text-destructive text-xs shrink-0">
             <X className="h-3 w-3 inline mr-1" />
             {activity.error || 'Failed'}
           </span>
@@ -329,6 +467,17 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
         workingDirectory={activity.workingDirectory}
         exitCode={activity.exitCode}
         status={activity.status}
+        onApprove={onApprove ? () => onApprove(activity.id) : undefined}
+        onReject={onReject ? () => onReject(activity.id) : undefined}
+      />
+    );
+  }
+
+  // Service control activities get block rendering
+  if (['service_queue_started', 'service_paused', 'service_resumed', 'service_cancelled', 'service_pdf'].includes(activity.type)) {
+    return (
+      <ServiceActivityBlock
+        activity={activity}
         onApprove={onApprove ? () => onApprove(activity.id) : undefined}
         onReject={onReject ? () => onReject(activity.id) : undefined}
       />
@@ -471,6 +620,19 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
           </div>
         )}
 
+        {/* Service query/report/edit inline display */}
+        {activity.type === 'service_query' && (
+          <span className="text-foreground/90 text-xs truncate">{activity.queryType}{activity.detail ? `: ${activity.detail}` : ''}</span>
+        )}
+
+        {activity.type === 'service_report' && (
+          <span className="text-foreground/90 text-xs truncate">{activity.reportAction}{activity.reportId ? ` (${activity.reportId})` : ''}</span>
+        )}
+
+        {activity.type === 'service_edit' && (
+          <span className="text-foreground/90 text-xs truncate">{activity.editAction}{activity.detail ? `: ${activity.detail}` : ''}</span>
+        )}
+
         {/* Status indicator for non-HITL activities */}
         <StatusIndicator
           status={activity.status}
@@ -486,7 +648,7 @@ export function AgentActivityItem({ activity, onApprove, onReject }: AgentActivi
         <pre className={cn(
           "text-xs ml-6 mt-1 mb-2 p-2 rounded border max-h-[300px] overflow-y-auto whitespace-pre-wrap break-words font-mono",
           activity.error
-            ? "text-red-300 bg-red-500/10 border-red-500/20"
+            ? "text-destructive bg-destructive/10 border-destructive/20"
             : "text-muted-foreground bg-muted/60 border-border/50"
         )}>
           {activity.error || activity.output}
