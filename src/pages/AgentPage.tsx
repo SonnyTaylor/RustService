@@ -410,40 +410,44 @@ export function AgentPage() {
     // Listen for state changes (service completed, progress updates)
     unlisteners.push(
       listen<ServiceRunStateType>('service-state-changed', (event) => {
-        const run = activeServiceRunRef.current;
-        if (!run) return;
+        try {
+          const run = activeServiceRunRef.current;
+          if (!run) return;
 
-        const state = event.payload;
-        const report = state.currentReport;
-        if (!report) return;
+          const state = event.payload;
+          const report = state.currentReport;
+          if (!report?.results) return;
 
-        // Check if new results have appeared since last check
-        const newResultCount = report.results.length;
-        if (newResultCount > run.lastResultCount) {
-          const newResults = report.results.slice(run.lastResultCount);
-          setActiveServiceRun(prev => prev ? { ...prev, lastResultCount: newResultCount } : null);
+          // Check if new results have appeared since last check
+          const newResultCount = report.results.length;
+          if (newResultCount > run.lastResultCount) {
+            const newResults = report.results.slice(run.lastResultCount);
+            setActiveServiceRun(prev => prev ? { ...prev, lastResultCount: newResultCount } : null);
 
-          // Combine ALL new results into a single update message
-          const combinedContent = newResults
-            .map(r => `${r.serviceId} completed:\n${formatServiceResultForAgent(r)}`)
-            .join('\n\n---\n\n');
+            // Combine ALL new results into a single update message
+            const combinedContent = newResults
+              .map(r => `${r.serviceId} completed:\n${formatServiceResultForAgent(r)}`)
+              .join('\n\n---\n\n');
 
-          const updateMsg: CoreMessage = {
-            role: 'user',
-            content: `[SERVICE UPDATE — ${newResults.length} service(s) completed]\n\n${combinedContent}`,
-          };
-          const history = [...agentHistoryRef.current, updateMsg];
-          agentHistoryRef.current = history;
+            const updateMsg: CoreMessage = {
+              role: 'user',
+              content: `[SERVICE UPDATE — ${newResults.length} service(s) completed]\n\n${combinedContent}`,
+            };
+            const history = [...agentHistoryRef.current, updateMsg];
+            agentHistoryRef.current = history;
 
-          // Route through queue instead of calling runAgentLoop directly
-          loopQueueRef.current.enqueue({
-            history,
-            options: {
-              allowAutoContinue: true,
-              reuseMessageId: run.assistantMsgId,
-            },
-            serviceUpdate: { content: combinedContent },
-          });
+            // Route through queue instead of calling runAgentLoop directly
+            loopQueueRef.current.enqueue({
+              history,
+              options: {
+                allowAutoContinue: true,
+                reuseMessageId: run.assistantMsgId,
+              },
+              serviceUpdate: { content: combinedContent },
+            });
+          }
+        } catch (err) {
+          console.error('[AgentPage] Error in service-state-changed handler:', err);
         }
       })
     );
@@ -451,24 +455,30 @@ export function AgentPage() {
     // Listen for run completion
     unlisteners.push(
       listen<ServiceReport>('service-completed', (event) => {
-        const run = activeServiceRunRef.current;
-        if (!run) return;
+        try {
+          const run = activeServiceRunRef.current;
+          if (!run) return;
 
-        const report = event.payload;
-        const summaryContent = `Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${report.results.length}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`;
-        const summaryMsg: CoreMessage = {
-          role: 'user',
-          content: `[SERVICE RUN COMPLETE] ${summaryContent}`,
-        };
-        const history = [...agentHistoryRef.current, summaryMsg];
-        agentHistoryRef.current = history;
-        setActiveServiceRun(null);
+          const report = event.payload;
+          const resultCount = report?.results?.length ?? 0;
+          const summaryContent = `Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${resultCount}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`;
+          const summaryMsg: CoreMessage = {
+            role: 'user',
+            content: `[SERVICE RUN COMPLETE] ${summaryContent}`,
+          };
+          const history = [...agentHistoryRef.current, summaryMsg];
+          agentHistoryRef.current = history;
+          setActiveServiceRun(null);
 
-        // Route through queue for post-run review
-        loopQueueRef.current.enqueue({
-          history,
-          options: { allowAutoContinue: true },
-        });
+          // Route through queue for post-run review
+          loopQueueRef.current.enqueue({
+            history,
+            options: { allowAutoContinue: true },
+          });
+        } catch (err) {
+          console.error('[AgentPage] Error in service-completed handler:', err);
+          setActiveServiceRun(null);
+        }
       })
     );
 

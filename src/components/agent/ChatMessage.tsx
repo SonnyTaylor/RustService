@@ -5,7 +5,7 @@
  * Supports linear flow: text → tool → text → tool → text → attachment
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { User, Bot } from 'lucide-react';
 import { AgentActivityItem } from './AgentActivityItem';
 import { MemoizedMarkdown } from './MemoizedMarkdown';
@@ -38,6 +38,21 @@ interface ChatMessageProps {
 }
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+function formatTimestamp(ts: string | undefined): string | null {
+  if (!ts) return null;
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString();
+  } catch {
+    return null;
+  }
+}
+
+// =============================================================================
 // Component
 // =============================================================================
 
@@ -55,6 +70,7 @@ export const ChatMessage = memo(function ChatMessage({
   const isUser = role === 'user';
   const isSystem = role === 'system';
   const messageId = id || `msg-${Date.now()}`;
+  const formattedTime = useMemo(() => formatTimestamp(timestamp), [timestamp]);
 
   // System messages
   if (isSystem) {
@@ -77,7 +93,7 @@ export const ChatMessage = memo(function ChatMessage({
         <div className="flex-1 min-w-0 flex flex-col items-end">
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-row-reverse mb-1.5">
             <span className="font-medium">You</span>
-            {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
+            {formattedTime && <span>{formattedTime}</span>}
           </div>
           <div className="rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground max-w-[85%]">
             <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
@@ -102,7 +118,7 @@ export const ChatMessage = memo(function ChatMessage({
   }
 
   // Assistant messages — left-aligned with interleaved parts
-  const hasParts = parts && parts.length > 0;
+  const hasParts = Array.isArray(parts) && parts.length > 0;
   const hasContent = !!content;
 
   return (
@@ -116,7 +132,7 @@ export const ChatMessage = memo(function ChatMessage({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5">
           <span className="font-medium">Agent</span>
-          {timestamp && <span>{new Date(timestamp).toLocaleTimeString()}</span>}
+          {formattedTime && <span>{formattedTime}</span>}
         </div>
 
         {/* Render interleaved parts if available */}

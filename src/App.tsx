@@ -54,6 +54,7 @@ import { SettingsProvider, useSettings } from '@/components/settings-context';
 import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVariants } from '@/components/animation-context';
 import { Titlebar } from '@/components/titlebar';
 import { IframeTabContent } from '@/components/IframeTabContent';
+import { ErrorBoundary } from '@/components/error-boundary';
 import {
   AgentPage,
   ServicePage,
@@ -360,7 +361,9 @@ function AppContent() {
                   className="absolute inset-0 data-[state=active]:flex data-[state=active]:flex-col m-0"
                 >
                   <AnimatedTabContent id={animationsEnabled ? id : 'static'}>
-                    <Component />
+                    <ErrorBoundary label={ALL_TABS.find(t => t.id === id)?.label}>
+                      <Component />
+                    </ErrorBoundary>
                   </AnimatedTabContent>
                 </TabsContent>
               )
@@ -405,7 +408,9 @@ function App() {
     <ThemeProvider defaultTheme="system">
       <SettingsProvider>
         <AnimationProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </AnimationProvider>
       </SettingsProvider>
     </ThemeProvider>
