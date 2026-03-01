@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -697,6 +698,8 @@
    ============================================================================= */
 
 .theme-claude {
+  --font-heading: 'Poppins', Arial, sans-serif;
+  --font-body: 'Lora', Georgia, serif;
   --background: #faf9f5;
   --foreground: #141413;
   --card: #faf9f5;
@@ -733,6 +736,8 @@
 }
 
 .theme-claude.dark {
+  --font-heading: 'Poppins', Arial, sans-serif;
+  --font-body: 'Lora', Georgia, serif;
   --background: #141413;
   --foreground: #faf9f5;
   --card: #1a191a;
@@ -765,6 +770,34 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #2a2927;
   --sidebar-ring: #d97757;
+}
+
+/* Claude theme typography — Poppins headings, Lora body */
+.theme-claude body,
+.theme-claude p,
+.theme-claude span,
+.theme-claude li,
+.theme-claude td,
+.theme-claude label,
+.theme-claude input,
+.theme-claude textarea,
+.theme-claude select,
+.theme-claude button {
+  font-family: var(--font-body);
+}
+
+.theme-claude h1,
+.theme-claude h2,
+.theme-claude h3,
+.theme-claude h4,
+.theme-claude h5,
+.theme-claude h6,
+.theme-claude [class*="text-xl"],
+.theme-claude [class*="text-2xl"],
+.theme-claude [class*="text-3xl"],
+.theme-claude [class*="text-4xl"],
+.theme-claude [class*="text-5xl"] {
+  font-family: var(--font-heading);
 }
 
 /* =============================================================================
