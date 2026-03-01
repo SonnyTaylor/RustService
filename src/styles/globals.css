@@ -689,79 +689,82 @@
 }
 
 /* =============================================================================
-   Claude Theme
+   Claude Theme - Anthropic Brand Styling
    Apply with: .theme-claude on <html>
+   Colors from Anthropic Brand Guidelines:
+   - Dark: #141413, Light: #faf9f5, Mid Gray: #b0aea5, Light Gray: #e8e6dc
+   - Orange: #d97757, Blue: #6a9bcc, Green: #788c5d
    ============================================================================= */
 
 .theme-claude {
   --background: #faf9f5;
-  --foreground: #3d3929;
+  --foreground: #141413;
   --card: #faf9f5;
   --card-foreground: #141413;
   --popover: #ffffff;
-  --popover-foreground: #28261b;
-  --primary: #c96442;
+  --popover-foreground: #141413;
+  --primary: #d97757;
   --primary-foreground: #ffffff;
-  --secondary: #e9e6dc;
-  --secondary-foreground: #535146;
-  --muted: #ede9de;
-  --muted-foreground: #83827d;
-  --accent: #e9e6dc;
-  --accent-foreground: #28261b;
-  --destructive: #141413;
+  --secondary: #e8e6dc;
+  --secondary-foreground: #141413;
+  --muted: #e8e6dc;
+  --muted-foreground: #b0aea5;
+  --accent: #6a9bcc;
+  --accent-foreground: #ffffff;
+  --destructive: #d97757;
   --destructive-foreground: #ffffff;
-  --border: #dad9d4;
-  --input: #b4b2a7;
-  --ring: #c96442;
-  --chart-1: #b05730;
-  --chart-2: #9c87f5;
-  --chart-3: #ded8c4;
-  --chart-4: #dbd3f0;
-  --chart-5: #b4552d;
-  --sidebar: #f5f4ee;
-  --sidebar-foreground: #3d3d3a;
-  --sidebar-primary: #c96442;
-  --sidebar-primary-foreground: #fbfbfb;
-  --sidebar-accent: #e9e6dc;
-  --sidebar-accent-foreground: #343434;
-  --sidebar-border: #ebebeb;
-  --sidebar-ring: #b5b5b5;
+  --border: #e8e6dc;
+  --input: #e8e6dc;
+  --ring: #d97757;
+  --chart-1: #d97757;
+  --chart-2: #6a9bcc;
+  --chart-3: #788c5d;
+  --chart-4: #b0aea5;
+  --chart-5: #d97757;
+  --sidebar: #faf9f5;
+  --sidebar-foreground: #141413;
+  --sidebar-primary: #d97757;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #6a9bcc;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #e8e6dc;
+  --sidebar-ring: #d97757;
   --radius: 0.5rem;
 }
 
 .theme-claude.dark {
-  --background: #262624;
-  --foreground: #c3c0b6;
-  --card: #262624;
+  --background: #141413;
+  --foreground: #faf9f5;
+  --card: #1a191a;
   --card-foreground: #faf9f5;
-  --popover: #30302e;
-  --popover-foreground: #e5e5e2;
+  --popover: #252424;
+  --popover-foreground: #faf9f5;
   --primary: #d97757;
   --primary-foreground: #ffffff;
-  --secondary: #faf9f5;
-  --secondary-foreground: #30302e;
-  --muted: #1b1b19;
-  --muted-foreground: #b7b5a9;
-  --accent: #1a1915;
-  --accent-foreground: #f5f4ee;
-  --destructive: #ef4444;
+  --secondary: #2a2927;
+  --secondary-foreground: #faf9f5;
+  --muted: #252424;
+  --muted-foreground: #b0aea5;
+  --accent: #6a9bcc;
+  --accent-foreground: #ffffff;
+  --destructive: #d97757;
   --destructive-foreground: #ffffff;
-  --border: #3e3e38;
-  --input: #52514a;
+  --border: #2a2927;
+  --input: #252424;
   --ring: #d97757;
-  --chart-1: #b05730;
-  --chart-2: #9c87f5;
-  --chart-3: #1a1915;
-  --chart-4: #2f2b48;
-  --chart-5: #b4552d;
-  --sidebar: #1f1e1d;
-  --sidebar-foreground: #c3c0b6;
-  --sidebar-primary: #343434;
-  --sidebar-primary-foreground: #fbfbfb;
-  --sidebar-accent: #0f0f0e;
-  --sidebar-accent-foreground: #c3c0b6;
-  --sidebar-border: #ebebeb;
-  --sidebar-ring: #b5b5b5;
+  --chart-1: #d97757;
+  --chart-2: #6a9bcc;
+  --chart-3: #788c5d;
+  --chart-4: #b0aea5;
+  --chart-5: #d97757;
+  --sidebar: #141413;
+  --sidebar-foreground: #faf9f5;
+  --sidebar-primary: #d97757;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #6a9bcc;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a2927;
+  --sidebar-ring: #d97757;
 }
 
 /* =============================================================================

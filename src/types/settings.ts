@@ -145,10 +145,10 @@ export const COLOR_SCHEMES: ColorSchemeInfo[] = [
   {
     id: 'claude',
     name: 'Claude',
-    description: 'Warm terracotta theme',
+    description: 'Anthropic brand-inspired professional theme',
     preview: {
-      primary: '#c96442',
-      accent: '#e9e6dc',
+      primary: '#d97757',
+      accent: '#6a9bcc',
       background: '#faf9f5',
     },
   },
