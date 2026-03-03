@@ -73,6 +73,7 @@ pub fn run() {
             commands::delete_script,
             commands::run_script,
             // Service commands
+            commands::list_usb_drives,
             commands::get_service_definitions,
             commands::get_service_presets,
             commands::validate_service_requirements,

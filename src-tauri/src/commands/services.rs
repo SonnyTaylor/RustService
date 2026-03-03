@@ -17,6 +17,8 @@ use uuid::Uuid;
 use super::data_dir::get_data_dir_path;
 use super::required_programs::validate_required_programs;
 use super::settings::{get_settings, save_settings};
+use sysinfo::Disks;
+
 use crate::services;
 use crate::types::{
     FindingSeverity, FindingSeverityCounts, ReportStatistics, ServiceDefinition, ServiceFinding,
@@ -57,6 +59,33 @@ fn save_report(report: &ServiceReport) -> Result<(), String> {
 // =============================================================================
 // Tauri Commands
 // =============================================================================
+
+/// List connected removable USB drives for the USB stability test service
+#[tauri::command]
+pub fn list_usb_drives() -> Vec<serde_json::Value> {
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .list()
+        .iter()
+        .filter(|d| d.is_removable() && d.total_space() > 0)
+        .map(|d| {
+            let mount = d.mount_point().to_string_lossy().to_string();
+            let name = d.name().to_string_lossy().to_string();
+            let label = if name.is_empty() {
+                "Removable Disk".to_string()
+            } else {
+                name
+            };
+            serde_json::json!({
+                "mountPoint": mount.trim_end_matches('\\'),
+                "name": label,
+                "totalSpaceGb": d.total_space() as f64 / 1_073_741_824.0,
+                "availableSpaceGb": d.available_space() as f64 / 1_073_741_824.0,
+                "fileSystem": d.file_system().to_string_lossy().to_string(),
+            })
+        })
+        .collect()
+}
 
 /// Get all available service definitions
 #[tauri::command]

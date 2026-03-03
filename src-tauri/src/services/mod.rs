@@ -10,8 +10,8 @@ mod bleachbit;
 mod chkdsk;
 mod disk_space;
 mod dism;
-mod driver_audit;
 mod drivecleanup;
+mod driver_audit;
 mod energy_report;
 mod furmark;
 mod heavyload;
@@ -24,6 +24,7 @@ mod sfc;
 mod smartctl;
 mod speedtest;
 mod stinger;
+mod usb_stability;
 mod whynotwin11;
 mod windows_update;
 mod winsat;
@@ -78,6 +79,7 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(driver_audit::DriverAuditService),
         Box::new(installed_software::InstalledSoftwareService),
         Box::new(network_config::NetworkConfigService),
+        Box::new(usb_stability::UsbStabilityService),
     ];
 
     services
@@ -320,6 +322,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     enabled: true,
                     options: serde_json::json!({}),
                 },
+                PresetServiceConfig {
+                    service_id: "usb-stability".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"test_intensity": "standard", "verify_integrity": true}),
+                },
             ],
             icon: "shield-check".to_string(),
             color: "purple".to_string(),
@@ -448,6 +455,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "network-config".to_string(),
                     enabled: false,
                     options: serde_json::json!({"include_disabled": false}),
+                },
+                PresetServiceConfig {
+                    service_id: "usb-stability".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"test_intensity": "standard", "verify_integrity": true}),
                 },
             ],
             icon: "settings-2".to_string(),

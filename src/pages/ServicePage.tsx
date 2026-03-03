@@ -68,6 +68,7 @@ import {
   FlaskConical,
   Save,
   ChevronDown,
+  RefreshCw,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -193,6 +194,39 @@ function SortableQueueItem({
 
   const [estimatedMs, setEstimatedMs] = useState<number | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
+  const [usbDrives, setUsbDrives] = useState<Array<{ mountPoint: string; name: string; totalSpaceGb: number; availableSpaceGb: number; fileSystem: string }>>([]);
+  const [usbLoading, setUsbLoading] = useState(false);
+
+  // Fetch USB drives when a usb_drive option is present
+  const hasUsbOption = definition.options.some(o => o.optionType === 'usb_drive');
+  useEffect(() => {
+    if (!hasUsbOption || !item.enabled) return;
+    const loadDrives = async () => {
+      setUsbLoading(true);
+      try {
+        const drives = await invoke<Array<{ mountPoint: string; name: string; totalSpaceGb: number; availableSpaceGb: number; fileSystem: string }>>('list_usb_drives');
+        setUsbDrives(drives);
+      } catch (err) {
+        console.error('Failed to list USB drives:', err);
+        setUsbDrives([]);
+      } finally {
+        setUsbLoading(false);
+      }
+    };
+    loadDrives();
+  }, [hasUsbOption, item.enabled]);
+
+  const refreshUsbDrives = async () => {
+    setUsbLoading(true);
+    try {
+      const drives = await invoke<Array<{ mountPoint: string; name: string; totalSpaceGb: number; availableSpaceGb: number; fileSystem: string }>>('list_usb_drives');
+      setUsbDrives(drives);
+    } catch (err) {
+      console.error('Failed to refresh USB drives:', err);
+    } finally {
+      setUsbLoading(false);
+    }
+  };
 
   // Fetch estimated time when options change
   useEffect(() => {
@@ -333,8 +367,51 @@ function SortableQueueItem({
       {item.enabled && definition.options.length > 0 && (
         <div className="ml-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-muted/30 rounded-lg p-3">
           {definition.options.map((opt) => (
-            <div key={opt.id} className="flex items-center gap-2">
-              {opt.optionType === 'boolean' ? (
+            <div key={opt.id} className={`flex items-center gap-2 ${opt.optionType === 'usb_drive' ? 'col-span-full' : ''}`}>
+              {opt.optionType === 'usb_drive' ? (
+                <div className="flex items-center gap-2 w-full">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">
+                    {opt.label}:
+                  </Label>
+                  {usbDrives.length > 0 ? (
+                    <Select
+                      value={(item.options[opt.id] as string) || ''}
+                      onValueChange={(val) =>
+                        onOptionsChange(item.id, {
+                          ...item.options,
+                          [opt.id]: val === '__auto__' ? '' : val,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-7 min-w-[200px] max-w-[320px] text-xs">
+                        <SelectValue placeholder="Auto-detect" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">Auto-detect first USB drive</SelectItem>
+                        {usbDrives.map((d) => (
+                          <SelectItem key={d.mountPoint} value={d.mountPoint}>
+                            {d.mountPoint} — {d.name} ({d.availableSpaceGb.toFixed(1)} GB free, {d.fileSystem})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span className="text-xs text-yellow-500">
+                      {usbLoading ? 'Scanning...' : 'No USB drives detected'}
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={refreshUsbDrives}
+                    disabled={usbLoading}
+                    title="Refresh USB drives"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${usbLoading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+              ) : opt.optionType === 'boolean' ? (
                  <div className="flex items-center gap-2">
                     <Switch
                         id={`${item.id}-${opt.id}`}

@@ -31,8 +31,8 @@ export interface ServiceOptionSchema {
   id: string;
   /** Display label */
   label: string;
-  /** Option type: "number", "string", "boolean", "select" */
-  optionType: 'number' | 'string' | 'boolean' | 'select';
+  /** Option type: "number", "string", "boolean", "select", "usb_drive" */
+  optionType: 'number' | 'string' | 'boolean' | 'select' | 'usb_drive';
   /** Default value */
   defaultValue: unknown;
   /** For number type: minimum value */

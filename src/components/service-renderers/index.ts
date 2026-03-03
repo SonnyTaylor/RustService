@@ -34,6 +34,7 @@ import { BatteryReportRenderer } from './BatteryReportRenderer';
 import { DriverAuditRenderer } from './DriverAuditRenderer';
 import { InstalledSoftwareRenderer } from './InstalledSoftwareRenderer';
 import { NetworkConfigRenderer } from './NetworkConfigRenderer';
+import { UsbStabilityRenderer } from './UsbStabilityRenderer';
 
 // =============================================================================
 // Types
@@ -80,6 +81,7 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'driver-audit': DriverAuditRenderer,
   'installed-software': InstalledSoftwareRenderer,
   'network-config': NetworkConfigRenderer,
+  'usb-stability': UsbStabilityRenderer,
 };
 
 /**
