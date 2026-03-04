@@ -52,6 +52,8 @@ import {
 import { ThemeProvider } from '@/components/theme-provider';
 import { SettingsProvider, useSettings } from '@/components/settings-context';
 import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVariants } from '@/components/animation-context';
+import { ServiceRunProvider } from '@/components/service-run-context';
+import { FloatingServiceStatus } from '@/components/floating-service-status';
 import { Titlebar } from '@/components/titlebar';
 import { IframeTabContent } from '@/components/IframeTabContent';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -384,6 +386,9 @@ function AppContent() {
           })}
         </div>
       </Tabs>
+
+      {/* Floating service status pill - visible when services run on another tab */}
+      <FloatingServiceStatus activeTab={activeTab} />
     </div>
   );
 }
@@ -408,9 +413,11 @@ function App() {
     <ThemeProvider defaultTheme="system">
       <SettingsProvider>
         <AnimationProvider>
-          <ErrorBoundary>
-            <AppContent />
-          </ErrorBoundary>
+          <ServiceRunProvider>
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
+          </ServiceRunProvider>
         </AnimationProvider>
       </SettingsProvider>
     </ThemeProvider>

@@ -570,20 +570,71 @@ export function ServiceReportView({
         </Card>
       )}
 
-      {/* Findings by Service - Use custom renderer if available */}
-      {localReport.results.map((result) => {
+      {/* Failure Summary Banner */}
+      {(() => {
+        const failedResults = localReport.results.filter(r => !r.success);
+        if (failedResults.length === 0) return null;
+        return (
+          <Card className="border-destructive/30 bg-destructive/5 border-l-4 border-l-destructive overflow-hidden">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-3">
+                <XCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-destructive">
+                    {failedResults.length} service{failedResults.length > 1 ? 's' : ''} failed
+                  </p>
+                  <ul className="text-sm text-muted-foreground mt-1.5 space-y-1">
+                    {failedResults.map(r => {
+                      const def = definitionMap.get(r.serviceId);
+                      return (
+                        <li key={r.serviceId} className="flex items-start gap-1.5">
+                          <span className="text-destructive/60 mt-0.5 shrink-0">&#8226;</span>
+                          <span>
+                            <span className="font-medium text-foreground">{def?.name ?? r.serviceId}</span>
+                            {r.error && <span className="text-destructive"> — {r.error}</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Findings by Service - sorted: failed first, then by severity of findings, then successful */}
+      {[...localReport.results]
+        .sort((a, b) => {
+          // Failed services first
+          if (!a.success && b.success) return -1;
+          if (a.success && !b.success) return 1;
+          // Then by worst finding severity
+          const severityRank = (findings: typeof a.findings) => {
+            let worst = 0;
+            for (const f of findings) {
+              const rank = f.severity === 'critical' ? 5 : f.severity === 'error' ? 4 : f.severity === 'warning' ? 3 : 1;
+              if (rank > worst) worst = rank;
+            }
+            return worst;
+          };
+          return severityRank(b.findings) - severityRank(a.findings);
+        })
+        .map((result) => {
         const def = definitionMap.get(result.serviceId);
         const CustomRenderer = getServiceRenderer(result.serviceId);
 
         // Use custom renderer if available
         if (CustomRenderer && def) {
           return (
-            <CustomRenderer
-              key={result.serviceId}
-              result={result}
-              definition={def}
-              variant="findings"
-            />
+            <div key={result.serviceId} className={!result.success ? 'border-l-4 border-l-destructive rounded-lg' : ''}>
+              <CustomRenderer
+                result={result}
+                definition={def}
+                variant="findings"
+              />
+            </div>
           );
         }
 
@@ -591,7 +642,7 @@ export function ServiceReportView({
         const Icon = def ? getIcon(def.icon) : Wrench;
 
         return (
-          <Card key={result.serviceId} className="overflow-hidden">
+          <Card key={result.serviceId} className={`overflow-hidden ${!result.success ? 'border-l-4 border-l-destructive' : ''}`}>
             <CardHeader className="pb-3 bg-muted/30">
               <CardTitle className="text-base flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${result.success ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
@@ -611,6 +662,32 @@ export function ServiceReportView({
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4 space-y-2">
+              {/* Error message for failed services */}
+              {!result.success && result.error && (
+                <div className="px-3 py-2 rounded-lg border border-destructive/30 bg-destructive/5">
+                  <div className="flex items-start gap-2">
+                    <XCircle className="h-4 w-4 mt-0.5 text-destructive shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-destructive">{result.error}</p>
+                      {result.logs.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                            Show last {Math.min(5, result.logs.length)} log lines
+                          </summary>
+                          <div className="mt-1.5 font-mono text-[11px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+                            {result.logs.slice(-5).map((log, i) => (
+                              <div key={i} className="flex gap-2">
+                                <span className="text-destructive/40 select-none shrink-0">&#10095;</span>
+                                <span>{log}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               {result.findings.map((finding, idx) => {
                 const SeverityIcon = severityIcons[finding.severity];
                 const colorClass = severityColors[finding.severity];
@@ -632,7 +709,7 @@ export function ServiceReportView({
                   </div>
                 );
               })}
-              {result.findings.length === 0 && (
+              {result.findings.length === 0 && result.success && (
                 <p className="text-sm text-muted-foreground italic py-2">No findings</p>
               )}
               {result.agentAnalysis && (
