@@ -132,7 +132,17 @@ export function AgentPage() {
   const { fadeInUp } = useAnimation();
 
   // State
-  const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+  const [messages, setMessagesRaw] = useState<Message[]>([]);
+  // Wrapper that keeps messagesRef in sync synchronously to avoid stale reads
+  // when the agent loop recurses before React re-renders.
+  const setMessages = useCallback((update: Message[] | ((prev: Message[]) => Message[])) => {
+    setMessagesRaw(prev => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      messagesRef.current = next;
+      return next;
+    });
+  }, []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
@@ -162,7 +172,6 @@ export function AgentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isFirstMessageRef = useRef(true);
-  const messagesRef = useRef<Message[]>([]);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
 
   // Agent loop queue — ensures only one loop runs at a time
@@ -218,9 +227,7 @@ export function AgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  // messagesRef is kept in sync synchronously via the setMessages wrapper above
 
   // Connect to MCP servers when settings change (stabilized to prevent reconnection loop)
   useEffect(() => {
