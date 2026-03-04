@@ -4,7 +4,6 @@
 //! Services implement the `Service` trait for consistent execution.
 
 mod adwcleaner;
-mod battery_info;
 mod battery_report;
 mod bleachbit;
 mod chkdsk;
@@ -58,7 +57,6 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(ping_test::PingTestService),
         Box::new(disk_space::DiskSpaceService),
         Box::new(winsat::WinsatService),
-        Box::new(battery_info::BatteryInfoService),
         Box::new(kvrt_scan::KvrtScanService),
         Box::new(adwcleaner::AdwCleanerService),
         Box::new(stinger::StingerService),
@@ -140,7 +138,7 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
-                    service_id: "battery-info".to_string(),
+                    service_id: "battery-report".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -153,11 +151,6 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "energy-report".to_string(),
                     enabled: true,
                     options: serde_json::json!({"duration": 10}),
-                },
-                PresetServiceConfig {
-                    service_id: "battery-report".to_string(),
-                    enabled: true,
-                    options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
                     service_id: "network-config".to_string(),
@@ -204,7 +197,7 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
-                    service_id: "battery-info".to_string(),
+                    service_id: "battery-report".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -268,7 +261,7 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
-                    service_id: "battery-info".to_string(),
+                    service_id: "battery-report".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
                 },
@@ -301,11 +294,6 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "energy-report".to_string(),
                     enabled: true,
                     options: serde_json::json!({"duration": 10}),
-                },
-                PresetServiceConfig {
-                    service_id: "battery-report".to_string(),
-                    enabled: true,
-                    options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
                     service_id: "driver-audit".to_string(),
@@ -382,7 +370,7 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
-                    service_id: "battery-info".to_string(),
+                    service_id: "battery-report".to_string(),
                     enabled: false,
                     options: serde_json::json!({}),
                 },
@@ -435,11 +423,6 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "energy-report".to_string(),
                     enabled: false,
                     options: serde_json::json!({"duration": 10}),
-                },
-                PresetServiceConfig {
-                    service_id: "battery-report".to_string(),
-                    enabled: false,
-                    options: serde_json::json!({}),
                 },
                 PresetServiceConfig {
                     service_id: "driver-audit".to_string(),

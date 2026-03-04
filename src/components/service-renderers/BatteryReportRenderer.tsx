@@ -5,7 +5,7 @@
  * Shows battery health, capacity degradation, and history.
  */
 
-import { BatteryCharging, Info } from 'lucide-react';
+import { BatteryCharging, Info, Zap, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { ServiceRendererProps } from './index';
@@ -31,6 +31,18 @@ interface BatteryData {
   batteryName: string;
   manufacturer: string;
   chemistry: string;
+  chargePercent: number | null;
+  state: string | null;
+  technology: string | null;
+  timeToFullSecs: number | null;
+  timeToEmptySecs: number | null;
+}
+
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 // =============================================================================
@@ -143,6 +155,37 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
               <p className="font-medium">{data.chemistry}</p>
             </div>
           )}
+          {data.chargePercent != null && (
+            <div className="p-3 rounded-lg bg-muted/30 border flex items-center gap-2">
+              <Zap className="h-4 w-4 text-yellow-500 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Current Charge</p>
+                <p className="font-medium">{data.chargePercent.toFixed(0)}%</p>
+              </div>
+            </div>
+          )}
+          {data.state && (
+            <div className="p-3 rounded-lg bg-muted/30 border flex items-center gap-2">
+              <BatteryCharging className="h-4 w-4 text-blue-500 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">State</p>
+                <p className="font-medium capitalize">{data.state.replace('_', ' ')}</p>
+              </div>
+            </div>
+          )}
+          {(data.timeToFullSecs || data.timeToEmptySecs) && (
+            <div className="p-3 rounded-lg bg-muted/30 border flex items-center gap-2 col-span-2">
+              <Clock className="h-4 w-4 text-cyan-500 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {data.timeToFullSecs ? 'Time to Full' : 'Time Remaining'}
+                </p>
+                <p className="font-medium">
+                  {formatTime(data.timeToFullSecs || data.timeToEmptySecs || 0)}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Battery Info */}
@@ -240,6 +283,7 @@ function CustomerRenderer({ result }: ServiceRendererProps) {
           <p className="text-sm text-gray-500">
             Capacity: {(data.fullChargeCapacityMwh / 1000).toFixed(1)} Wh of {(data.designCapacityMwh / 1000).toFixed(1)} Wh design
             {data.cycleCount !== null && ` | ${data.cycleCount} cycles`}
+            {data.chargePercent != null && ` | ${data.chargePercent.toFixed(0)}% charged`}
           </p>
           {health < 50 && (
             <p className="text-sm text-red-600 mt-1">⚠ Battery replacement recommended</p>

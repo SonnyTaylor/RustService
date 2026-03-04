@@ -294,7 +294,7 @@ When users describe problems, map their symptoms to appropriate services:
 - **Crashes/BSOD**: chkdsk, sfc, dism, driver-audit, smartctl
 - **Virus/malware**: kvrt-scan, adwcleaner, stinger, bleachbit
 - **Network issues**: ping-test, speedtest, network-config
-- **Battery problems**: battery-info, battery-report, energy-report
+- **Battery problems**: battery-report, energy-report
 - **Disk issues**: disk-space, smartctl, chkdsk, bleachbit, drivecleanup
 - **General checkup**: ping-test, disk-space, sfc, dism, driver-audit, smartctl, network-config`;
 

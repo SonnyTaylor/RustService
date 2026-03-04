@@ -26,7 +26,7 @@ export const SERVICE_RECOMMENDATIONS: ServiceRecommendation[] = [
   },
   {
     symptoms: ['crash', 'bsod', 'blue screen', 'restart', 'stop error', 'bugcheck'],
-    services: ['chkdsk', 'sfc', 'dism', 'driver-audit', 'smartctl', 'battery-info'],
+    services: ['chkdsk', 'sfc', 'dism', 'driver-audit', 'smartctl', 'battery-report'],
     reason: 'Crashes can indicate disk errors, corrupted system files, driver issues, or hardware failure',
     priority: 10,
   },
@@ -44,7 +44,7 @@ export const SERVICE_RECOMMENDATIONS: ServiceRecommendation[] = [
   },
   {
     symptoms: ['battery', 'charge', 'draining', 'power', 'dies fast', 'not charging', 'battery life'],
-    services: ['battery-info', 'battery-report', 'energy-report'],
+    services: ['battery-report', 'energy-report'],
     reason: 'Battery concerns require health checks, usage reports, and energy efficiency analysis',
     priority: 8,
   },
@@ -74,7 +74,7 @@ export const SERVICE_RECOMMENDATIONS: ServiceRecommendation[] = [
   },
   {
     symptoms: ['hot', 'overheating', 'temperature', 'fan', 'thermal', 'throttle'],
-    services: ['heavyload', 'battery-info', 'energy-report', 'furmark'],
+    services: ['heavyload', 'battery-report', 'energy-report', 'furmark'],
     reason: 'Thermal issues need stress testing to identify cooling problems',
     priority: 6,
   },
@@ -86,7 +86,7 @@ export const SERVICE_RECOMMENDATIONS: ServiceRecommendation[] = [
   },
   {
     symptoms: ['general', 'checkup', 'health check', 'full check', 'everything', 'diagnostic', 'assessment'],
-    services: ['ping-test', 'disk-space', 'sfc', 'dism', 'chkdsk', 'driver-audit', 'battery-info', 'smartctl', 'installed-software', 'network-config'],
+    services: ['ping-test', 'disk-space', 'sfc', 'dism', 'chkdsk', 'driver-audit', 'battery-report', 'smartctl', 'installed-software', 'network-config'],
     reason: 'General health check covers core diagnostics across all subsystems',
     priority: 5,
   },

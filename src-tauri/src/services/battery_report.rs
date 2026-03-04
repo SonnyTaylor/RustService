@@ -1,12 +1,15 @@
 //! Battery Report Service
 //!
-//! Runs Windows `powercfg /batteryreport` to generate a detailed battery health
-//! and capacity history report. Parses the HTML output for design capacity,
-//! full charge capacity, cycle count, and capacity degradation over time.
+//! Comprehensive battery health service that combines real-time battery status
+//! (via the `battery` crate) with detailed capacity history and degradation
+//! analysis from Windows `powercfg /batteryreport`.
 
 use std::process::Command;
 use std::time::Instant;
 
+use battery::units::ratio::percent;
+use battery::units::time::second;
+use battery::Manager;
 use chrono::Utc;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
@@ -24,13 +27,13 @@ impl Service for BatteryReportService {
     fn definition(&self) -> ServiceDefinition {
         ServiceDefinition {
             id: "battery-report".to_string(),
-            name: "Battery Report".to_string(),
+            name: "Battery Health Check".to_string(),
             description:
-                "Detailed battery health, capacity history, and degradation analysis via powercfg"
+                "Battery health, charge status, capacity history, and degradation analysis"
                     .to_string(),
             category: "diagnostics".to_string(),
             estimated_duration_secs: 10,
-            required_programs: vec![], // Built-in Windows tool
+            required_programs: vec![], // Built-in Windows tool + battery crate
             options: vec![],
             icon: "battery-charging".to_string(),
             exclusive_resources: vec![],
@@ -55,6 +58,46 @@ impl Service for BatteryReportService {
             );
         };
 
+        // ── Real-time battery status via battery crate ──────────────────
+        emit_log("Checking battery status...", &mut logs, app);
+
+        let mut realtime_charge: Option<f32> = None;
+        let mut realtime_state: Option<String> = None;
+        let mut realtime_technology: Option<String> = None;
+        let mut realtime_time_to_full: Option<u64> = None;
+        let mut realtime_time_to_empty: Option<u64> = None;
+
+        match Manager::new() {
+            Ok(manager) => {
+                let batteries: Vec<_> = manager
+                    .batteries()
+                    .ok()
+                    .map(|iter| iter.filter_map(|b| b.ok()).collect())
+                    .unwrap_or_default();
+
+                if batteries.is_empty() {
+                    emit_log("No battery detected via system API", &mut logs, app);
+                } else {
+                    let bat = &batteries[0];
+                    let charge = bat.state_of_charge().get::<percent>();
+                    let state = format!("{:?}", bat.state());
+                    let tech = format!("{:?}", bat.technology());
+
+                    emit_log(&format!("  Charge: {:.0}% | State: {} | Tech: {}", charge, state, tech), &mut logs, app);
+
+                    realtime_charge = Some(charge);
+                    realtime_state = Some(state);
+                    realtime_technology = Some(tech);
+                    realtime_time_to_full = bat.time_to_full().map(|t| t.get::<second>() as u64);
+                    realtime_time_to_empty = bat.time_to_empty().map(|t| t.get::<second>() as u64);
+                }
+            }
+            Err(e) => {
+                emit_log(&format!("Could not read real-time battery info: {}", e), &mut logs, app);
+            }
+        }
+
+        // ── Detailed report via powercfg /batteryreport ────────────────
         emit_log("Generating battery report...", &mut logs, app);
 
         let temp_dir = std::env::temp_dir();
@@ -104,10 +147,11 @@ impl Service for BatteryReportService {
             app,
         );
 
-        // Check for no battery
-        if stdout_str.contains("no batteries")
+        // Check for no battery (powercfg says no battery AND the crate found none)
+        if (stdout_str.contains("no batteries")
             || stderr_str.contains("no batteries")
-            || stdout_str.contains("Unable to perform operation")
+            || stdout_str.contains("Unable to perform operation"))
+            && realtime_charge.is_none()
         {
             emit_log("No battery detected on this system.", &mut logs, app);
             findings.push(ServiceFinding {
@@ -258,6 +302,11 @@ impl Service for BatteryReportService {
                 "batteryName": parsed.battery_name,
                 "manufacturer": parsed.manufacturer,
                 "chemistry": parsed.chemistry,
+                "chargePercent": realtime_charge,
+                "state": realtime_state,
+                "technology": realtime_technology,
+                "timeToFullSecs": realtime_time_to_full,
+                "timeToEmptySecs": realtime_time_to_empty,
             })),
         });
 
