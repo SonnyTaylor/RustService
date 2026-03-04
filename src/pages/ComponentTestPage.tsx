@@ -1740,7 +1740,7 @@ export function ComponentTestPage() {
           </div>
 
           <Tabs defaultValue="camera" className="w-full">
-            <TabsList className="grid w-full grid-cols-8 h-auto">
+            <TabsList className="grid w-full grid-cols-9 h-auto">
               {TEST_TABS.map(({ id, label, icon: Icon }) => (
                 <TabsTrigger
                   key={id}
