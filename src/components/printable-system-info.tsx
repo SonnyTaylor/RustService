@@ -25,6 +25,10 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
   const hasBusiness = businessSettings?.enabled && businessSettings?.name;
   const businessName = businessSettings?.name || 'RustService';
   const hostname = systemInfo.os.hostname || 'DEVICE';
+  const systemIdentity = [
+    systemInfo.systemProduct?.vendor,
+    systemInfo.systemProduct?.model,
+  ].filter(Boolean).join(' ');
 
   return (
     <div className="bg-white text-gray-800 p-8 min-h-[800px]" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -75,13 +79,18 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
             )}
           </div>
         </div>
-        
+
         {/* Device Details Box */}
         <div className="text-right p-4 border border-gray-200 rounded-lg bg-gray-50 min-w-[180px]">
           <p className="text-sm font-semibold text-gray-700 mb-2">Device Details</p>
           <p className="text-sm text-gray-500">
             <span className="text-gray-400">Device:</span> {hostname}
           </p>
+          {systemIdentity && (
+            <p className="text-sm text-gray-500">
+              <span className="text-gray-400">System:</span> {systemIdentity}
+            </p>
+          )}
           <p className="text-sm text-gray-500">
             <span className="text-gray-400">Date:</span> {new Date().toLocaleDateString()}
           </p>
@@ -98,12 +107,25 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
         <section>
           <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Operating System</h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Name:</span> <span className="font-medium">{systemInfo.os.name}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Version:</span> <span className="font-medium">{systemInfo.os.osVersion}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Build:</span> <span className="font-medium">{systemInfo.os.longOsVersion}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Kernel:</span> <span className="font-medium font-mono">{systemInfo.os.kernelVersion}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Name:</span> <span className="font-medium">{systemInfo.os.name || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Version:</span> <span className="font-medium">{systemInfo.os.osVersion || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Build:</span> <span className="font-medium">{systemInfo.os.longOsVersion || 'N/A'}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Kernel:</span> <span className="font-medium font-mono">{systemInfo.os.kernelVersion || 'N/A'}</span></div>
           </div>
         </section>
+
+        {/* BIOS / Firmware */}
+        {systemInfo.bios && (
+          <section>
+            <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">BIOS / Firmware</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Manufacturer:</span> <span className="font-medium">{systemInfo.bios.manufacturer || 'N/A'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Version:</span> <span className="font-medium">{systemInfo.bios.version || 'N/A'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Release Date:</span> <span className="font-medium">{systemInfo.bios.releaseDate || 'N/A'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Serial:</span> <span className="font-medium font-mono">{systemInfo.bios.serialNumber || 'N/A'}</span></div>
+            </div>
+          </section>
+        )}
 
         {/* Processor */}
         <section>
@@ -111,8 +133,17 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div className="flex justify-between col-span-2"><span className="text-gray-500">Model:</span> <span className="font-medium">{systemInfo.cpu.brand}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Vendor:</span> <span className="font-medium">{systemInfo.cpu.vendorId}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Cores:</span> <span className="font-medium">{systemInfo.cpu.physicalCoreCount} Physical / {systemInfo.cpu.logicalCoreCount} Logical</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Base Speed:</span> <span className="font-medium">{systemInfo.cpu.frequency} MHz</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Cores:</span> <span className="font-medium">{systemInfo.cpu.physicalCores ?? 'N/A'} Physical / {systemInfo.cpu.logicalCpus} Logical</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Base Speed:</span> <span className="font-medium">{systemInfo.cpu.frequencyMhz} MHz</span></div>
+            {systemInfo.cpuSocket && (
+              <div className="flex justify-between"><span className="text-gray-500">Socket:</span> <span className="font-medium">{systemInfo.cpuSocket}</span></div>
+            )}
+            {systemInfo.cpuL2CacheKb != null && (
+              <div className="flex justify-between"><span className="text-gray-500">L2 Cache:</span> <span className="font-medium">{systemInfo.cpuL2CacheKb.toLocaleString()} KB</span></div>
+            )}
+            {systemInfo.cpuL3CacheKb != null && (
+              <div className="flex justify-between"><span className="text-gray-500">L3 Cache:</span> <span className="font-medium">{(systemInfo.cpuL3CacheKb / 1024).toFixed(0)} MB</span></div>
+            )}
           </div>
         </section>
 
@@ -123,47 +154,88 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
             <div className="flex justify-between"><span className="text-gray-500">Total:</span> <span className="font-medium">{formatBytes(systemInfo.memory.totalMemory)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Available:</span> <span className="font-medium">{formatBytes(systemInfo.memory.availableMemory)}</span></div>
           </div>
+          {systemInfo.ramSlots.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-medium text-gray-700">Installed Modules:</p>
+              {systemInfo.ramSlots.map((slot, idx) => (
+                <div key={idx} className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm bg-gray-50 p-2 rounded">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Slot:</span>
+                    <span className="font-medium">{slot.deviceLocator || slot.bankLabel || `Slot ${idx + 1}`}</span>
+                  </div>
+                  {slot.capacityBytes != null && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Size:</span>
+                      <span className="font-medium">{formatBytes(slot.capacityBytes)}</span>
+                    </div>
+                  )}
+                  {slot.speedMhz != null && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Speed:</span>
+                      <span className="font-medium">{slot.speedMhz} MHz</span>
+                    </div>
+                  )}
+                  {slot.manufacturer && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Manufacturer:</span>
+                      <span className="font-medium">{slot.manufacturer}</span>
+                    </div>
+                  )}
+                  {slot.partNumber && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Part Number:</span>
+                      <span className="font-medium font-mono">{slot.partNumber}</span>
+                    </div>
+                  )}
+                  {slot.memoryType && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Type:</span>
+                      <span className="font-medium">{slot.memoryType}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Motherboard */}
-        <section>
-          <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Motherboard</h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Vendor:</span> <span className="font-medium">{systemInfo.motherboard.vendor || 'Unknown'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Model:</span> <span className="font-medium">{systemInfo.motherboard.name || 'Unknown'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Version:</span> <span className="font-medium">{systemInfo.motherboard.version || 'Unknown'}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Serial:</span> <span className="font-medium">{systemInfo.motherboard.serialNumber || 'Unknown'}</span></div>
-          </div>
-        </section>
+        {systemInfo.motherboard && (
+          <section>
+            <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Motherboard</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Vendor:</span> <span className="font-medium">{systemInfo.motherboard.vendor || 'Unknown'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Model:</span> <span className="font-medium">{systemInfo.motherboard.name || 'Unknown'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Version:</span> <span className="font-medium">{systemInfo.motherboard.version || 'Unknown'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Serial:</span> <span className="font-medium">{systemInfo.motherboard.serialNumber || 'Unknown'}</span></div>
+            </div>
+          </section>
+        )}
 
         {/* Graphics */}
-        {systemInfo.gpus && systemInfo.gpus.length > 0 && (
+        {systemInfo.gpu && (
           <section>
             <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Graphics (GPU)</h3>
-            <div className="space-y-3">
-              {systemInfo.gpus.map((gpu, idx) => (
-                <div key={idx} className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm bg-gray-50 p-3 rounded">
-                  <div className="flex justify-between col-span-2"><span className="text-gray-500">Model:</span> <span className="font-medium">{gpu.name}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Vendor:</span> <span className="font-medium">{gpu.vendor}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">VRAM:</span> <span className="font-medium">{formatBytes(gpu.vramTotal)}</span></div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="flex justify-between col-span-2"><span className="text-gray-500">Model:</span> <span className="font-medium">{systemInfo.gpu.model}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Vendor:</span> <span className="font-medium">{systemInfo.gpu.vendor}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">VRAM:</span> <span className="font-medium">{formatBytes(systemInfo.gpu.totalVram)}</span></div>
             </div>
           </section>
         )}
 
         {/* Storage */}
-        {systemInfo.disks && systemInfo.disks.length > 0 && (
+        {systemInfo.disks.length > 0 && (
           <section>
             <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Storage Drives</h3>
             <div className="space-y-3">
               {systemInfo.disks.map((disk, idx) => (
                 <div key={idx} className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm bg-gray-50 p-3 rounded">
                   <div className="flex justify-between col-span-2">
-                    <span className="text-gray-500">Drive {disk.name}:</span> 
+                    <span className="text-gray-500">Drive {disk.name || 'Local Disk'}:</span>
                     <span className="font-medium">{disk.mountPoint} ({disk.fileSystem})</span>
                   </div>
-                  <div className="flex justify-between"><span className="text-gray-500">Type:</span> <span className="font-medium">{disk.kind} {disk.isRemovable ? '(Removable)' : ''}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Type:</span> <span className="font-medium">{disk.diskType} {disk.isRemovable ? '(Removable)' : ''}</span></div>
                   <div className="flex justify-between"><span className="text-gray-500">Capacity:</span> <span className="font-medium">{formatBytes(disk.totalSpace)}</span></div>
                   <div className="flex justify-between"><span className="text-gray-500">Free Space:</span> <span className="font-medium">{formatBytes(disk.availableSpace)}</span></div>
                 </div>
@@ -173,7 +245,7 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
         )}
 
         {/* Network */}
-        {systemInfo.networks && systemInfo.networks.length > 0 && (
+        {systemInfo.networks.length > 0 && (
           <section>
             <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-1 mb-3">Network Adapters</h3>
             <div className="grid grid-cols-1 gap-2 text-sm">
@@ -187,7 +259,7 @@ export function PrintableSystemInfo({ systemInfo, businessSettings }: PrintableS
           </section>
         )}
       </div>
-      
+
       <div className="mt-12 text-center text-xs text-gray-400">
         Generated by RustService
       </div>

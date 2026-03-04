@@ -199,6 +199,41 @@ pub struct ProcessInfo {
     pub memory_bytes: u64,
 }
 
+/// BIOS information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BiosInfo {
+    pub manufacturer: Option<String>,
+    pub version: Option<String>,
+    pub release_date: Option<String>,
+    pub serial_number: Option<String>,
+}
+
+/// System product information (chassis/system)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemProductInfo {
+    pub vendor: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
+    pub uuid: Option<String>,
+}
+
+/// RAM slot/DIMM information
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RamSlotInfo {
+    pub bank_label: Option<String>,
+    pub device_locator: Option<String>,
+    pub manufacturer: Option<String>,
+    pub part_number: Option<String>,
+    pub serial_number: Option<String>,
+    pub speed_mhz: Option<u64>,
+    pub capacity_bytes: Option<u64>,
+    pub form_factor: Option<String>,
+    pub memory_type: Option<String>,
+}
+
 /// Complete system information response
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -222,4 +257,16 @@ pub struct SystemInfo {
     pub top_processes: Vec<ProcessInfo>,
     pub uptime_seconds: u64,
     pub boot_time: u64,
+    /// BIOS details
+    pub bios: Option<BiosInfo>,
+    /// System product/chassis details
+    pub system_product: Option<SystemProductInfo>,
+    /// RAM slot details
+    pub ram_slots: Vec<RamSlotInfo>,
+    /// CPU L2 cache in KB
+    pub cpu_l2_cache_kb: Option<u64>,
+    /// CPU L3 cache in KB
+    pub cpu_l3_cache_kb: Option<u64>,
+    /// CPU socket designation
+    pub cpu_socket: Option<String>,
 }

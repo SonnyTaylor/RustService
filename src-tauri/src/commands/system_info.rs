@@ -1,13 +1,15 @@
 //! System information collection command
 
 use std::cmp::Ordering;
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
 use sysinfo::{Components, Disks, Motherboard, Networks, System, Users};
 
 use crate::types::{
-    BatteryInfo, ComponentInfo, CpuCoreInfo, CpuInfo, DiskInfo, GpuInfo, LoadAvgInfo, MemoryInfo,
-    MotherboardInfo, NetworkInfo, OsInfo, ProcessInfo, SystemInfo, UserInfo,
+    BatteryInfo, BiosInfo, ComponentInfo, CpuCoreInfo, CpuInfo, DiskInfo, GpuInfo, LoadAvgInfo,
+    MemoryInfo, MotherboardInfo, NetworkInfo, OsInfo, ProcessInfo, RamSlotInfo, SystemInfo,
+    SystemProductInfo, UserInfo,
 };
 
 static SYS: OnceLock<Mutex<System>> = OnceLock::new();
@@ -221,6 +223,10 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
 
     let top_processes = process_list.into_iter().take(10).collect();
 
+    // Collect WMI-based hardware details (best-effort, non-blocking)
+    let (bios, system_product, ram_slots, cpu_l2_cache_kb, cpu_l3_cache_kb, cpu_socket) =
+        collect_wmi_details();
+
     Ok(SystemInfo {
         os,
         cpu,
@@ -236,5 +242,139 @@ pub fn get_system_info() -> Result<SystemInfo, String> {
         top_processes,
         uptime_seconds: System::uptime(),
         boot_time: System::boot_time(),
+        bios,
+        system_product,
+        ram_slots,
+        cpu_l2_cache_kb,
+        cpu_l3_cache_kb,
+        cpu_socket,
     })
+}
+
+/// Collect additional hardware details via PowerShell WMI queries.
+/// Returns defaults on failure so the main command never errors from this.
+fn collect_wmi_details() -> (
+    Option<BiosInfo>,
+    Option<SystemProductInfo>,
+    Vec<RamSlotInfo>,
+    Option<u64>,
+    Option<u64>,
+    Option<String>,
+) {
+    let script = r#"
+$bios = Get-CimInstance Win32_BIOS | Select-Object Manufacturer, SMBIOSBIOSVersion, ReleaseDate, SerialNumber
+$sys = Get-CimInstance Win32_ComputerSystemProduct | Select-Object Vendor, Name, IdentifyingNumber, UUID
+$ram = Get-CimInstance Win32_PhysicalMemory | Select-Object BankLabel, DeviceLocator, Manufacturer, PartNumber, SerialNumber, Speed, Capacity, FormFactor, SMBIOSMemoryType
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 L2CacheSize, L3CacheSize, SocketDesignation
+
+$result = @{
+    bios = @{
+        manufacturer = $bios.Manufacturer
+        version = $bios.SMBIOSBIOSVersion
+        releaseDate = if ($bios.ReleaseDate) { $bios.ReleaseDate.ToString("yyyy-MM-dd") } else { $null }
+        serialNumber = $bios.SerialNumber
+    }
+    systemProduct = @{
+        vendor = $sys.Vendor
+        model = $sys.Name
+        serialNumber = $sys.IdentifyingNumber
+        uuid = $sys.UUID
+    }
+    ramSlots = @($ram | ForEach-Object {
+        @{
+            bankLabel = $_.BankLabel
+            deviceLocator = $_.DeviceLocator
+            manufacturer = if ($_.Manufacturer) { $_.Manufacturer.Trim() } else { $null }
+            partNumber = if ($_.PartNumber) { $_.PartNumber.Trim() } else { $null }
+            serialNumber = if ($_.SerialNumber) { $_.SerialNumber.Trim() } else { $null }
+            speedMhz = $_.Speed
+            capacityBytes = $_.Capacity
+            formFactor = $_.FormFactor
+            smbiosMemoryType = $_.SMBIOSMemoryType
+        }
+    })
+    cpuL2CacheKb = $cpu.L2CacheSize
+    cpuL3CacheKb = $cpu.L3CacheSize
+    cpuSocket = $cpu.SocketDesignation
+}
+
+$result | ConvertTo-Json -Depth 3 -Compress
+"#;
+
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output();
+
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return (None, None, Vec::new(), None, None, None),
+    };
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(_) => return (None, None, Vec::new(), None, None, None),
+    };
+
+    let bios = Some(BiosInfo {
+        manufacturer: v["bios"]["manufacturer"].as_str().map(String::from),
+        version: v["bios"]["version"].as_str().map(String::from),
+        release_date: v["bios"]["releaseDate"].as_str().map(String::from),
+        serial_number: v["bios"]["serialNumber"].as_str().map(String::from),
+    });
+
+    let system_product = Some(SystemProductInfo {
+        vendor: v["systemProduct"]["vendor"].as_str().map(String::from),
+        model: v["systemProduct"]["model"].as_str().map(String::from),
+        serial_number: v["systemProduct"]["serialNumber"].as_str().map(String::from),
+        uuid: v["systemProduct"]["uuid"].as_str().map(String::from),
+    });
+
+    let form_factor_name = |n: u64| -> String {
+        match n {
+            8 => "DIMM".into(),
+            12 => "SO-DIMM".into(),
+            _ => format!("Type {n}"),
+        }
+    };
+
+    let memory_type_name = |n: u64| -> String {
+        match n {
+            20 => "DDR".into(),
+            21 => "DDR2".into(),
+            24 => "DDR3".into(),
+            26 => "DDR4".into(),
+            34 => "DDR5".into(),
+            _ => format!("Type {n}"),
+        }
+    };
+
+    let ram_slots: Vec<RamSlotInfo> = v["ramSlots"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|slot| RamSlotInfo {
+                    bank_label: slot["bankLabel"].as_str().map(String::from),
+                    device_locator: slot["deviceLocator"].as_str().map(String::from),
+                    manufacturer: slot["manufacturer"].as_str().map(String::from),
+                    part_number: slot["partNumber"].as_str().map(String::from),
+                    serial_number: slot["serialNumber"].as_str().map(String::from),
+                    speed_mhz: slot["speedMhz"].as_u64(),
+                    capacity_bytes: slot["capacityBytes"].as_u64(),
+                    form_factor: slot["formFactor"]
+                        .as_u64()
+                        .map(|n| form_factor_name(n)),
+                    memory_type: slot["smbiosMemoryType"]
+                        .as_u64()
+                        .map(|n| memory_type_name(n)),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let cpu_l2 = v["cpuL2CacheKb"].as_u64();
+    let cpu_l3 = v["cpuL3CacheKb"].as_u64();
+    let cpu_socket = v["cpuSocket"].as_str().map(String::from);
+
+    (bios, system_product, ram_slots, cpu_l2, cpu_l3, cpu_socket)
 }
