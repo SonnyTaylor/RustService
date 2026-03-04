@@ -1,6 +1,9 @@
 fn main() {
-    let windows = tauri_build::WindowsAttributes::new().app_manifest(
-        r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+    let is_release = std::env::var("PROFILE").unwrap_or_default() == "release";
+
+    let windows = if is_release {
+        tauri_build::WindowsAttributes::new().app_manifest(
+            r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <dependency>
     <dependentAssembly>
       <assemblyIdentity
@@ -21,7 +24,10 @@ fn main() {
     </security>
   </trustInfo>
 </assembly>"#,
-    );
+        )
+    } else {
+        tauri_build::WindowsAttributes::new()
+    };
 
     let attrs = tauri_build::Attributes::new().windows_attributes(windows);
     tauri_build::try_build(attrs).expect("failed to run tauri build");
