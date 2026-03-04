@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
+use crate::commands::get_program_exe_path;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -53,9 +55,16 @@ pub struct DiskHealthResponse {
 // Helpers
 // ============================================================================
 
-/// Find smartctl executable - check common install locations and PATH
+/// Find smartctl executable using the centralized program resolver.
+/// This checks settings overrides and recursively searches the data/programs folder,
+/// matching the same logic used by the Programs page and smartctl service.
 fn find_smartctl() -> Option<String> {
-    // Check if smartctl is in PATH
+    // Use the centralized program resolver (checks overrides + recursive data/programs search)
+    if let Ok(Some(path)) = get_program_exe_path("smartctl".to_string()) {
+        return Some(path);
+    }
+
+    // Fallback: check PATH and common install locations
     if let Ok(output) = Command::new("where").arg("smartctl").output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout)
@@ -70,7 +79,6 @@ fn find_smartctl() -> Option<String> {
         }
     }
 
-    // Check common install paths
     let common_paths = [
         r"C:\Program Files\smartmontools\bin\smartctl.exe",
         r"C:\Program Files (x86)\smartmontools\bin\smartctl.exe",
@@ -78,16 +86,6 @@ fn find_smartctl() -> Option<String> {
     for path in &common_paths {
         if std::path::Path::new(path).exists() {
             return Some(path.to_string());
-        }
-    }
-
-    // Check data/programs directory (portable install)
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(dir) = exe_path.parent() {
-            let portable = dir.join("data").join("programs").join("smartctl.exe");
-            if portable.exists() {
-                return Some(portable.to_string_lossy().to_string());
-            }
         }
     }
 
