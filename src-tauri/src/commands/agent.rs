@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 
+use base64::Engine as _;
 use chrono::Utc;
 use glob;
 use regex::Regex;
@@ -1982,7 +1983,7 @@ pub fn delete_conversation(conversation_id: String) -> Result<(), String> {
 
 use crate::types::{
     compute_checksum, format_file_size, FileAttachment, FileAttachmentMetadata, FileCategory,
-    FileGenerationRequest, FileSource, FileUploadRequest, FilesystemMetadata, GenerationMetadata,
+    FileSource, FilesystemMetadata, GenerationMetadata,
     PathValidationResult, UploadMetadata, FILE_SIZE_SMALL, MAX_CONTENT_EXTRACTION_SIZE,
 };
 
@@ -2072,14 +2073,15 @@ fn extract_file_content(
 pub fn save_uploaded_file(
     file_name: String,
     mime_type: String,
-    size: u64,
+    _size: u64,
     content_base64: String,
 ) -> Result<FileAttachment, String> {
     ensure_file_dirs()?;
 
     // Validate file size
-    let content_bytes =
-        base64::decode(&content_base64).map_err(|e| format!("Failed to decode base64: {}", e))?;
+    let content_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&content_base64)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     if content_bytes.len() as u64 > FILE_SIZE_SMALL {
         return Err(format!(
@@ -2270,7 +2272,7 @@ pub fn read_file_binary(file_id: String) -> Result<String, String> {
 
     let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    Ok(base64::encode(&bytes))
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 /// Get file info by ID
