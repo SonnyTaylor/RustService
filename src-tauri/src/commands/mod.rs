@@ -16,7 +16,7 @@ mod scripts;
 mod services;
 mod settings;
 mod shortcuts;
-mod startup;
+pub(crate) mod startup;
 mod system_info;
 mod time_tracking;
 mod utils;

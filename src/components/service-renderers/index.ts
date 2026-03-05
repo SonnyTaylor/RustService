@@ -35,6 +35,7 @@ import { DriverAuditRenderer } from './DriverAuditRenderer';
 import { InstalledSoftwareRenderer } from './InstalledSoftwareRenderer';
 import { NetworkConfigRenderer } from './NetworkConfigRenderer';
 import { UsbStabilityRenderer } from './UsbStabilityRenderer';
+import { StartupOptimizeRenderer } from './StartupOptimizeRenderer';
 
 // =============================================================================
 // Types
@@ -82,6 +83,7 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'installed-software': InstalledSoftwareRenderer,
   'network-config': NetworkConfigRenderer,
   'usb-stability': UsbStabilityRenderer,
+  'startup-optimize': StartupOptimizeRenderer,
 };
 
 /**

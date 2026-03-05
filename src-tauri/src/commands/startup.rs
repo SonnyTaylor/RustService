@@ -68,20 +68,17 @@ pub enum StartupImpact {
 pub async fn get_startup_items() -> Result<Vec<StartupItem>, String> {
     let mut items = Vec::new();
 
-    // Get registry startup items via PowerShell
-    match get_registry_startup_items().await {
+    match get_registry_startup_items_sync() {
         Ok(mut registry_items) => items.append(&mut registry_items),
         Err(e) => eprintln!("Failed to get registry startup items: {}", e),
     }
 
-    // Get startup folder items
-    match get_startup_folder_items().await {
+    match get_startup_folder_items_sync() {
         Ok(mut folder_items) => items.append(&mut folder_items),
         Err(e) => eprintln!("Failed to get startup folder items: {}", e),
     }
 
-    // Get scheduled tasks with startup triggers
-    match get_scheduled_startup_tasks().await {
+    match get_scheduled_startup_tasks_sync() {
         Ok(mut task_items) => items.append(&mut task_items),
         Err(e) => eprintln!("Failed to get scheduled startup tasks: {}", e),
     }
@@ -90,7 +87,7 @@ pub async fn get_startup_items() -> Result<Vec<StartupItem>, String> {
 }
 
 /// Get startup items from registry
-async fn get_registry_startup_items() -> Result<Vec<StartupItem>, String> {
+pub(crate) fn get_registry_startup_items_sync() -> Result<Vec<StartupItem>, String> {
     let output = Command::new("powershell")
         .args([
             "-NoProfile",
@@ -209,7 +206,7 @@ async fn get_registry_startup_items() -> Result<Vec<StartupItem>, String> {
 }
 
 /// Get startup items from shell startup folders
-async fn get_startup_folder_items() -> Result<Vec<StartupItem>, String> {
+pub(crate) fn get_startup_folder_items_sync() -> Result<Vec<StartupItem>, String> {
     let mut items = Vec::new();
 
     // User startup folder
@@ -283,7 +280,7 @@ fn scan_startup_folder(path: &PathBuf, source: StartupSource) -> Result<Vec<Star
 }
 
 /// Get scheduled tasks with startup triggers
-async fn get_scheduled_startup_tasks() -> Result<Vec<StartupItem>, String> {
+pub(crate) fn get_scheduled_startup_tasks_sync() -> Result<Vec<StartupItem>, String> {
     let output = Command::new("powershell")
         .args([
             "-NoProfile",
@@ -359,9 +356,9 @@ async fn get_scheduled_startup_tasks() -> Result<Vec<StartupItem>, String> {
 pub async fn toggle_startup_item(id: String, enabled: bool) -> Result<(), String> {
     // Parse the ID to determine the source
     if id.starts_with("reg_") {
-        toggle_registry_startup_item(&id[4..], enabled).await
+        toggle_registry_startup_item_sync(&id[4..], enabled)
     } else if id.starts_with("task_") {
-        toggle_scheduled_task(&id[5..], enabled).await
+        toggle_scheduled_task_sync(&id[5..], enabled)
     } else if id.starts_with("folder_") {
         Err("Startup folder items cannot be disabled - delete them instead".to_string())
     } else {
@@ -370,7 +367,7 @@ pub async fn toggle_startup_item(id: String, enabled: bool) -> Result<(), String
 }
 
 /// Toggle a registry startup item
-async fn toggle_registry_startup_item(name: &str, enabled: bool) -> Result<(), String> {
+pub(crate) fn toggle_registry_startup_item_sync(name: &str, enabled: bool) -> Result<(), String> {
     // We use the StartupApproved registry key to enable/disable
     let script = if enabled {
         format!(
@@ -432,7 +429,7 @@ async fn toggle_registry_startup_item(name: &str, enabled: bool) -> Result<(), S
 }
 
 /// Toggle a scheduled task
-async fn toggle_scheduled_task(name: &str, enabled: bool) -> Result<(), String> {
+pub(crate) fn toggle_scheduled_task_sync(name: &str, enabled: bool) -> Result<(), String> {
     let action = if enabled { "Enable" } else { "Disable" };
 
     let output = Command::new("powershell")

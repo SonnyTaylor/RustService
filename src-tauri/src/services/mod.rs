@@ -22,6 +22,7 @@ mod ping_test;
 mod sfc;
 mod smartctl;
 mod speedtest;
+mod startup_optimize;
 mod stinger;
 mod usb_stability;
 mod whynotwin11;
@@ -78,6 +79,7 @@ static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock:
         Box::new(installed_software::InstalledSoftwareService),
         Box::new(network_config::NetworkConfigService),
         Box::new(usb_stability::UsbStabilityService),
+        Box::new(startup_optimize::StartupOptimizeService),
     ];
 
     services
@@ -315,6 +317,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     enabled: false,
                     options: serde_json::json!({"test_intensity": "standard", "verify_integrity": true}),
                 },
+                PresetServiceConfig {
+                    service_id: "startup-optimize".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({"disable_unnecessary": false, "include_disabled": false}),
+                },
             ],
             icon: "shield-check".to_string(),
             color: "purple".to_string(),
@@ -443,6 +450,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
                     service_id: "usb-stability".to_string(),
                     enabled: false,
                     options: serde_json::json!({"test_intensity": "standard", "verify_integrity": true}),
+                },
+                PresetServiceConfig {
+                    service_id: "startup-optimize".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({"disable_unnecessary": false, "include_disabled": false}),
                 },
             ],
             icon: "settings-2".to_string(),

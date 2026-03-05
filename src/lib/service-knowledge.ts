@@ -68,8 +68,8 @@ export const SERVICE_RECOMMENDATIONS: ServiceRecommendation[] = [
   },
   {
     symptoms: ['startup', 'boot', 'long boot', 'slow startup', 'takes long to start'],
-    services: ['disk-space', 'bleachbit', 'sfc', 'dism', 'installed-software'],
-    reason: 'Slow boot can be caused by disk issues, too many startup items, or corrupted system files',
+    services: ['startup-optimize', 'disk-space', 'bleachbit', 'sfc', 'dism', 'installed-software'],
+    reason: 'Slow boot can be caused by unnecessary startup programs, disk issues, or corrupted system files',
     priority: 7,
   },
   {
