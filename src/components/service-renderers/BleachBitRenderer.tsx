@@ -39,15 +39,15 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className="pb-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20">
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className="px-4 py-2 bg-gradient-to-r from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20">
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className="p-2 rounded-lg bg-green-500/20">
             <Trash2 className="h-5 w-5 text-green-500" />
           </div>
           System Cleanup Results
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-3">
         {/* Stats Grid */}
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="p-4 rounded-lg bg-muted/50 border text-center">

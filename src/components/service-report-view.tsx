@@ -465,10 +465,10 @@ export function ServiceReportView({
 
   // Findings tab content
   const FindingsContent = () => (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Summary Card */}
       <Card className="bg-gradient-to-br from-card to-muted/30 border-2">
-        <CardContent className="pt-6">
+        <CardContent className="pt-4">
           <div className={`grid gap-4 text-center ${localReport.healthScore != null ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <div>
               <p className="text-3xl font-bold">{totalCount}</p>
@@ -643,8 +643,8 @@ export function ServiceReportView({
 
         return (
           <Card key={result.serviceId} className={`overflow-hidden ${!result.success ? 'border-l-4 border-l-destructive' : ''}`}>
-            <CardHeader className="pb-3 bg-muted/30">
-              <CardTitle className="text-base flex items-center gap-3">
+            <CardHeader className="px-4 py-2 bg-muted/30">
+              <CardTitle className="text-sm flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${result.success ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
                   <Icon className={`h-4 w-4 ${result.success ? 'text-green-500' : 'text-red-500'}`} />
                 </div>
@@ -661,7 +661,7 @@ export function ServiceReportView({
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-4 space-y-2">
+            <CardContent className="pt-3 space-y-2">
               {/* Error message for failed services */}
               {!result.success && result.error && (
                 <div className="px-3 py-2 rounded-lg border border-destructive/30 bg-destructive/5">
@@ -788,7 +788,7 @@ export function ServiceReportView({
 
         <div className="flex-1 min-h-0">
           <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">
-              <ScrollArea className="flex-1 min-h-0 p-6">
+              <ScrollArea className="flex-1 min-h-0 px-6 py-4">
               <FindingsContent />
             </ScrollArea>
           </TabsContent>
@@ -847,7 +847,7 @@ export function ServiceReportView({
       </Tabs>
 
       {/* Bottom Action Bar */}
-      <div className="p-4 border-t bg-muted/30">
+      <div className="px-4 py-2 border-t bg-muted/30">
         <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           {backButtonLabel}

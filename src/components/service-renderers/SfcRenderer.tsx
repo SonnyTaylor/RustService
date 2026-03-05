@@ -58,8 +58,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`pb-3 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className={`p-2 rounded-lg ${getIconColor()}`}>
             <FileSearch className="h-5 w-5" />
           </div>
@@ -69,7 +69,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
           {data.repairs_successful === false && <Badge className="ml-auto bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Issues Found</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-3">
         {/* Summary */}
         <div className={`p-4 rounded-lg border mb-4 ${isHealthy || isRepaired ? 'bg-green-500/10 border-green-500/30' : hasPending ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-muted/50'}`}>
           <div className="flex items-center gap-2">

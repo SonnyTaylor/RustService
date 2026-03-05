@@ -58,8 +58,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`pb-3 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className={`p-2 rounded-lg ${hasFailed ? 'bg-yellow-500/20' : 'bg-green-500/20'}`}>
             <CloudDownload className={`h-5 w-5 ${hasFailed ? 'text-yellow-500' : 'text-green-500'}`} />
           </div>
@@ -69,7 +69,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
           {hasFailed && <Badge className="ml-auto bg-yellow-500/10 text-yellow-500 border-yellow-500/20">{data.failed_count} Failed</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-3">
         {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           <div className="p-3 rounded-lg bg-muted/50 border text-center">

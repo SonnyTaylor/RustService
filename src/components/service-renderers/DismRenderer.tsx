@@ -83,8 +83,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`pb-3 bg-gradient-to-r ${overallHealthy ? 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20' : 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20'}`}>
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${overallHealthy ? 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20' : 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20'}`}>
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className={`p-2 rounded-lg ${overallHealthy ? 'bg-green-500/20' : 'bg-yellow-500/20'}`}>
             <Shield className={`h-5 w-5 ${overallHealthy ? 'text-green-500' : 'text-yellow-500'}`} />
           </div>
@@ -94,7 +94,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-3">
         {/* Summary */}
         <div className={`p-4 rounded-lg border mb-4 ${overallHealthy ? 'bg-green-500/10 border-green-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
           <div className="flex items-center gap-2">

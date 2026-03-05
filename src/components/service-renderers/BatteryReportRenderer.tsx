@@ -58,8 +58,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   if (data.noBattery) {
     return (
       <Card className="overflow-hidden border-0 shadow-lg">
-        <CardHeader className="pb-3 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 dark:from-blue-500/20 dark:to-cyan-500/20">
-          <CardTitle className="flex items-center gap-2 text-lg">
+        <CardHeader className="px-4 py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 dark:from-blue-500/20 dark:to-cyan-500/20">
+          <CardTitle className="flex items-center gap-2 text-sm">
             <div className="p-2 rounded-lg bg-blue-500/20 text-blue-500">
               <BatteryCharging className="h-5 w-5" />
             </div>
@@ -67,7 +67,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             <Badge className="ml-auto bg-blue-500/10 text-blue-500 border-blue-500/20">No Battery</Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="pt-3">
           <div className="p-4 rounded-lg bg-muted/50 border">
             <div className="flex items-center gap-2">
               <Info className="h-5 w-5 text-blue-500" />
@@ -107,8 +107,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`pb-3 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className={`p-2 rounded-lg ${isGood ? 'bg-green-500/20 text-green-500' : isDegraded ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
             <BatteryCharging className="h-5 w-5" />
           </div>
@@ -118,7 +118,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4 space-y-4">
+      <CardContent className="pt-3 space-y-4">
         {/* Health Gauge */}
         <div className="text-center">
           <p className={`text-4xl font-bold ${getHealthColor()}`}>

@@ -77,8 +77,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`pb-3 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
+        <CardTitle className="flex items-center gap-2 text-sm">
           <div className={`p-2 rounded-lg ${hasConnection ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
             <Globe className="h-5 w-5" />
           </div>
@@ -88,7 +88,7 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4 space-y-4">
+      <CardContent className="pt-3 space-y-4">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-lg bg-muted/30 border text-center">
