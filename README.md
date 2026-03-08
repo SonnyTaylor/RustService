@@ -74,18 +74,18 @@ Comprehensive hardware & OS reporting at a glance:
 
 ### Prerequisites
 - Windows 10/11
-- Node.js + pnpm
+- Bun ([bun.sh](https://bun.sh/))
 - Rust toolchain ([rustup.rs](https://rustup.rs/))
 
 ### Development
 ```bash
-pnpm install          # Install dependencies
-pnpm tauri dev        # Run in dev mode
+bun install           # Install dependencies
+bun tauri dev         # Run in dev mode
 ```
 
 ### Build
 ```bash
-pnpm tauri build      # Build portable executable
+bun tauri build       # Build portable executable
 # Output: src-tauri/target/release/rustservice.exe
 ```
 

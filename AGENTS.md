@@ -12,14 +12,14 @@ Agent-focused development context for RustService, a Tauri + React Windows deskt
 
 ### Prerequisites
 - Windows 10/11
-- Node.js + pnpm
+- Bun (https://bun.sh/)
 - Rust toolchain (https://rustup.rs/)
 
 ### Quick Start
 ```bash
-pnpm install          # Install frontend dependencies
-pnpm tauri dev        # Run in development mode (requires admin for some features)
-pnpm tauri build      # Build portable executable
+bun install           # Install frontend dependencies
+bun tauri dev         # Run in development mode (requires admin for some features)
+bun tauri build       # Build portable executable
 ```
 
 ### Project Structure
@@ -48,7 +48,7 @@ src-tauri/             # Backend (Rust)
 ### Adding shadcn Components
 Always use the CLI, never manually create shadcn components:
 ```bash
-pnpm dlx shadcn@latest add <component-name>
+bunx shadcn@latest add <component-name>
 ```
 Components are configured with `new-york` style and TailwindCSS v4.
 
