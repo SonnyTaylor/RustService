@@ -195,7 +195,7 @@ function UsageBar({
  */
 function LoadingSkeleton() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 space-y-6">
       <Skeleton className="h-32 w-full rounded-xl" />
       <div className="grid gap-6 md:grid-cols-2">
         {[1, 2, 3, 4].map((i) => (
@@ -543,7 +543,7 @@ export function SystemInfoPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="relative p-6 space-y-8">
+        <div className="relative p-4 space-y-8">
           <RefreshOverlay visible={refreshing} />
 
       {/* ================================================================ */}

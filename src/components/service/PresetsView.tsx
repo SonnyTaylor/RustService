@@ -100,7 +100,7 @@ export function PresetsView({ presets, definitions, onSelectPreset }: PresetsVie
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-6 pb-4">
+      <div className="p-4 pb-4">
         <div className="flex items-center gap-4">
           <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10">
             <Wrench className="h-6 w-6 text-primary" />
@@ -114,11 +114,11 @@ export function PresetsView({ presets, definitions, onSelectPreset }: PresetsVie
         </div>
       </div>
 
-      <Separator className="mx-6" />
+      <Separator />
 
       {/* 4-Column Preset Grid */}
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6">
+        <div className="p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {presets.map((preset) => {
               const Icon = getIcon(preset.icon);

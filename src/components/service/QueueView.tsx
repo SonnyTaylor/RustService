@@ -34,7 +34,10 @@ import {
   FlaskConical,
   Save,
   ChevronDown,
+  Undo2,
 } from 'lucide-react';
+
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -76,6 +79,7 @@ import type {
 } from '@/types/service';
 import { SortableQueueItem } from './SortableQueueItem';
 import { getIcon } from './utils';
+import { useAnimation } from '@/components/animation-context';
 
 // =============================================================================
 // Types
@@ -124,6 +128,7 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
   const [savePresetDescription, setSavePresetDescription] = useState('');
   const [savingPreset, setSavingPreset] = useState(false);
 
+  const { animationsEnabled } = useAnimation();
   const definitionMap = new Map(definitions.map((d) => [d.id, d]));
 
   // Filter queue based on search query
@@ -306,120 +311,165 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
     .filter((q) => q.enabled)
     .reduce((acc, q) => acc + (definitionMap.get(q.serviceId)?.estimatedDurationSecs || 0), 0);
 
+  const formatTotalTime = (secs: number) => {
+    if (secs < 60) return `~${secs}s`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `~${m}m ${s}s` : `~${m}m`;
+  };
+
   return (
     <div className="h-full flex flex-col">
-      {/* Compact Header */}
-      <div className="p-4 border-b bg-background/95 backdrop-blur z-10">
-        <div className="flex items-center gap-3 mb-3">
-          <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 h-8 w-8">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-
-          <h2 className="text-lg font-bold truncate">Service Queue</h2>
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-             <span className="font-medium text-foreground">{enabledCount} services</span>
-             <span>~{totalDuration}s</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                    placeholder="Filter services..."
-                    className="pl-8 h-9 text-sm bg-muted/50 border-0"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-3">
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: true })))}>
-                  Enable All
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: false })))}>
-                  Disable All
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => onQueueChange([])}
-                >
-                  Clear Queue
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button onClick={() => setIsAddDialogOpen(true)} size="sm" className="gap-2 h-9 px-4">
-                <Plus className="h-3.5 w-3.5" />
-                Add
-            </Button>
+      {/* Header */}
+      <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0">
+        <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 h-8 w-8">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h2 className="text-lg font-bold truncate">Service Queue</h2>
+        <div className="flex-1" />
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{enabledCount} services</span>
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {formatTotalTime(totalDuration)}
+          </span>
         </div>
       </div>
 
-      {/* Queue List */}
-      <ScrollArea className="flex-1 min-h-0 px-4 py-3">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={enabledQueue.map((q) => q.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-4 pb-2">
-              {/* Enabled Services */}
-              <div>
-                  {enabledQueue.length > 0 && (
-                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">
-                         Enabled Services
-                     </h3>
-                  )}
-                  <div className="space-y-1.5">
-                    {enabledQueue.map((item) => {
-                        const def = definitionMap.get(item.serviceId);
-                        if (!def) return null;
-                        return (
-                        <SortableQueueItem
-                            key={item.id}
-                            item={item}
-                            definition={def}
-                            onToggle={handleToggle}
-                            onOptionsChange={handleOptionsChange}
-                            onDuplicate={handleDuplicate}
-                            onRemove={handleRemove}
-                            conflictWith={conflictMap.get(item.id)}
-                        />
-                        );
-                    })}
-                  </div>
-              </div>
+      {/* Toolbar */}
+      <div className="px-4 py-2 border-b flex items-center gap-2 flex-shrink-0 bg-muted/20">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Filter services..."
+            className="pl-8 h-8 text-sm bg-background/50 border-muted"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 px-2">
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: true })))}>
+              Enable All
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onQueueChange(queue.map(q => ({ ...q, enabled: false })))}>
+              Disable All
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => onQueueChange([])}
+            >
+              Clear Queue
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button onClick={() => setIsAddDialogOpen(true)} size="sm" className="gap-1.5 h-8">
+          <Plus className="h-3.5 w-3.5" />
+          Add
+        </Button>
+      </div>
 
-              {/* Disabled Services (Collapsible) */}
-              {disabledQueue.length > 0 && (
+      {/* Queue List */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-3">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={enabledQueue.map((q) => q.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {/* Enabled Services */}
+                {enabledQueue.length > 0 && (
+                  <div>
+                    <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
+                      Enabled Services ({enabledQueue.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      <AnimatePresence initial={false}>
+                        {enabledQueue.map((item) => {
+                          const def = definitionMap.get(item.serviceId);
+                          if (!def) return null;
+                          return animationsEnabled ? (
+                            <motion.div
+                              key={item.id}
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                            >
+                              <SortableQueueItem
+                                item={item}
+                                definition={def}
+                                onToggle={handleToggle}
+                                onOptionsChange={handleOptionsChange}
+                                onDuplicate={handleDuplicate}
+                                onRemove={handleRemove}
+                                conflictWith={conflictMap.get(item.id)}
+                              />
+                            </motion.div>
+                          ) : (
+                            <SortableQueueItem
+                              key={item.id}
+                              item={item}
+                              definition={def}
+                              onToggle={handleToggle}
+                              onOptionsChange={handleOptionsChange}
+                              onDuplicate={handleDuplicate}
+                              onRemove={handleRemove}
+                              conflictWith={conflictMap.get(item.id)}
+                            />
+                          );
+                        })}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                )}
+
+                {/* Disabled Services (Collapsible) */}
+                {disabledQueue.length > 0 && (
                   <Collapsible open={disabledOpen} onOpenChange={setDisabledOpen}>
                     <CollapsibleTrigger asChild>
-                      <button className="flex items-center gap-2 w-full px-1 py-1 hover:bg-muted/50 rounded-md transition-colors">
+                      <button className="flex items-center gap-2 w-full px-1 py-1.5 hover:bg-muted/50 rounded-md transition-colors">
                         <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${disabledOpen ? 'rotate-90' : ''}`} />
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                           Disabled Services ({disabledQueue.length})
                         </h3>
                       </button>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <div className="space-y-1.5 opacity-60 mt-1.5">
-                        {disabledQueue.map((item) => {
+                      <div className="space-y-1.5 mt-1.5">
+                        <AnimatePresence initial={false}>
+                          {disabledQueue.map((item) => {
                             const def = definitionMap.get(item.serviceId);
                             if (!def) return null;
-                            return (
-                            <SortableQueueItem
+                            return animationsEnabled ? (
+                              <motion.div
+                                key={item.id}
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                              >
+                                <SortableQueueItem
+                                  item={item}
+                                  definition={def}
+                                  onToggle={handleToggle}
+                                  onOptionsChange={handleOptionsChange}
+                                  onDuplicate={handleDuplicate}
+                                  onRemove={handleRemove}
+                                />
+                              </motion.div>
+                            ) : (
+                              <SortableQueueItem
                                 key={item.id}
                                 item={item}
                                 definition={def}
@@ -427,34 +477,37 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
                                 onOptionsChange={handleOptionsChange}
                                 onDuplicate={handleDuplicate}
                                 onRemove={handleRemove}
-                            />
+                              />
                             );
-                        })}
+                          })}
+                        </AnimatePresence>
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
-              )}
+                )}
 
-              {filteredQueue.length === 0 && (
+                {filteredQueue.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
-                      <p>No services match your filter.</p>
-                      <Button variant="link" onClick={() => setSearchQuery('')}>Clear filter</Button>
+                    <p>No services match your filter.</p>
+                    <Button variant="link" onClick={() => setSearchQuery('')}>Clear filter</Button>
                   </div>
-              )}
-            </div>
-          </SortableContext>
-        </DndContext>
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
       </ScrollArea>
 
       {/* Undo Bar */}
       {recentlyRemoved && (() => {
         const def = definitionMap.get(recentlyRemoved.item.serviceId);
         return (
-          <div className="mx-4 mb-2 flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border bg-muted/50 text-sm animate-in slide-in-from-bottom-2">
-            <span className="text-muted-foreground">
-              Removed <strong>{def?.name ?? 'service'}</strong>
+          <div className="mx-3 mb-2 flex items-center justify-between gap-3 px-3 py-2 rounded-md border bg-muted/50 text-sm animate-in slide-in-from-bottom-2">
+            <span className="text-muted-foreground text-xs">
+              Removed <strong className="text-foreground">{def?.name ?? 'service'}</strong>
             </span>
-            <Button variant="link" size="sm" className="h-auto p-0 text-primary" onClick={handleUndo}>
+            <Button variant="ghost" size="sm" className="h-6 px-2 gap-1 text-xs" onClick={handleUndo}>
+              <Undo2 className="h-3 w-3" />
               Undo
             </Button>
           </div>
@@ -463,16 +516,16 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
 
       {/* Run Error Alert */}
       {runError && (
-        <Alert variant="destructive" className="mx-4 mb-2">
+        <Alert variant="destructive" className="mx-3 mb-2">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{runError}</AlertDescription>
         </Alert>
       )}
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t bg-muted/30">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={onBack} className="gap-1.5">
+      <div className="px-3 py-2.5 border-t bg-muted/30 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onBack} className="gap-1.5 h-9">
             <ArrowLeft className="h-3.5 w-3.5" />
             Back
           </Button>
@@ -482,7 +535,7 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
             size="sm"
             onClick={() => setShowSavePresetDialog(true)}
             disabled={enabledCount === 0}
-            className="gap-1.5"
+            className="gap-1.5 h-9"
           >
             <Save className="h-3.5 w-3.5" />
             Save Preset
@@ -492,7 +545,7 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-background">
+                <div className="flex items-center gap-1.5 px-2.5 h-9 rounded-md border bg-background">
                   <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" />
                   <Label htmlFor="parallel-toggle" className="text-xs font-medium cursor-pointer select-none">
                     Parallel
@@ -527,7 +580,7 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
                   <Button
                     onClick={() => onStart(parallelMode)}
                     disabled={enabledCount === 0}
-                    className="w-full gap-2 h-10 text-sm font-semibold"
+                    className="w-full gap-2 h-9 text-sm font-semibold"
                   >
                     <Play className="h-4 w-4" />
                     Start Service ({enabledCount} {enabledCount === 1 ? 'task' : 'tasks'})
@@ -572,29 +625,27 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
                       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-2">
                         {category}
                       </h4>
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {services.map((def) => {
                           const Icon = getIcon(def.icon);
                           return (
                             <div
                               key={def.id}
-                              className="flex items-start gap-4 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
                               onClick={() => handleAddNewService(def.id)}
                             >
-                              <div className="p-2 rounded-lg bg-primary/10 text-primary mt-1">
-                                <Icon className="h-5 w-5" />
+                              <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                                <Icon className="h-4 w-4" />
                               </div>
-                              <div className="flex-1">
+                              <div className="flex-1 min-w-0">
                                 <h4 className="font-semibold text-sm">{def.name}</h4>
-                                <p className="text-xs text-muted-foreground line-clamp-2">{def.description}</p>
-                                <div className="flex items-center gap-2 mt-1.5">
-                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    ~{def.estimatedDurationSecs}s
-                                  </span>
-                                </div>
+                                <p className="text-xs text-muted-foreground truncate">{def.description}</p>
                               </div>
-                              <Button size="sm" variant="ghost" className="self-center">
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1 shrink-0">
+                                <Clock className="h-3 w-3" />
+                                ~{def.estimatedDurationSecs}s
+                              </span>
+                              <Button size="sm" variant="ghost" className="shrink-0 h-7 px-2 text-xs">
                                 Add
                               </Button>
                             </div>
