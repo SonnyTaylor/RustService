@@ -19,7 +19,13 @@ static SYS: OnceLock<Mutex<System>> = OnceLock::new();
 /// Returns OS, CPU, memory, disk, motherboard, GPU, battery, temperature,
 /// load average, network, and user information.
 #[tauri::command]
-pub fn get_system_info() -> Result<SystemInfo, String> {
+pub async fn get_system_info() -> Result<SystemInfo, String> {
+    tokio::task::spawn_blocking(get_system_info_blocking)
+        .await
+        .map_err(|e| format!("System info task failed: {e}"))?
+}
+
+fn get_system_info_blocking() -> Result<SystemInfo, String> {
     // Reuse the same System instance between calls so CPU and process usage
     // can be computed from deltas (sysinfo requires at least two refreshes).
     let sys_mutex = SYS.get_or_init(|| Mutex::new(System::new_all()));

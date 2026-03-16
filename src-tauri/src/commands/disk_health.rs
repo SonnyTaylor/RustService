@@ -270,6 +270,16 @@ fn parse_smartctl_json(json_str: &str) -> Option<DiskHealthInfo> {
 /// Get S.M.A.R.T. health data for all detected disks
 #[tauri::command]
 pub async fn get_disk_health() -> DiskHealthResponse {
+    tokio::task::spawn_blocking(get_disk_health_blocking)
+        .await
+        .unwrap_or_else(|e| DiskHealthResponse {
+            disks: Vec::new(),
+            smartctl_found: false,
+            error: Some(format!("Disk health task failed: {e}")),
+        })
+}
+
+fn get_disk_health_blocking() -> DiskHealthResponse {
     let smartctl_path = match find_smartctl() {
         Some(path) => path,
         None => {
@@ -295,11 +305,8 @@ pub async fn get_disk_health() -> DiskHealthResponse {
                 if let Some(info) = parse_smartctl_json(&stdout) {
                     disks.push(info);
                 }
-                // If parsing fails, skip this drive (might not be a valid target)
             }
-            Err(_) => {
-                // Failed to run smartctl on this drive, skip it
-            }
+            Err(_) => {}
         }
     }
 
