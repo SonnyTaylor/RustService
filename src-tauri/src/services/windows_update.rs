@@ -57,6 +57,7 @@ impl Service for WindowsUpdateService {
             ],
             icon: "cloud-download".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

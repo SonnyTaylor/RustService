@@ -6,8 +6,7 @@
  */
 
 import { BatteryCharging, Info, Zap, Clock } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -49,7 +48,7 @@ function formatTime(seconds: number): string {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as BatteryData | undefined;
 
@@ -57,25 +56,14 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   if (data.noBattery) {
     return (
-      <Card className="overflow-hidden border-0 shadow-lg">
-        <CardHeader className="px-4 py-2 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 dark:from-blue-500/20 dark:to-cyan-500/20">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <div className="p-2 rounded-lg bg-blue-500/20 text-blue-500">
-              <BatteryCharging className="h-5 w-5" />
-            </div>
-            Battery Report
-            <Badge className="ml-auto bg-blue-500/10 text-blue-500 border-blue-500/20">No Battery</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-3">
-          <div className="p-4 rounded-lg bg-muted/50 border">
-            <div className="flex items-center gap-2">
-              <Info className="h-5 w-5 text-blue-500" />
-              <p className="text-sm">No battery detected. This appears to be a desktop system.</p>
-            </div>
+      <ServiceCardWrapper definition={definition} result={result} statusBadge={{ label: 'No Battery', color: 'blue' }}>
+        <div className="p-4 rounded-lg bg-muted/50 border">
+          <div className="flex items-center gap-2">
+            <Info className="h-5 w-5 text-blue-500" />
+            <p className="text-sm">No battery detected. This appears to be a desktop system.</p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </ServiceCardWrapper>
     );
   }
 
@@ -83,12 +71,6 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const isGood = health >= 80;
   const isDegraded = health >= 50 && health < 80;
   const isCritical = health < 50 && health > 0;
-
-  const getStatusColor = () => {
-    if (isCritical) return 'from-red-500/10 to-orange-500/10 dark:from-red-500/20 dark:to-orange-500/20';
-    if (isDegraded) return 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20';
-    return 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20';
-  };
 
   const getHealthColor = () => {
     if (isCritical) return 'text-red-500';
@@ -105,20 +87,15 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   // Build a simple capacity chart from history
   const recentHistory = data.capacityHistory.slice(-12);
 
+  const statusBadge = isGood
+    ? { label: 'Healthy', color: 'green' as const }
+    : isDegraded
+      ? { label: 'Degraded', color: 'yellow' as const }
+      : { label: 'Replace', color: 'red' as const };
+
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div className={`p-2 rounded-lg ${isGood ? 'bg-green-500/20 text-green-500' : isDegraded ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
-            <BatteryCharging className="h-5 w-5" />
-          </div>
-          Battery Report
-          <Badge className={`ml-auto ${isGood ? 'bg-green-500/10 text-green-500 border-green-500/20' : isDegraded ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-            {isGood ? 'Healthy' : isDegraded ? 'Degraded' : 'Replace'}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      <div className="space-y-4">
         {/* Health Gauge */}
         <div className="text-center">
           <p className={`text-4xl font-bold ${getHealthColor()}`}>
@@ -236,8 +213,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             </p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

@@ -78,6 +78,7 @@ impl Service for StingerService {
             ],
             icon: "bug".to_string(),
             exclusive_resources: vec!["filesystem-scan".to_string()],
+            dependencies: vec![],
         }
     }
 

@@ -33,6 +33,7 @@ impl Service for SpeedtestService {
             options: vec![],
             icon: "download".to_string(),
             exclusive_resources: vec!["network-bandwidth".to_string()],
+            dependencies: vec![],
         }
     }
 

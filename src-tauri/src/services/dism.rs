@@ -44,6 +44,7 @@ impl Service for DismService {
             }],
             icon: "package-check".to_string(),
             exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 

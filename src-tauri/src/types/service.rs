@@ -79,6 +79,10 @@ pub struct ServiceDefinition {
     /// Empty vec means the service can run in parallel with anything.
     #[serde(default)]
     pub exclusive_resources: Vec<String>,
+    /// Service IDs that must complete before this service can run.
+    /// Empty vec means no dependencies.
+    #[serde(default)]
+    pub dependencies: Vec<ServiceId>,
 }
 
 // =============================================================================

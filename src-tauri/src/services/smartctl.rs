@@ -33,6 +33,7 @@ impl Service for SmartctlService {
             options: vec![],
             icon: "activity".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

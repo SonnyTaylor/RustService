@@ -51,6 +51,10 @@ export interface SortableQueueItemProps {
   onDuplicate: (itemId: string) => void;
   onRemove: (itemId: string) => void;
   conflictWith?: string[];
+  /** Names of services this service depends on (must run before) */
+  dependencyNames?: string[];
+  /** Whether a dependency ordering violation exists */
+  dependencyViolation?: boolean;
 }
 
 // =============================================================================
@@ -65,6 +69,8 @@ export function SortableQueueItem({
   onDuplicate,
   onRemove,
   conflictWith,
+  dependencyNames,
+  dependencyViolation,
 }: SortableQueueItemProps) {
   const {
     attributes,
@@ -237,6 +243,19 @@ export function SortableQueueItem({
             <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-0.5">
               <AlertCircle className="h-3 w-3 shrink-0" />
               <span className="truncate">Resource conflict with: {conflictWith.join(', ')}</span>
+            </div>
+          )}
+          {dependencyNames && dependencyNames.length > 0 && (
+            <div className={`flex items-center gap-1 text-xs mt-0.5 ${
+              dependencyViolation
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-muted-foreground'
+            }`}>
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {dependencyViolation ? 'Must run after: ' : 'Requires: '}
+                {dependencyNames.join(', ')}
+              </span>
             </div>
           )}
         </div>

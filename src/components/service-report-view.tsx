@@ -38,25 +38,10 @@ import type {
   FindingSeverity,
 } from '@/types/service';
 import type { BusinessSettings } from '@/types/settings';
-import { getServiceRenderer } from '@/components/service-renderers';
+import { getServiceRenderer, ServiceCardWrapper } from '@/components/service-renderers';
+import { getIcon } from '@/components/service/utils';
 import { useSettings } from '@/components/settings-context';
 import { isAiConfigured, aiSummarizeReport } from '@/lib/ai-features';
-
-// =============================================================================
-// Icon Mapping
-// =============================================================================
-
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  stethoscope: Info,
-  wrench: Wrench,
-  'shield-check': CheckCircle2,
-  'settings-2': Wrench,
-  wifi: Info,
-};
-
-function getIcon(iconName: string) {
-  return ICON_MAP[iconName] || Wrench;
-}
 
 // =============================================================================
 // Printable Report Component
@@ -628,40 +613,33 @@ export function ServiceReportView({
         // Use custom renderer if available
         if (CustomRenderer && def) {
           return (
-            <div key={result.serviceId} className={!result.success ? 'border-l-4 border-l-destructive rounded-lg' : ''}>
-              <CustomRenderer
-                result={result}
-                definition={def}
-                variant="findings"
-              />
-            </div>
+            <CustomRenderer
+              key={result.serviceId}
+              result={result}
+              definition={def}
+              variant="findings"
+            />
           );
         }
 
         // Fallback to generic renderer
-        const Icon = def ? getIcon(def.icon) : Wrench;
+        // Build a minimal definition for the wrapper if none exists
+        const fallbackDef: ServiceDefinition = def ?? {
+          id: result.serviceId,
+          name: result.serviceId,
+          description: '',
+          category: 'diagnostics',
+          estimatedDurationSecs: 0,
+          requiredPrograms: [],
+          options: [],
+          icon: 'wrench',
+          exclusiveResources: [],
+          dependencies: [],
+        };
 
         return (
-          <Card key={result.serviceId} className={`overflow-hidden ${!result.success ? 'border-l-4 border-l-destructive' : ''}`}>
-            <CardHeader className="px-4 py-2 bg-muted/30">
-              <CardTitle className="text-sm flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${result.success ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                  <Icon className={`h-4 w-4 ${result.success ? 'text-green-500' : 'text-red-500'}`} />
-                </div>
-                {def?.name || result.serviceId}
-                <span
-                  className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
-                    result.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                  }`}
-                >
-                  {result.success ? 'PASS' : 'FAIL'}
-                </span>
-                <span className="text-xs text-muted-foreground font-normal">
-                  {(result.durationMs / 1000).toFixed(1)}s
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-3 space-y-2">
+          <ServiceCardWrapper key={result.serviceId} definition={fallbackDef} result={result}>
+            <div className="space-y-2">
               {/* Error message for failed services */}
               {!result.success && result.error && (
                 <div className="px-3 py-2 rounded-lg border border-destructive/30 bg-destructive/5">
@@ -723,8 +701,8 @@ export function ServiceReportView({
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </ServiceCardWrapper>
         );
       })}
     </div>
@@ -788,7 +766,7 @@ export function ServiceReportView({
 
         <div className="flex-1 min-h-0">
           <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">
-              <ScrollArea className="flex-1 min-h-0 px-6 py-4">
+              <ScrollArea className="flex-1 min-h-0 px-4 py-4">
               <FindingsContent />
             </ScrollArea>
           </TabsContent>

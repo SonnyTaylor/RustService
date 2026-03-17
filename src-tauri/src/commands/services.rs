@@ -255,6 +255,30 @@ pub async fn run_services(
         return Err("No services enabled in queue".to_string());
     }
 
+    // Validate dependency ordering
+    {
+        let all_defs = crate::services::get_all_definitions();
+        let dep_map: std::collections::HashMap<String, Vec<String>> = all_defs
+            .into_iter()
+            .map(|d| (d.id.clone(), d.dependencies))
+            .collect();
+
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for item in &enabled_queue {
+            let deps = dep_map.get(&item.service_id).cloned().unwrap_or_default();
+            for dep in &deps {
+                let dep_in_queue = enabled_queue.iter().any(|q| &q.service_id == dep);
+                if dep_in_queue && !seen_ids.contains(dep) {
+                    return Err(format!(
+                        "Service '{}' depends on '{}' which must come earlier in the queue",
+                        item.service_id, dep
+                    ));
+                }
+            }
+            seen_ids.insert(item.service_id.clone());
+        }
+    }
+
     // Create report
     let report_id = Uuid::new_v4().to_string();
     let mut report = ServiceReport {
@@ -455,8 +479,12 @@ fn run_services_parallel(
     // Build a map of service_id -> exclusive_resources from definitions
     let all_defs = services::get_all_definitions();
     let resource_map: HashMap<String, Vec<String>> = all_defs
-        .into_iter()
-        .map(|d| (d.id.clone(), d.exclusive_resources))
+        .iter()
+        .map(|d| (d.id.clone(), d.exclusive_resources.clone()))
+        .collect();
+    let dep_map: std::collections::HashMap<String, Vec<String>> = all_defs
+        .iter()
+        .map(|d| (d.id.clone(), d.dependencies.clone()))
         .collect();
 
     // Track state for the scheduler
@@ -577,7 +605,14 @@ fn run_services_parallel(
             // Check if any of its resources conflict with currently held ones
             let has_conflict = service_resources.iter().any(|r| held_resources.contains(r));
 
-            if has_conflict {
+            // Check if all dependencies have completed
+            let deps = dep_map.get(&queue_item.service_id).cloned().unwrap_or_default();
+            let deps_satisfied = deps.iter().all(|dep_id| {
+                let dep_index = enabled_queue.iter().position(|q| q.service_id == *dep_id);
+                dep_index.map_or(true, |idx| completed.contains(&idx))
+            });
+
+            if has_conflict || !deps_satisfied {
                 continue; // Skip this service for now; it'll be picked up later
             }
 

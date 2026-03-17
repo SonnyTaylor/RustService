@@ -16,8 +16,8 @@ import {
   ShieldCheck,
   ShieldAlert,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -133,7 +133,7 @@ function getStatusBadge(status: string) {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const summaryFinding = result.findings.find(
     (f) => (f.data as UsbSummaryData | undefined)?.type === 'usb_summary'
   );
@@ -164,175 +164,167 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   // Speed bar max for visual scale (cap at 200 MB/s)
   const speedMax = 200;
 
+  const statusBadge = summary.overallStatus === 'PASS'
+    ? { label: 'PASS', color: 'green' as const }
+    : summary.overallStatus === 'PASS WITH WARNINGS'
+      ? { label: 'PASS WITH WARNINGS', color: 'yellow' as const }
+      : summary.overallStatus === 'ISSUES DETECTED'
+        ? { label: 'ISSUES DETECTED', color: 'yellow' as const }
+        : { label: 'FAIL', color: 'red' as const };
+
   return (
-    <div className="space-y-4">
-      {/* Summary Card */}
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-3 bg-gradient-to-r from-cyan-500/10 to-blue-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-cyan-500/20">
-              <Usb className="h-5 w-5 text-cyan-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                USB Stability Test
-                <span className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(summary.overallStatus)}`}>
-                  {summary.overallStatus}
-                </span>
-              </div>
-              <p className="text-xs font-normal text-muted-foreground mt-0.5">
-                {summary.drivePath} — {summary.volumeLabel} ({formatBytes(summary.totalSpaceBytes)}, {summary.fileSystem})
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      <div className="space-y-4">
+        {/* Drive Info */}
+        <p className="text-xs text-muted-foreground">
+          {summary.drivePath} — {summary.volumeLabel} ({formatBytes(summary.totalSpaceBytes)}, {summary.fileSystem})
+        </p>
+
+        {/* Fake Drive Warning */}
+        {capacityData && !capacityData.pass && (
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+            <ShieldAlert className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-500">⚠ Fake Drive Suspected</p>
+              <p className="text-sm text-red-400">
+                Capacity mismatch detected — this drive may have less real storage than advertised.
+                Do NOT use for important data.
               </p>
             </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 space-y-4">
-          {/* Fake Drive Warning */}
-          {capacityData && !capacityData.pass && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start gap-3">
-              <ShieldAlert className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-red-500">⚠ Fake Drive Suspected</p>
-                <p className="text-sm text-red-400">
-                  Capacity mismatch detected — this drive may have less real storage than advertised.
-                  Do NOT use for important data.
-                </p>
+          </div>
+        )}
+
+        {/* Speed Benchmarks */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Write Speed */}
+          <div className={`p-4 rounded-xl border ${getSpeedBg(summary.writeSpeedMbps)}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowUp className={`h-4 w-4 ${getSpeedColor(summary.writeSpeedMbps)}`} />
+              <span className="text-sm font-medium">Write Speed</span>
+              <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${getSpeedBg(summary.writeSpeedMbps)} ${getSpeedColor(summary.writeSpeedMbps)}`}>
+                {writeData?.rating || getSpeedLabel(summary.writeSpeedMbps)}
+              </span>
+            </div>
+            <p className={`text-2xl font-bold ${getSpeedColor(summary.writeSpeedMbps)}`}>
+              {summary.writeSpeedMbps.toFixed(1)} <span className="text-sm font-normal">MB/s</span>
+            </p>
+            <Progress
+              value={Math.min((summary.writeSpeedMbps / speedMax) * 100, 100)}
+              className="h-1.5 mt-2"
+              style={{ '--progress-color': getSpeedBarColor(summary.writeSpeedMbps) } as React.CSSProperties}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {summary.testSizeMb} MB in {summary.writeDurationSecs.toFixed(1)}s
+            </p>
+          </div>
+
+          {/* Read Speed */}
+          <div className={`p-4 rounded-xl border ${getSpeedBg(summary.readSpeedMbps)}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <ArrowDown className={`h-4 w-4 ${getSpeedColor(summary.readSpeedMbps)}`} />
+              <span className="text-sm font-medium">Read Speed</span>
+              <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${getSpeedBg(summary.readSpeedMbps)} ${getSpeedColor(summary.readSpeedMbps)}`}>
+                {readData?.rating || getSpeedLabel(summary.readSpeedMbps)}
+              </span>
+            </div>
+            <p className={`text-2xl font-bold ${getSpeedColor(summary.readSpeedMbps)}`}>
+              {summary.readSpeedMbps.toFixed(1)} <span className="text-sm font-normal">MB/s</span>
+            </p>
+            <Progress
+              value={Math.min((summary.readSpeedMbps / speedMax) * 100, 100)}
+              className="h-1.5 mt-2"
+              style={{ '--progress-color': getSpeedBarColor(summary.readSpeedMbps) } as React.CSSProperties}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {summary.testSizeMb} MB in {summary.readDurationSecs.toFixed(1)}s
+            </p>
+          </div>
+        </div>
+
+        {/* Integrity & Random I/O */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Integrity Check */}
+          {integrityData && (
+            <div className={`p-4 rounded-xl border ${integrityData.pass ? 'bg-green-500/5' : 'bg-red-500/10 border-red-500/30'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                {integrityData.pass ? (
+                  <ShieldCheck className="h-4 w-4 text-green-500" />
+                ) : (
+                  <ShieldAlert className="h-4 w-4 text-red-500" />
+                )}
+                <span className="text-sm font-medium">Data Integrity</span>
               </div>
+              <p className={`text-2xl font-bold ${integrityData.pass ? 'text-green-500' : 'text-red-500'}`}>
+                {integrityData.pass ? 'PASS' : 'FAIL'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {integrityData.pass
+                  ? `${formatBytes(integrityData.bytesVerified)} verified — zero corruption`
+                  : `${integrityData.errorCount.toLocaleString()} errors detected`}
+              </p>
             </div>
           )}
 
-          {/* Speed Benchmarks */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Write Speed */}
-            <div className={`p-4 rounded-xl border ${getSpeedBg(summary.writeSpeedMbps)}`}>
+          {/* Not checked */}
+          {!integrityData && summary.integrityChecked === false && (
+            <div className="p-4 rounded-xl border bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
-                <ArrowUp className={`h-4 w-4 ${getSpeedColor(summary.writeSpeedMbps)}`} />
-                <span className="text-sm font-medium">Write Speed</span>
-                <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${getSpeedBg(summary.writeSpeedMbps)} ${getSpeedColor(summary.writeSpeedMbps)}`}>
-                  {writeData?.rating || getSpeedLabel(summary.writeSpeedMbps)}
-                </span>
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Data Integrity</span>
               </div>
-              <p className={`text-2xl font-bold ${getSpeedColor(summary.writeSpeedMbps)}`}>
-                {summary.writeSpeedMbps.toFixed(1)} <span className="text-sm font-normal">MB/s</span>
-              </p>
-              <Progress
-                value={Math.min((summary.writeSpeedMbps / speedMax) * 100, 100)}
-                className="h-1.5 mt-2"
-                style={{ '--progress-color': getSpeedBarColor(summary.writeSpeedMbps) } as React.CSSProperties}
-              />
+              <p className="text-lg font-bold text-muted-foreground">Skipped</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {summary.testSizeMb} MB in {summary.writeDurationSecs.toFixed(1)}s
+                Enable "Data Integrity Check" option for verification
               </p>
             </div>
+          )}
 
-            {/* Read Speed */}
-            <div className={`p-4 rounded-xl border ${getSpeedBg(summary.readSpeedMbps)}`}>
+          {/* Random I/O */}
+          {randomIoData && (
+            <div className="p-4 rounded-xl border bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
-                <ArrowDown className={`h-4 w-4 ${getSpeedColor(summary.readSpeedMbps)}`} />
-                <span className="text-sm font-medium">Read Speed</span>
-                <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${getSpeedBg(summary.readSpeedMbps)} ${getSpeedColor(summary.readSpeedMbps)}`}>
-                  {readData?.rating || getSpeedLabel(summary.readSpeedMbps)}
-                </span>
+                <Zap className="h-4 w-4 text-purple-500" />
+                <span className="text-sm font-medium">Random I/O Latency</span>
               </div>
-              <p className={`text-2xl font-bold ${getSpeedColor(summary.readSpeedMbps)}`}>
-                {summary.readSpeedMbps.toFixed(1)} <span className="text-sm font-normal">MB/s</span>
+              <p className="text-2xl font-bold text-purple-500">
+                {randomIoData.avgMs.toFixed(2)} <span className="text-sm font-normal">ms avg</span>
               </p>
-              <Progress
-                value={Math.min((summary.readSpeedMbps / speedMax) * 100, 100)}
-                className="h-1.5 mt-2"
-                style={{ '--progress-color': getSpeedBarColor(summary.readSpeedMbps) } as React.CSSProperties}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {summary.testSizeMb} MB in {summary.readDurationSecs.toFixed(1)}s
-              </p>
-            </div>
-          </div>
-
-          {/* Integrity & Random I/O */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Integrity Check */}
-            {integrityData && (
-              <div className={`p-4 rounded-xl border ${integrityData.pass ? 'bg-green-500/5' : 'bg-red-500/10 border-red-500/30'}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  {integrityData.pass ? (
-                    <ShieldCheck className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <ShieldAlert className="h-4 w-4 text-red-500" />
-                  )}
-                  <span className="text-sm font-medium">Data Integrity</span>
-                </div>
-                <p className={`text-2xl font-bold ${integrityData.pass ? 'text-green-500' : 'text-red-500'}`}>
-                  {integrityData.pass ? 'PASS' : 'FAIL'}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {integrityData.pass
-                    ? `${formatBytes(integrityData.bytesVerified)} verified — zero corruption`
-                    : `${integrityData.errorCount.toLocaleString()} errors detected`}
-                </p>
-              </div>
-            )}
-
-            {/* Not checked */}
-            {!integrityData && summary.integrityChecked === false && (
-              <div className="p-4 rounded-xl border bg-muted/30">
-                <div className="flex items-center gap-2 mb-2">
-                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Data Integrity</span>
-                </div>
-                <p className="text-lg font-bold text-muted-foreground">Skipped</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enable "Data Integrity Check" option for verification
-                </p>
-              </div>
-            )}
-
-            {/* Random I/O */}
-            {randomIoData && (
-              <div className="p-4 rounded-xl border bg-muted/30">
-                <div className="flex items-center gap-2 mb-2">
-                  <Zap className="h-4 w-4 text-purple-500" />
-                  <span className="text-sm font-medium">Random I/O Latency</span>
-                </div>
-                <p className="text-2xl font-bold text-purple-500">
-                  {randomIoData.avgMs.toFixed(2)} <span className="text-sm font-normal">ms avg</span>
-                </p>
-                <div className="flex gap-4 text-xs text-muted-foreground mt-1">
-                  <span>Min: {randomIoData.minMs.toFixed(2)}ms</span>
-                  <span>Max: {randomIoData.maxMs.toFixed(2)}ms</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {randomIoData.iterations} × {(randomIoData.blockSize / 1024).toFixed(0)}KB random reads
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Capacity Check */}
-          {capacityData && (
-            <div className={`p-4 rounded-xl border ${capacityData.pass ? 'bg-green-500/5' : 'bg-red-500/10 border-red-500/30'}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <HardDrive className={`h-4 w-4 ${capacityData.pass ? 'text-green-500' : 'text-red-500'}`} />
-                <span className="text-sm font-medium">Capacity Verification</span>
-                <span className={`ml-auto text-xs font-medium ${capacityData.pass ? 'text-green-500' : 'text-red-500'}`}>
-                  {capacityData.pass ? 'PASS' : 'FAILED'}
-                </span>
+              <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                <span>Min: {randomIoData.minMs.toFixed(2)}ms</span>
+                <span>Max: {randomIoData.maxMs.toFixed(2)}ms</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Expected ~{capacityData.expectedMb} MB used, actual ~{capacityData.actualUsedMb} MB
-                {capacityData.discrepancyMb > 0 && ` (±${capacityData.discrepancyMb} MB discrepancy)`}
+                {randomIoData.iterations} × {(randomIoData.blockSize / 1024).toFixed(0)}KB random reads
               </p>
             </div>
           )}
+        </div>
 
-          {/* Test Info */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-            <span>Intensity: {summary.intensity}</span>
-            <span>Test size: {summary.testSizeMb} MB</span>
-            <span>Duration: {summary.totalDurationSecs.toFixed(1)}s</span>
+        {/* Capacity Check */}
+        {capacityData && (
+          <div className={`p-4 rounded-xl border ${capacityData.pass ? 'bg-green-500/5' : 'bg-red-500/10 border-red-500/30'}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <HardDrive className={`h-4 w-4 ${capacityData.pass ? 'text-green-500' : 'text-red-500'}`} />
+              <span className="text-sm font-medium">Capacity Verification</span>
+              <span className={`ml-auto text-xs font-medium ${capacityData.pass ? 'text-green-500' : 'text-red-500'}`}>
+                {capacityData.pass ? 'PASS' : 'FAILED'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Expected ~{capacityData.expectedMb} MB used, actual ~{capacityData.actualUsedMb} MB
+              {capacityData.discrepancyMb > 0 && ` (±${capacityData.discrepancyMb} MB discrepancy)`}
+            </p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+
+        {/* Test Info */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
+          <span>Intensity: {summary.intensity}</span>
+          <span>Test size: {summary.testSizeMb} MB</span>
+          <span>Duration: {summary.totalDurationSecs.toFixed(1)}s</span>
+        </div>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

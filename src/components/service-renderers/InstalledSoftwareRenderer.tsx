@@ -7,10 +7,10 @@
 
 import { useState } from 'react';
 import { PackageSearch, Search, ArrowUpDown } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -53,7 +53,7 @@ type SortKey = 'name' | 'size' | 'date' | 'publisher';
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as SoftwareData | undefined;
   const [search, setSearch] = useState('');
@@ -81,19 +81,12 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const displayPrograms = showAll ? filteredPrograms : filteredPrograms.slice(0, 50);
 
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className="px-4 py-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div className="p-2 rounded-lg bg-blue-500/20 text-blue-500">
-            <PackageSearch className="h-5 w-5" />
-          </div>
-          Installed Software
-          <Badge className="ml-auto bg-blue-500/10 text-blue-500 border-blue-500/20">
-            {data.totalPrograms} Programs
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper
+      definition={definition}
+      result={result}
+      statusBadge={{ label: `${data.totalPrograms} Programs`, color: 'blue' }}
+    >
+      <div className="space-y-4">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-lg bg-muted/30 border text-center">
@@ -187,8 +180,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             Show all {filteredPrograms.length} programs
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

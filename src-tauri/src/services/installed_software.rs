@@ -44,6 +44,7 @@ impl Service for InstalledSoftwareService {
             }],
             icon: "package-search".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

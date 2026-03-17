@@ -6,8 +6,8 @@
  */
 
 import { Globe, Wifi, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -50,18 +50,13 @@ interface NetworkData {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as NetworkData | undefined;
 
   if (!data || data.type !== 'network_config') return null;
 
   const hasConnection = data.connectedAdapters > 0;
-
-  const getStatusColor = () => {
-    if (!hasConnection) return 'from-red-500/10 to-orange-500/10 dark:from-red-500/20 dark:to-orange-500/20';
-    return 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20';
-  };
 
   const getAdapterStatusIcon = (status: string) => {
     if (status === 'Connected') return <CheckCircle2 className="h-4 w-4 text-green-500" />;
@@ -76,19 +71,14 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   };
 
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div className={`p-2 rounded-lg ${hasConnection ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
-            <Globe className="h-5 w-5" />
-          </div>
-          Network Configuration
-          <Badge className={`ml-auto ${hasConnection ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-            {hasConnection ? `${data.connectedAdapters} Connected` : 'No Connection'}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper
+      definition={definition}
+      result={result}
+      statusBadge={hasConnection
+        ? { label: `${data.connectedAdapters} Connected`, color: 'green' }
+        : { label: 'No Connection', color: 'red' }}
+    >
+      <div className="space-y-4">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-lg bg-muted/30 border text-center">
@@ -178,8 +168,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

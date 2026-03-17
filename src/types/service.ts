@@ -65,6 +65,8 @@ export interface ServiceDefinition {
   icon: string;
   /** Resource tags that conflict with other services sharing the same tag (parallel mode) */
   exclusiveResources: string[];
+  /** Service IDs that must complete before this service can run */
+  dependencies: ServiceId[];
 }
 
 // =============================================================================

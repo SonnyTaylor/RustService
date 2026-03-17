@@ -43,6 +43,7 @@ impl Service for DriverAuditService {
             }],
             icon: "cpu".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

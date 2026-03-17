@@ -19,6 +19,7 @@ mod iperf;
 mod kvrt_scan;
 mod network_config;
 mod ping_test;
+mod restore_point;
 mod sfc;
 mod smartctl;
 mod speedtest;
@@ -55,6 +56,7 @@ pub trait Service: Send + Sync {
 /// Static registry of all available services
 static SERVICE_REGISTRY: LazyLock<HashMap<String, Box<dyn Service>>> = LazyLock::new(|| {
     let services: Vec<Box<dyn Service>> = vec![
+        Box::new(restore_point::RestorePointService),
         Box::new(ping_test::PingTestService),
         Box::new(disk_space::DiskSpaceService),
         Box::new(winsat::WinsatService),
@@ -169,6 +171,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             description: "Standard maintenance tasks for regular checkups".to_string(),
             services: vec![
                 PresetServiceConfig {
+                    service_id: "restore-point".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
+                PresetServiceConfig {
                     service_id: "adwcleaner".to_string(),
                     enabled: true,
                     options: serde_json::json!({}),
@@ -217,6 +224,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             name: "Complete Service".to_string(),
             description: "Comprehensive scan and cleanup for thorough maintenance".to_string(),
             services: vec![
+                PresetServiceConfig {
+                    service_id: "restore-point".to_string(),
+                    enabled: true,
+                    options: serde_json::json!({}),
+                },
                 PresetServiceConfig {
                     service_id: "adwcleaner".to_string(),
                     enabled: true,
@@ -331,6 +343,11 @@ pub fn get_all_presets() -> Vec<ServicePreset> {
             name: "Custom Service".to_string(),
             description: "Build your own service configuration".to_string(),
             services: vec![
+                PresetServiceConfig {
+                    service_id: "restore-point".to_string(),
+                    enabled: false,
+                    options: serde_json::json!({}),
+                },
                 PresetServiceConfig {
                     service_id: "adwcleaner".to_string(),
                     enabled: false,

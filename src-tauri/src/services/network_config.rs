@@ -44,6 +44,7 @@ impl Service for NetworkConfigService {
             }],
             icon: "globe".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

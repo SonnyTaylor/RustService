@@ -35,6 +35,7 @@ impl Service for AdwCleanerService {
             options: vec![],
             icon: "sparkles".to_string(),
             exclusive_resources: vec!["filesystem-scan".to_string()],
+            dependencies: vec![],
         }
     }
 

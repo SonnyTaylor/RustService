@@ -160,6 +160,27 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
     }
   }
 
+  // Dependency info map — shows dependency names and violation status per queue item
+  const dependencyMap = new Map<string, { names: string[]; violation: boolean }>();
+  {
+    const enabledItems = queue.filter(q => q.enabled);
+    const enabledServiceIds = enabledItems.map(q => q.serviceId);
+    for (let i = 0; i < enabledItems.length; i++) {
+      const def = definitionMap.get(enabledItems[i].serviceId);
+      if (!def || def.dependencies.length === 0) continue;
+      // Only show deps that are in the queue
+      const relevantDeps = def.dependencies.filter(d => enabledServiceIds.includes(d));
+      if (relevantDeps.length === 0) continue;
+      const depNames = relevantDeps.map(d => definitionMap.get(d)?.name ?? d);
+      // Check if any dependency comes AFTER this service in the queue
+      const violation = relevantDeps.some(depId => {
+        const depIdx = enabledItems.findIndex(q => q.serviceId === depId);
+        return depIdx > i;
+      });
+      dependencyMap.set(enabledItems[i].id, { names: depNames, violation });
+    }
+  }
+
   // Filter available services for "Add Service" dialog, grouped by category
   const availableServices = definitions.filter((def) => {
       if (!addSearchQuery) return true;
@@ -414,6 +435,8 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
                                 onDuplicate={handleDuplicate}
                                 onRemove={handleRemove}
                                 conflictWith={conflictMap.get(item.id)}
+                                dependencyNames={dependencyMap.get(item.id)?.names}
+                                dependencyViolation={dependencyMap.get(item.id)?.violation}
                               />
                             </motion.div>
                           ) : (
@@ -426,6 +449,8 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
                               onDuplicate={handleDuplicate}
                               onRemove={handleRemove}
                               conflictWith={conflictMap.get(item.id)}
+                              dependencyNames={dependencyMap.get(item.id)?.names}
+                              dependencyViolation={dependencyMap.get(item.id)?.violation}
                             />
                           );
                         })}

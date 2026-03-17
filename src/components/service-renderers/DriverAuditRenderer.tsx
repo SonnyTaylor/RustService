@@ -7,9 +7,9 @@
 
 import { useState } from 'react';
 import { Cpu, Search } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -42,7 +42,7 @@ interface DriverData {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as DriverData | undefined;
   const [search, setSearch] = useState('');
@@ -51,11 +51,6 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   if (data.error) return null;
 
   const hasProblems = data.problemDrivers > 0;
-
-  const getStatusColor = () => {
-    if (hasProblems) return 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20';
-    return 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20';
-  };
 
   const filteredDrivers = data.drivers.filter(d =>
     d.displayName.toLowerCase().includes(search.toLowerCase()) ||
@@ -77,19 +72,14 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   };
 
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div className={`p-2 rounded-lg ${hasProblems ? 'bg-yellow-500/20 text-yellow-500' : 'bg-green-500/20 text-green-500'}`}>
-            <Cpu className="h-5 w-5" />
-          </div>
-          Driver Audit
-          <Badge className={`ml-auto ${hasProblems ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 'bg-green-500/10 text-green-500 border-green-500/20'}`}>
-            {data.totalDrivers} Drivers
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper
+      definition={definition}
+      result={result}
+      statusBadge={hasProblems
+        ? { label: `${data.totalDrivers} Drivers`, color: 'yellow' }
+        : { label: `${data.totalDrivers} Drivers`, color: 'green' }}
+    >
+      <div className="space-y-4">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-muted/30 border text-center">
@@ -151,8 +141,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             </p>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

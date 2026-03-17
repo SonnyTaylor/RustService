@@ -483,6 +483,7 @@ impl Service for StartupOptimizeService {
             ],
             icon: "rocket".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

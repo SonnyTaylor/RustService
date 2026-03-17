@@ -100,6 +100,7 @@ impl Service for UsbStabilityService {
             ],
             icon: "usb".to_string(),
             exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 

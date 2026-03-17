@@ -6,8 +6,8 @@
  */
 
 import { Zap, AlertTriangle, Info, XCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -35,7 +35,7 @@ interface EnergyData {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as EnergyData | undefined;
 
@@ -45,50 +45,19 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const hasErrors = data.errorCount > 0;
   const hasWarnings = data.warningCount > 0;
 
-  const getStatusColor = () => {
-    if (hasErrors) return 'from-red-500/10 to-orange-500/10 dark:from-red-500/20 dark:to-orange-500/20';
-    if (hasWarnings) return 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20';
-    return 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20';
-  };
-
-  const getIconColor = () => {
-    if (hasErrors) return 'bg-red-500/20 text-red-500';
-    if (hasWarnings) return 'bg-yellow-500/20 text-yellow-500';
-    return 'bg-green-500/20 text-green-500';
-  };
-
   const errors = data.items.filter(i => i.severity === 'error');
   const warnings = data.items.filter(i => i.severity === 'warning');
   const infos = data.items.filter(i => i.severity === 'info');
 
+  const statusBadge = hasErrors
+    ? { label: `${data.errorCount} Error${data.errorCount !== 1 ? 's' : ''}`, color: 'red' as const }
+    : hasWarnings
+      ? { label: `${data.warningCount} Warning${data.warningCount !== 1 ? 's' : ''}`, color: 'yellow' as const }
+      : { label: 'No Issues', color: 'green' as const };
+
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div className={`p-2 rounded-lg ${getIconColor()}`}>
-            <Zap className="h-5 w-5" />
-          </div>
-          Energy Report
-          <div className="ml-auto flex gap-2">
-            {data.errorCount > 0 && (
-              <Badge className="bg-red-500/10 text-red-500 border-red-500/20">
-                {data.errorCount} Error{data.errorCount !== 1 ? 's' : ''}
-              </Badge>
-            )}
-            {data.warningCount > 0 && (
-              <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-                {data.warningCount} Warning{data.warningCount !== 1 ? 's' : ''}
-              </Badge>
-            )}
-            {data.errorCount === 0 && data.warningCount === 0 && (
-              <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
-                No Issues
-              </Badge>
-            )}
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      <div className="space-y-4">
         {/* Summary */}
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
@@ -165,8 +134,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
         <p className="text-xs text-muted-foreground text-right">
           Trace duration: {data.duration}s
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

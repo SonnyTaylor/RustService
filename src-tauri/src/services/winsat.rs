@@ -43,6 +43,7 @@ impl Service for WinsatService {
             }],
             icon: "gauge".to_string(),
             exclusive_resources: vec!["cpu-stress".to_string()],
+            dependencies: vec![],
         }
     }
 

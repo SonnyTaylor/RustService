@@ -7,9 +7,9 @@
 
 import { useState } from 'react';
 import { Rocket, Search, Sparkles } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -48,7 +48,7 @@ type FilterType = 'all' | 'essential' | 'useful' | 'unnecessary';
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ definition, result }: ServiceRendererProps) {
   const finding = result.findings[0];
   const data = finding?.data as StartupOptimizeData | undefined;
   const [search, setSearch] = useState('');
@@ -58,12 +58,6 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
 
   const hasUnnecessary = data.unnecessaryCount > 0;
   const disabledCount = data.disabledThisRun.length;
-
-  const getStatusColor = () => {
-    if (hasUnnecessary && data.mode === 'report')
-      return 'from-yellow-500/10 to-orange-500/10 dark:from-yellow-500/20 dark:to-orange-500/20';
-    return 'from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20';
-  };
 
   const filteredItems = data.items.filter((item) => {
     if (filter !== 'all' && item.classification !== filter) return false;
@@ -125,34 +119,32 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
     }
   };
 
+  const badgeContent = (
+    <div className="flex items-center gap-2">
+      {data.aiPowered && (
+        <Badge className="bg-violet-500/10 text-violet-500 border-violet-500/20 text-xs gap-1">
+          <Sparkles className="h-3 w-3" />
+          AI
+        </Badge>
+      )}
+      <Badge className="bg-muted/50 text-foreground border">
+        {data.mode === 'disable'
+          ? `Disabled ${disabledCount} Item${disabledCount !== 1 ? 's' : ''}`
+          : 'Report Only'}
+      </Badge>
+    </div>
+  );
+
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <CardHeader className={`px-4 py-2 bg-gradient-to-r ${getStatusColor()}`}>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <div
-            className={`p-2 rounded-lg ${
-              hasUnnecessary && data.mode === 'report'
-                ? 'bg-yellow-500/20 text-yellow-500'
-                : 'bg-green-500/20 text-green-500'
-            }`}
-          >
-            <Rocket className="h-5 w-5" />
-          </div>
-          Startup Optimizer
-          {data.aiPowered && (
-            <Badge className="bg-violet-500/10 text-violet-500 border-violet-500/20 text-xs gap-1">
-              <Sparkles className="h-3 w-3" />
-              AI
-            </Badge>
-          )}
-          <Badge className="ml-auto bg-muted/50 text-foreground border">
-            {data.mode === 'disable'
-              ? `Disabled ${disabledCount} Item${disabledCount !== 1 ? 's' : ''}`
-              : 'Report Only'}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-3 space-y-4">
+    <ServiceCardWrapper
+      definition={definition}
+      result={result}
+      statusBadge={hasUnnecessary && data.mode === 'report'
+        ? { label: 'Report Only', color: 'yellow' }
+        : { label: data.mode === 'disable' ? `Disabled ${disabledCount}` : 'Report Only', color: 'green' }}
+      badgeContent={badgeContent}
+    >
+      <div className="space-y-4">
         {/* Stats */}
         <div className="grid grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-muted/30 border text-center">
@@ -259,8 +251,8 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
             {data.unnecessaryCount !== 1 ? 's' : ''}.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

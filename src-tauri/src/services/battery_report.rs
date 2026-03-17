@@ -37,6 +37,7 @@ impl Service for BatteryReportService {
             options: vec![],
             icon: "battery-charging".to_string(),
             exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 

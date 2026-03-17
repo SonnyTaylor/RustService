@@ -69,6 +69,7 @@ impl Service for IperfService {
             ],
             icon: "network".to_string(),
             exclusive_resources: vec!["network-bandwidth".to_string()],
+            dependencies: vec![],
         }
     }
 

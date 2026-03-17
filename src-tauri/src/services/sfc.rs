@@ -31,6 +31,7 @@ impl Service for SfcService {
             options: vec![],
             icon: "file-scan".to_string(),
             exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec!["dism".to_string()],
         }
     }
 

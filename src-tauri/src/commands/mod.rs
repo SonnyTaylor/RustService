@@ -11,7 +11,7 @@ mod network;
 mod network_diagnostics;
 mod programs;
 mod required_programs;
-mod restore_points;
+pub(crate) mod restore_points;
 mod scripts;
 mod services;
 mod settings;

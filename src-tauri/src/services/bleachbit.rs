@@ -35,6 +35,7 @@ impl Service for BleachBitService {
             options: vec![],
             icon: "trash-2".to_string(),
             exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 

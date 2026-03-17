@@ -171,7 +171,7 @@ pub async fn create_restore_point(description: String) -> Result<String, String>
         .map_err(|e| format!("Create restore point task failed: {e}"))?
 }
 
-fn create_restore_point_blocking(description: &str) -> Result<String, String> {
+pub(crate) fn create_restore_point_blocking(description: &str) -> Result<String, String> {
     // Sanitize the description to prevent command injection
     let safe_desc = description
         .replace('\'', "")

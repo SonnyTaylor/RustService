@@ -36,6 +36,7 @@ import { InstalledSoftwareRenderer } from './InstalledSoftwareRenderer';
 import { NetworkConfigRenderer } from './NetworkConfigRenderer';
 import { UsbStabilityRenderer } from './UsbStabilityRenderer';
 import { StartupOptimizeRenderer } from './StartupOptimizeRenderer';
+import { RestorePointRenderer } from './RestorePointRenderer';
 
 // =============================================================================
 // Types
@@ -84,6 +85,7 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'network-config': NetworkConfigRenderer,
   'usb-stability': UsbStabilityRenderer,
   'startup-optimize': StartupOptimizeRenderer,
+  'restore-point': RestorePointRenderer,
 };
 
 /**
@@ -100,3 +102,6 @@ export function getServiceRenderer(serviceId: string): ServiceRenderer | undefin
 export function hasCustomRenderer(serviceId: string): boolean {
   return serviceId in SERVICE_RENDERERS;
 }
+
+export { ServiceCardWrapper } from './ServiceCardWrapper';
+export type { ServiceCardWrapperProps, StatusBadge } from './ServiceCardWrapper';
