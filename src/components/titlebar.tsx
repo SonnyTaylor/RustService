@@ -17,10 +17,11 @@ export function Titlebar() {
   return (
     <div className="titlebar">
       {/* App title and drag region */}
-      <div 
+      <div
         className="titlebar-drag-region"
         onMouseDown={handleMouseDown}
       >
+        <img src="/logo.svg" alt="" className="h-5 w-5 mr-2" draggable={false} />
         <span className="titlebar-title">RustService</span>
       </div>
 
