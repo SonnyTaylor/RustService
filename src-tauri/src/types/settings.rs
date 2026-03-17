@@ -26,7 +26,7 @@ pub struct AppearanceSettings {
 }
 
 fn default_color_scheme() -> String {
-    String::from("default")
+    String::from("forge")
 }
 
 fn default_animations_enabled() -> bool {

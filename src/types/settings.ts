@@ -19,7 +19,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
  * Available color schemes (CSS class names applied to html element)
  * Add new schemes here and in globals.css with .theme-{name} class
  */
-export type ColorScheme = 'default' | 'techbay' | 'autoservice' | 'amber-minimal' | 'amethyst-haze' | 'catppuccin' | 'supabase' | 'nature' | 'cyberpunk' | 'claude';
+export type ColorScheme = 'default' | 'cobalt' | 'forge' | 'circuit' | 'oxide' | 'neon-workshop' | 'techbay' | 'autoservice' | 'amber-minimal' | 'amethyst-haze' | 'catppuccin' | 'supabase' | 'nature' | 'cyberpunk' | 'claude';
 
 /**
  * Combined theme (for backwards compatibility)
@@ -53,13 +53,53 @@ export interface ColorSchemeInfo {
  */
 export const COLOR_SCHEMES: ColorSchemeInfo[] = [
   {
-    id: 'default',
-    name: 'Default',
-    description: 'Clean monochrome theme',
+    id: 'forge',
+    name: 'Forge',
+    description: 'Warm ember/copper workshop aesthetic',
     preview: {
-      primary: '#1a1a1a',
-      accent: '#6b7280',
-      background: '#ffffff',
+      primary: '#d97a2b',
+      accent: '#221e1b',
+      background: '#1a1614',
+    },
+  },
+  {
+    id: 'cobalt',
+    name: 'Cobalt',
+    description: 'Rich blue, professional diagnostic feel',
+    preview: {
+      primary: '#3b7dd8',
+      accent: '#121822',
+      background: '#0c1017',
+    },
+  },
+  {
+    id: 'circuit',
+    name: 'Circuit',
+    description: 'Electric teal diagnostic scanner',
+    preview: {
+      primary: '#22b8a0',
+      accent: '#151c24',
+      background: '#0f1419',
+    },
+  },
+  {
+    id: 'oxide',
+    name: 'Oxide',
+    description: 'Burnt terracotta on warm grays',
+    preview: {
+      primary: '#c05a30',
+      accent: '#1e1917',
+      background: '#171312',
+    },
+  },
+  {
+    id: 'neon-workshop',
+    name: 'Neon Workshop',
+    description: 'Vivid green workbench LEDs',
+    preview: {
+      primary: '#3ddc6a',
+      accent: '#131a14',
+      background: '#0d120e',
     },
   },
   {
@@ -150,6 +190,16 @@ export const COLOR_SCHEMES: ColorSchemeInfo[] = [
       primary: '#d97757',
       accent: '#6a9bcc',
       background: '#faf9f5',
+    },
+  },
+  {
+    id: 'default',
+    name: 'Shadcn',
+    description: 'Clean monochrome theme',
+    preview: {
+      primary: '#1a1a1a',
+      accent: '#6b7280',
+      background: '#ffffff',
     },
   },
 ];
@@ -332,7 +382,7 @@ export interface AppSettings {
  */
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: 'system',
-  colorScheme: 'default',
+  colorScheme: 'forge',
   enableAnimations: true,
 };
 
