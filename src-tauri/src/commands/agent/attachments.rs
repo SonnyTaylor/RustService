@@ -119,7 +119,7 @@ pub fn save_uploaded_file(
 
     // Generate IDs and paths
     let id = Uuid::new_v4().to_string();
-    let stored_name = format!("{}", id);
+    let stored_name = id.to_string();
     let stored_path = get_uploaded_files_dir().join(&stored_name);
     let now = Utc::now().to_rfc3339();
 
@@ -197,7 +197,7 @@ pub fn generate_agent_file(
 
     // Generate IDs and paths
     let id = Uuid::new_v4().to_string();
-    let stored_name = format!("{}", id);
+    let stored_name = id.to_string();
     let stored_path = get_generated_files_dir().join(&stored_name);
     let now = Utc::now().to_rfc3339();
 
@@ -475,7 +475,7 @@ pub fn read_filesystem_file(
 
     // Get file metadata
     let metadata =
-        fs::metadata(&path_obj).map_err(|e| format!("Failed to get file metadata: {}", e))?;
+        fs::metadata(path_obj).map_err(|e| format!("Failed to get file metadata: {}", e))?;
 
     // Check size limit
     let max_size = max_size.unwrap_or(FILE_SIZE_SMALL);
@@ -488,7 +488,7 @@ pub fn read_filesystem_file(
     }
 
     // Read file content
-    let content_bytes = fs::read(&path_obj).map_err(|e| format!("Failed to read file: {}", e))?;
+    let content_bytes = fs::read(path_obj).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // Determine file properties
     let filename = path_obj
