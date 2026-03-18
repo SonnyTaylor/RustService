@@ -32,6 +32,8 @@ impl Service for SmartctlService {
             required_programs: vec!["smartctl".to_string()],
             options: vec![],
             icon: "activity".to_string(),
+            exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 
@@ -69,6 +71,7 @@ impl Service for SmartctlService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -79,6 +82,7 @@ impl Service for SmartctlService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -269,6 +273,7 @@ impl Service for SmartctlService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }
@@ -319,7 +324,7 @@ struct NvmeHealthLog {
     power_on_hours: Option<u64>,
     unsafe_shutdowns: Option<u64>,
     media_errors: Option<u64>,
-    num_err_log_entries: Option<u64>,
+    _num_err_log_entries: Option<u64>,
     data_units_written: Option<u64>,
     data_units_read: Option<u64>,
     temperature_sensors: Option<Vec<i32>>,

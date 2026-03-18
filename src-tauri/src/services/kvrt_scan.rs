@@ -34,6 +34,8 @@ impl Service for KvrtScanService {
             required_programs: vec!["kvrt".to_string()],
             options: vec![],
             icon: "shield-alert".to_string(),
+            exclusive_resources: vec!["filesystem-scan".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -81,6 +83,7 @@ impl Service for KvrtScanService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -96,6 +99,7 @@ impl Service for KvrtScanService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -152,6 +156,7 @@ impl Service for KvrtScanService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -265,6 +270,7 @@ impl Service for KvrtScanService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

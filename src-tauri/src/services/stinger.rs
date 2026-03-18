@@ -77,6 +77,8 @@ impl Service for StingerService {
                 },
             ],
             icon: "bug".to_string(),
+            exclusive_resources: vec!["filesystem-scan".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -123,6 +125,7 @@ impl Service for StingerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -138,6 +141,7 @@ impl Service for StingerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -261,6 +265,7 @@ impl Service for StingerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -411,6 +416,7 @@ impl Service for StingerService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

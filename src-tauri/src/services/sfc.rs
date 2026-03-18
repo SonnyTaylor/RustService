@@ -30,6 +30,8 @@ impl Service for SfcService {
             required_programs: vec![],    // Built-in Windows tool
             options: vec![],
             icon: "file-scan".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec!["dism".to_string()],
         }
     }
 
@@ -80,6 +82,7 @@ impl Service for SfcService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -216,6 +219,7 @@ impl Service for SfcService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

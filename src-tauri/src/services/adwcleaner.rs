@@ -34,6 +34,8 @@ impl Service for AdwCleanerService {
             required_programs: vec!["adwcleaner".to_string()],
             options: vec![],
             icon: "sparkles".to_string(),
+            exclusive_resources: vec!["filesystem-scan".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -80,6 +82,7 @@ impl Service for AdwCleanerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -95,6 +98,7 @@ impl Service for AdwCleanerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -150,6 +154,7 @@ impl Service for AdwCleanerService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -335,6 +340,7 @@ impl Service for AdwCleanerService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

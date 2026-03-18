@@ -20,6 +20,11 @@ import {
   Printer,
   Users,
   ChevronRight,
+  Bot,
+  Heart,
+  Sparkles,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -33,24 +38,10 @@ import type {
   FindingSeverity,
 } from '@/types/service';
 import type { BusinessSettings } from '@/types/settings';
-import { getServiceRenderer } from '@/components/service-renderers';
+import { getServiceRenderer, ServiceCardWrapper } from '@/components/service-renderers';
+import { getIcon } from '@/components/service/utils';
 import { useSettings } from '@/components/settings-context';
-
-// =============================================================================
-// Icon Mapping
-// =============================================================================
-
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  stethoscope: Info,
-  wrench: Wrench,
-  'shield-check': CheckCircle2,
-  'settings-2': Wrench,
-  wifi: Info,
-};
-
-function getIcon(iconName: string) {
-  return ICON_MAP[iconName] || Wrench;
-}
+import { isAiConfigured, aiSummarizeReport } from '@/lib/ai-features';
 
 // =============================================================================
 // Printable Report Component
@@ -377,14 +368,52 @@ export function ServiceReportView({
   const printDetailedRef = useRef<HTMLDivElement>(null);
   const printCustomerRef = useRef<HTMLDivElement>(null);
 
+  // AI Summary state
+  const [localReport, setLocalReport] = useState(report);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
+
+  // Keep localReport in sync with prop changes
+  useEffect(() => {
+    setLocalReport(report);
+  }, [report]);
+
+  const handleGenerateAiSummary = async () => {
+    if (!isAiConfigured(settings.agent)) {
+      setAiSummaryError('AI not configured. Set up a provider in Settings \u2192 AI Agent.');
+      return;
+    }
+    setAiSummaryLoading(true);
+    setAiSummaryError(null);
+
+    try {
+      const result = await aiSummarizeReport(localReport, definitions, settings.agent);
+
+      // Persist to backend
+      await invoke('set_report_summary', { report_id: localReport.id, summary: result.summary });
+      await invoke('set_report_health_score', { report_id: localReport.id, score: result.healthScore });
+
+      // Update local state
+      setLocalReport((prev) => ({
+        ...prev,
+        agentSummary: result.summary,
+        healthScore: result.healthScore,
+      }));
+    } catch (e) {
+      setAiSummaryError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAiSummaryLoading(false);
+    }
+  };
+
   const handlePrintDetailed = useReactToPrint({
     contentRef: printDetailedRef,
-    documentTitle: `Service Report - ${new Date(report.startedAt).toLocaleDateString()}`,
+    documentTitle: `Service Report - ${new Date(localReport.startedAt).toLocaleDateString()}`,
   });
 
   const handlePrintCustomer = useReactToPrint({
     contentRef: printCustomerRef,
-    documentTitle: `System Health Report - ${new Date(report.startedAt).toLocaleDateString()}`,
+    documentTitle: `System Health Report - ${new Date(localReport.startedAt).toLocaleDateString()}`,
   });
 
   const severityIcons: Record<FindingSeverity, React.ComponentType<{ className?: string }>> = {
@@ -403,7 +432,7 @@ export function ServiceReportView({
     critical: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
   };
 
-  const allFindings = report.results.flatMap((r) =>
+  const allFindings = localReport.results.flatMap((r) =>
     r.findings.map((f) => ({
       ...f,
       serviceId: r.serviceId,
@@ -415,17 +444,17 @@ export function ServiceReportView({
     (f) => f.severity === 'warning' || f.severity === 'error' || f.severity === 'critical'
   );
 
-  const totalDuration = report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) : '?';
-  const successCount = report.results.filter((r) => r.success).length;
-  const totalCount = report.results.length;
+  const totalDuration = localReport.totalDurationMs ? (localReport.totalDurationMs / 1000).toFixed(1) : '?';
+  const successCount = localReport.results.filter((r) => r.success).length;
+  const totalCount = localReport.results.length;
 
   // Findings tab content
   const FindingsContent = () => (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Summary Card */}
       <Card className="bg-gradient-to-br from-card to-muted/30 border-2">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-4 gap-4 text-center">
+        <CardContent className="pt-4">
+          <div className={`grid gap-4 text-center ${localReport.healthScore != null ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <div>
               <p className="text-3xl font-bold">{totalCount}</p>
               <p className="text-sm text-muted-foreground">Services</p>
@@ -442,12 +471,142 @@ export function ServiceReportView({
               <p className="text-3xl font-bold">{totalDuration}s</p>
               <p className="text-sm text-muted-foreground">Duration</p>
             </div>
+            {localReport.healthScore != null && (
+              <div>
+                <p className={`text-3xl font-bold ${
+                  localReport.healthScore >= 80 ? 'text-green-500' :
+                  localReport.healthScore >= 50 ? 'text-yellow-500' : 'text-red-500'
+                }`}>
+                  {localReport.healthScore}
+                </p>
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                  <Heart className="h-3 w-3" /> Health
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Findings by Service - Use custom renderer if available */}
-      {report.results.map((result) => {
+      {/* Agent Summary / AI Summary Generator */}
+      {localReport.agentSummary ? (
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 rounded-md bg-blue-500/10">
+                <Bot className="h-4 w-4 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium text-blue-500">AI Analysis Summary</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1 text-muted-foreground hover:text-blue-500"
+                    onClick={handleGenerateAiSummary}
+                    disabled={aiSummaryLoading}
+                  >
+                    {aiSummaryLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Regenerate
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{localReport.agentSummary}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed border-purple-500/30 bg-purple-500/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-md bg-purple-500/10">
+                  <Sparkles className="h-4 w-4 text-purple-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400">AI Summary</p>
+                  <p className="text-xs text-muted-foreground">
+                    Generate an AI analysis summary with health score
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleGenerateAiSummary}
+                disabled={aiSummaryLoading}
+                className="gap-2 bg-purple-600 hover:bg-purple-700"
+              >
+                {aiSummaryLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {aiSummaryLoading ? 'Analyzing...' : 'Generate Summary'}
+              </Button>
+            </div>
+            {aiSummaryError && (
+              <p className="text-xs text-destructive mt-2">{aiSummaryError}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Failure Summary Banner */}
+      {(() => {
+        const failedResults = localReport.results.filter(r => !r.success);
+        if (failedResults.length === 0) return null;
+        return (
+          <Card className="border-destructive/30 bg-destructive/5 border-l-4 border-l-destructive overflow-hidden">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-3">
+                <XCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-destructive">
+                    {failedResults.length} service{failedResults.length > 1 ? 's' : ''} failed
+                  </p>
+                  <ul className="text-sm text-muted-foreground mt-1.5 space-y-1">
+                    {failedResults.map(r => {
+                      const def = definitionMap.get(r.serviceId);
+                      return (
+                        <li key={r.serviceId} className="flex items-start gap-1.5">
+                          <span className="text-destructive/60 mt-0.5 shrink-0">&#8226;</span>
+                          <span>
+                            <span className="font-medium text-foreground">{def?.name ?? r.serviceId}</span>
+                            {r.error && <span className="text-destructive"> — {r.error}</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Findings by Service - sorted: failed first, then by severity of findings, then successful */}
+      {[...localReport.results]
+        .sort((a, b) => {
+          // Failed services first
+          if (!a.success && b.success) return -1;
+          if (a.success && !b.success) return 1;
+          // Then by worst finding severity
+          const severityRank = (findings: typeof a.findings) => {
+            let worst = 0;
+            for (const f of findings) {
+              const rank = f.severity === 'critical' ? 5 : f.severity === 'error' ? 4 : f.severity === 'warning' ? 3 : 1;
+              if (rank > worst) worst = rank;
+            }
+            return worst;
+          };
+          return severityRank(b.findings) - severityRank(a.findings);
+        })
+        .map((result) => {
         const def = definitionMap.get(result.serviceId);
         const CustomRenderer = getServiceRenderer(result.serviceId);
 
@@ -464,29 +623,49 @@ export function ServiceReportView({
         }
 
         // Fallback to generic renderer
-        const Icon = def ? getIcon(def.icon) : Wrench;
+        // Build a minimal definition for the wrapper if none exists
+        const fallbackDef: ServiceDefinition = def ?? {
+          id: result.serviceId,
+          name: result.serviceId,
+          description: '',
+          category: 'diagnostics',
+          estimatedDurationSecs: 0,
+          requiredPrograms: [],
+          options: [],
+          icon: 'wrench',
+          exclusiveResources: [],
+          dependencies: [],
+        };
 
         return (
-          <Card key={result.serviceId} className="overflow-hidden">
-            <CardHeader className="pb-3 bg-muted/30">
-              <CardTitle className="text-base flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${result.success ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
-                  <Icon className={`h-4 w-4 ${result.success ? 'text-green-500' : 'text-red-500'}`} />
+          <ServiceCardWrapper key={result.serviceId} definition={fallbackDef} result={result}>
+            <div className="space-y-2">
+              {/* Error message for failed services */}
+              {!result.success && result.error && (
+                <div className="px-3 py-2 rounded-lg border border-destructive/30 bg-destructive/5">
+                  <div className="flex items-start gap-2">
+                    <XCircle className="h-4 w-4 mt-0.5 text-destructive shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium text-destructive">{result.error}</p>
+                      {result.logs.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                            Show last {Math.min(5, result.logs.length)} log lines
+                          </summary>
+                          <div className="mt-1.5 font-mono text-[11px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+                            {result.logs.slice(-5).map((log, i) => (
+                              <div key={i} className="flex gap-2">
+                                <span className="text-destructive/40 select-none shrink-0">&#10095;</span>
+                                <span>{log}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                {def?.name || result.serviceId}
-                <span
-                  className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
-                    result.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                  }`}
-                >
-                  {result.success ? 'PASS' : 'FAIL'}
-                </span>
-                <span className="text-xs text-muted-foreground font-normal">
-                  {(result.durationMs / 1000).toFixed(1)}s
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-2">
+              )}
               {result.findings.map((finding, idx) => {
                 const SeverityIcon = severityIcons[finding.severity];
                 const colorClass = severityColors[finding.severity];
@@ -508,11 +687,22 @@ export function ServiceReportView({
                   </div>
                 );
               })}
-              {result.findings.length === 0 && (
+              {result.findings.length === 0 && result.success && (
                 <p className="text-sm text-muted-foreground italic py-2">No findings</p>
               )}
-            </CardContent>
-          </Card>
+              {result.agentAnalysis && (
+                <div className="mt-3 px-3 py-2 rounded-lg border border-blue-500/20 bg-blue-500/5">
+                  <div className="flex items-start gap-2">
+                    <Bot className="h-4 w-4 mt-0.5 text-blue-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-blue-500 mb-0.5">AI Analysis</p>
+                      <p className="text-sm text-muted-foreground">{result.agentAnalysis}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ServiceCardWrapper>
         );
       })}
     </div>
@@ -527,12 +717,22 @@ export function ServiceReportView({
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">
-            {report.status === 'completed' ? (
+            {localReport.status === 'completed' ? (
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             ) : (
               <XCircle className="h-4 w-4 text-red-500" />
             )}
             <span className="font-semibold">{headerTitle}</span>
+            {localReport.agentInitiated && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-500 flex items-center gap-1">
+                <Bot className="h-3 w-3" /> Agent
+              </span>
+            )}
+            {localReport.parallelMode && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                Parallel
+              </span>
+            )}
             <span className="text-xs text-muted-foreground">
               {successCount}/{totalCount} in {totalDuration}s
             </span>
@@ -566,7 +766,7 @@ export function ServiceReportView({
 
         <div className="flex-1 min-h-0">
           <TabsContent value="findings" className="h-full mt-0 data-[state=active]:flex flex-col">
-              <ScrollArea className="flex-1 min-h-0 p-6">
+              <ScrollArea className="flex-1 min-h-0 px-4 py-4">
               <FindingsContent />
             </ScrollArea>
           </TabsContent>
@@ -588,7 +788,7 @@ export function ServiceReportView({
                   data-print-content
                   className="bg-white shadow-[0_4px_60px_rgba(0,0,0,0.3)] w-[550px] flex-shrink-0"
                 >
-                  <PrintableReport report={report} definitions={definitions} variant="detailed" />
+                  <PrintableReport report={localReport} definitions={definitions} variant="detailed" />
                 </div>
               </div>
             </div>
@@ -612,7 +812,7 @@ export function ServiceReportView({
                   className="bg-white shadow-[0_4px_60px_rgba(0,0,0,0.3)] w-[550px] flex-shrink-0"
                 >
                   <PrintableReport 
-                    report={report} 
+                    report={localReport} 
                     definitions={definitions} 
                     variant="customer" 
                     businessSettings={settings.business}
@@ -625,7 +825,7 @@ export function ServiceReportView({
       </Tabs>
 
       {/* Bottom Action Bar */}
-      <div className="p-4 border-t bg-muted/30">
+      <div className="px-4 py-2 border-t bg-muted/30">
         <Button variant="outline" onClick={onBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           {backButtonLabel}

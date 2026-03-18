@@ -34,6 +34,8 @@ impl Service for BleachBitService {
             required_programs: vec!["bleachbit".to_string()],
             options: vec![],
             icon: "trash-2".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -93,6 +95,7 @@ impl Service for BleachBitService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -108,6 +111,7 @@ impl Service for BleachBitService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -163,6 +167,7 @@ impl Service for BleachBitService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -245,6 +250,7 @@ impl Service for BleachBitService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

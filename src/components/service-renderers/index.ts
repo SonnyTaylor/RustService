@@ -15,7 +15,7 @@ import type { ServiceResult, ServiceDefinition } from '@/types/service';
 import { PingTestRenderer } from './PingTestRenderer';
 import { DiskSpaceRenderer } from './DiskSpaceRenderer';
 import { WinsatRenderer } from './WinsatRenderer';
-import { BatteryInfoRenderer } from './BatteryInfoRenderer';
+
 import { KvrtScanRenderer } from './KvrtScanRenderer';
 import { AdwCleanerRenderer } from './AdwCleanerRenderer';
 import { WhyNotWin11Renderer } from './WhyNotWin11Renderer';
@@ -29,6 +29,14 @@ import { WindowsUpdateRenderer } from './WindowsUpdateRenderer';
 import { ChkdskRenderer } from './ChkdskRenderer';
 import { FurmarkRenderer } from './FurmarkRenderer';
 import { StingerRenderer } from './StingerRenderer';
+import { EnergyReportRenderer } from './EnergyReportRenderer';
+import { BatteryReportRenderer } from './BatteryReportRenderer';
+import { DriverAuditRenderer } from './DriverAuditRenderer';
+import { InstalledSoftwareRenderer } from './InstalledSoftwareRenderer';
+import { NetworkConfigRenderer } from './NetworkConfigRenderer';
+import { UsbStabilityRenderer } from './UsbStabilityRenderer';
+import { StartupOptimizeRenderer } from './StartupOptimizeRenderer';
+import { RestorePointRenderer } from './RestorePointRenderer';
 
 // =============================================================================
 // Types
@@ -56,7 +64,7 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'ping-test': PingTestRenderer,
   'disk-space': DiskSpaceRenderer,
   'winsat': WinsatRenderer,
-  'battery-info': BatteryInfoRenderer,
+
   'kvrt-scan': KvrtScanRenderer,
   'adwcleaner': AdwCleanerRenderer,
   'whynotwin11': WhyNotWin11Renderer,
@@ -70,6 +78,14 @@ export const SERVICE_RENDERERS: Partial<Record<string, ServiceRenderer>> = {
   'chkdsk': ChkdskRenderer,
   'furmark': FurmarkRenderer,
   'stinger': StingerRenderer,
+  'energy-report': EnergyReportRenderer,
+  'battery-report': BatteryReportRenderer,
+  'driver-audit': DriverAuditRenderer,
+  'installed-software': InstalledSoftwareRenderer,
+  'network-config': NetworkConfigRenderer,
+  'usb-stability': UsbStabilityRenderer,
+  'startup-optimize': StartupOptimizeRenderer,
+  'restore-point': RestorePointRenderer,
 };
 
 /**
@@ -86,3 +102,6 @@ export function getServiceRenderer(serviceId: string): ServiceRenderer | undefin
 export function hasCustomRenderer(serviceId: string): boolean {
   return serviceId in SERVICE_RENDERERS;
 }
+
+export { ServiceCardWrapper } from './ServiceCardWrapper';
+export type { ServiceCardWrapperProps, StatusBadge } from './ServiceCardWrapper';

@@ -241,6 +241,41 @@ export interface ProcessInfo {
 }
 
 /**
+ * BIOS information
+ */
+export interface BiosInfo {
+  manufacturer: string | null;
+  version: string | null;
+  releaseDate: string | null;
+  serialNumber: string | null;
+}
+
+/**
+ * System product/chassis information
+ */
+export interface SystemProductInfo {
+  vendor: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  uuid: string | null;
+}
+
+/**
+ * RAM slot/DIMM information
+ */
+export interface RamSlotInfo {
+  bankLabel: string | null;
+  deviceLocator: string | null;
+  manufacturer: string | null;
+  partNumber: string | null;
+  serialNumber: string | null;
+  speedMhz: number | null;
+  capacityBytes: number | null;
+  formFactor: string | null;
+  memoryType: string | null;
+}
+
+/**
  * Complete system information response
  */
 export interface SystemInfo {
@@ -273,6 +308,18 @@ export interface SystemInfo {
   uptimeSeconds: number;
   /** Boot time as Unix timestamp */
   bootTime: number;
+  /** BIOS details */
+  bios: BiosInfo | null;
+  /** System product/chassis details */
+  systemProduct: SystemProductInfo | null;
+  /** RAM slot details */
+  ramSlots: RamSlotInfo[];
+  /** CPU L2 cache in KB */
+  cpuL2CacheKb: number | null;
+  /** CPU L3 cache in KB */
+  cpuL3CacheKb: number | null;
+  /** CPU socket designation */
+  cpuSocket: string | null;
 }
 
 /**

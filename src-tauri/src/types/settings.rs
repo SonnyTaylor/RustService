@@ -5,10 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::agent::AgentSettings;
 use crate::types::service::ServicePreset;
 
 /// Current settings schema version for migration support
-pub const SETTINGS_VERSION: &str = "0.6.0";
+pub const SETTINGS_VERSION: &str = "0.7.0";
 
 /// Appearance-related settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +26,7 @@ pub struct AppearanceSettings {
 }
 
 fn default_color_scheme() -> String {
-    String::from("default")
+    String::from("forge")
 }
 
 fn default_animations_enabled() -> bool {
@@ -203,6 +204,9 @@ pub struct AppSettings {
     /// Custom service presets
     #[serde(default)]
     pub presets: PresetsSettings,
+    /// Agent AI settings
+    #[serde(default)]
+    pub agent: AgentSettings,
 }
 
 impl Default for AppSettings {
@@ -216,6 +220,7 @@ impl Default for AppSettings {
             programs: ProgramsSettings::default(),
             technician_tabs: TechnicianTabsSettings::default(),
             presets: PresetsSettings::default(),
+            agent: AgentSettings::default(),
         }
     }
 }

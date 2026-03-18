@@ -15,8 +15,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -90,7 +90,7 @@ function getStatusInfo(data: StingerResultData): {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
   const finding = result.findings.find(
     (f) => (f.data as StingerResultData | undefined)?.type === 'stinger_result'
   );
@@ -99,27 +99,14 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   if (!data) {
     const errorFinding = result.findings.find((f) => f.severity === 'error');
     return (
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-500/20">
-              <Bug className="h-5 w-5 text-red-500" />
-            </div>
-            Antivirus Scan (Stinger)
-            <span className="ml-auto px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">
-              FAILED
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-            <p className="font-medium text-red-500">{errorFinding?.title || 'Scan Failed'}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {errorFinding?.description || result.error || 'Could not complete antivirus scan'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <ServiceCardWrapper definition={definition} result={result} statusBadge={{ label: 'FAILED', color: 'red' }}>
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <p className="font-medium text-red-500">{errorFinding?.title || 'Scan Failed'}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {errorFinding?.description || result.error || 'Could not complete antivirus scan'}
+          </p>
+        </div>
+      </ServiceCardWrapper>
     );
   }
 
@@ -131,132 +118,115 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const chartData = [{ name: 'status', value: isClean ? 100 : data.action === 'delete' ? 70 : 30, fill: status.color }];
   const chartConfig: ChartConfig = { value: { label: 'Status', color: status.color } };
 
+  const statusBadge = {
+    label: status.label,
+    color: (isClean ? 'green' : data.action === 'delete' ? 'yellow' : 'red') as 'green' | 'yellow' | 'red',
+  };
+
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${isClean ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-              {isClean ? (
-                <ShieldCheck className="h-5 w-5 text-green-500" />
-              ) : (
-                <ShieldAlert className="h-5 w-5 text-red-500" />
-              )}
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      <div className="grid grid-cols-2 gap-6">
+        {/* Status Chart */}
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <ChartContainer config={chartConfig} className="h-[160px] w-[160px]">
+              <RadialBarChart data={chartData} startAngle={90} endAngle={-270} innerRadius={55} outerRadius={75}>
+                <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                <RadialBar dataKey="value" cornerRadius={10} background />
+              </RadialBarChart>
+            </ChartContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              {status.icon}
             </div>
-            Antivirus Scan (Stinger)
-            <span
-              className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${status.textColor}`}
-              style={{ backgroundColor: `${status.color}20` }}
-            >
-              {status.label}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 gap-6">
-            {/* Status Chart */}
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <ChartContainer config={chartConfig} className="h-[160px] w-[160px]">
-                  <RadialBarChart data={chartData} startAngle={90} endAngle={-270} innerRadius={55} outerRadius={75}>
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" cornerRadius={10} background />
-                  </RadialBarChart>
-                </ChartContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  {status.icon}
-                </div>
-              </div>
-              <div className="mt-2 text-center">
-                <p className={`text-lg font-bold ${status.textColor}`}>
-                  {isClean ? 'No Threats' : `${infectionCount} Threat${infectionCount !== 1 ? 's' : ''}`}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {totalFiles.toLocaleString()} files scanned
-                </p>
-              </div>
-            </div>
+          </div>
+          <div className="mt-2 text-center">
+            <p className={`text-lg font-bold ${status.textColor}`}>
+              {isClean ? 'No Threats' : `${infectionCount} Threat${infectionCount !== 1 ? 's' : ''}`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {totalFiles.toLocaleString()} files scanned
+            </p>
+          </div>
+        </div>
 
-            {/* Stats */}
-            <div className="space-y-3">
-              <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                <Files className="h-5 w-5 text-blue-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Files Scanned</p>
-                  <p className="text-lg font-bold">{totalFiles.toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                <AlertTriangle className={`h-5 w-5 ${infectionCount > 0 ? 'text-red-500' : 'text-green-500'}`} />
-                <div>
-                  <p className="text-sm text-muted-foreground">Threats Found</p>
-                  <p className={`text-lg font-bold ${infectionCount > 0 ? 'text-red-500' : ''}`}>
-                    {infectionCount}
-                  </p>
-                </div>
-              </div>
-
-              {data.action === 'delete' && infectionCount > 0 && (
-                <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                  <Trash2 className="h-5 w-5 text-yellow-500" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Action Taken</p>
-                    <p className="text-lg font-bold">Deleted</p>
-                  </div>
-                </div>
-              )}
-
-              {data.version && (
-                <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                  <Shield className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Engine Version</p>
-                    <p className="text-sm font-medium">{data.version}</p>
-                  </div>
-                </div>
-              )}
+        {/* Stats */}
+        <div className="space-y-3">
+          <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+            <Files className="h-5 w-5 text-blue-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Files Scanned</p>
+              <p className="text-lg font-bold">{totalFiles.toLocaleString()}</p>
             </div>
           </div>
 
-          {/* Infection List */}
-          {data.infections.length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-sm font-medium mb-2">Detected Threats</h4>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                {data.infections.map((infection, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-red-500 truncate">{infection.threatName}</p>
-                        <p className="text-muted-foreground truncate text-xs mt-0.5">
-                          {infection.filePath}
-                        </p>
-                      </div>
-                      {data.action === 'delete' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-600 shrink-0">
-                          Removed
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+          <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+            <AlertTriangle className={`h-5 w-5 ${infectionCount > 0 ? 'text-red-500' : 'text-green-500'}`} />
+            <div>
+              <p className="text-sm text-muted-foreground">Threats Found</p>
+              <p className={`text-lg font-bold ${infectionCount > 0 ? 'text-red-500' : ''}`}>
+                {infectionCount}
+              </p>
+            </div>
+          </div>
+
+          {data.action === 'delete' && infectionCount > 0 && (
+            <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+              <Trash2 className="h-5 w-5 text-yellow-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Action Taken</p>
+                <p className="text-lg font-bold">Deleted</p>
               </div>
             </div>
           )}
 
-          {/* Scan Info */}
-          <div className="mt-4 flex gap-4 text-sm text-muted-foreground flex-wrap">
-            <span>Mode: {data.action === 'delete' ? 'Delete Threats' : 'Report Only'}</span>
-            {data.includePups && <span>• PUP Detection: On</span>}
-            {data.scanPath && <span>• Path: {data.scanPath}</span>}
+          {data.version && (
+            <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+              <Shield className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Engine Version</p>
+                <p className="text-sm font-medium">{data.version}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Infection List */}
+      {data.infections.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium mb-2">Detected Threats</h4>
+          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+            {data.infections.map((infection, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-red-500 truncate">{infection.threatName}</p>
+                    <p className="text-muted-foreground truncate text-xs mt-0.5">
+                      {infection.filePath}
+                    </p>
+                  </div>
+                  {data.action === 'delete' && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-600 shrink-0">
+                      Removed
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      )}
+
+      {/* Scan Info */}
+      <div className="mt-4 flex gap-4 text-sm text-muted-foreground flex-wrap">
+        <span>Mode: {data.action === 'delete' ? 'Delete Threats' : 'Report Only'}</span>
+        {data.includePups && <span>• PUP Detection: On</span>}
+        {data.scanPath && <span>• Path: {data.scanPath}</span>}
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

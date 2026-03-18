@@ -56,6 +56,8 @@ impl Service for WindowsUpdateService {
                 },
             ],
             icon: "cloud-download".to_string(),
+            exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 
@@ -123,6 +125,7 @@ impl Service for WindowsUpdateService {
                 duration_ms: start.elapsed().as_millis() as u64,
                 findings,
                 logs,
+                agent_analysis: None,
             };
         }
 
@@ -168,6 +171,7 @@ impl Service for WindowsUpdateService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -329,6 +333,7 @@ impl Service for WindowsUpdateService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

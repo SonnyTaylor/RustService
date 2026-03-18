@@ -4,6 +4,7 @@
  * Re-exports all page components for cleaner imports
  */
 
+export { AgentPage } from './AgentPage';
 export { BluescreenPage } from './BluescreenPage';
 export { ComponentTestPage } from './ComponentTestPage';
 export { EventLogPage } from './EventLogPage';

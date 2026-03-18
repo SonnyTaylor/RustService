@@ -14,8 +14,8 @@ import {
   Activity,
 } from 'lucide-react';
 import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, type ChartConfig } from '@/components/ui/chart';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -76,7 +76,7 @@ function getTempStatus(temp: number): { color: string; textColor: string; label:
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
   const finding = result.findings.find(
     (f) => (f.data as FurmarkResultData | undefined)?.type === 'furmark_result'
   );
@@ -85,27 +85,14 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   if (!data) {
     const errorFinding = result.findings.find((f) => f.severity === 'error');
     return (
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-orange-500/10 to-red-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-500/20">
-              <Flame className="h-5 w-5 text-red-500" />
-            </div>
-            GPU Stress Test (FurMark)
-            <span className="ml-auto px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">
-              FAILED
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-            <p className="font-medium text-red-500">{errorFinding?.title || 'Test Failed'}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {errorFinding?.description || result.error || 'Could not complete GPU stress test'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <ServiceCardWrapper definition={definition} result={result} statusBadge={{ label: 'FAILED', color: 'red' }}>
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <p className="font-medium text-red-500">{errorFinding?.title || 'Test Failed'}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {errorFinding?.description || result.error || 'Could not complete GPU stress test'}
+          </p>
+        </div>
+      </ServiceCardWrapper>
     );
   }
 
@@ -119,104 +106,91 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const chartData = [{ name: 'temp', value: tempValue, fill: tempStatus.color }];
   const chartConfig: ChartConfig = { value: { label: 'Temperature', color: tempStatus.color } };
 
+  const statusBadge = {
+    label: tempStatus.label,
+    color: (temp >= 95 ? 'red' : temp >= 85 ? 'yellow' : 'green') as 'red' | 'yellow' | 'green',
+  };
+
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-orange-500/10 to-red-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${temp < 85 ? 'bg-green-500/20' : 'bg-orange-500/20'}`}>
-              <Flame className={`h-5 w-5 ${temp < 85 ? 'text-green-500' : 'text-orange-500'}`} />
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      <div className="grid grid-cols-2 gap-6">
+        {/* Temperature Gauge */}
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <ChartContainer config={chartConfig} className="h-[160px] w-[160px]">
+              <RadialBarChart data={chartData} startAngle={90} endAngle={-270} innerRadius={55} outerRadius={75}>
+                <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                <RadialBar dataKey="value" cornerRadius={10} background />
+              </RadialBarChart>
+            </ChartContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <Thermometer className={`h-8 w-8 ${tempStatus.textColor}`} />
+              <span className={`text-xl font-bold ${tempStatus.textColor}`}>{temp}°C</span>
             </div>
-            GPU Stress Test (FurMark)
-            <span
-              className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${tempStatus.textColor}`}
-              style={{ backgroundColor: `${tempStatus.color}20` }}
-            >
-              {tempStatus.label}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 gap-6">
-            {/* Temperature Gauge */}
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <ChartContainer config={chartConfig} className="h-[160px] w-[160px]">
-                  <RadialBarChart data={chartData} startAngle={90} endAngle={-270} innerRadius={55} outerRadius={75}>
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" cornerRadius={10} background />
-                  </RadialBarChart>
-                </ChartContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <Thermometer className={`h-8 w-8 ${tempStatus.textColor}`} />
-                  <span className={`text-xl font-bold ${tempStatus.textColor}`}>{temp}°C</span>
-                </div>
-              </div>
-              <div className="mt-2 text-center">
-                <p className="text-sm text-muted-foreground">Max Temperature</p>
-                {gpu?.name && (
-                  <p className="text-xs text-muted-foreground truncate max-w-[180px]">{gpu.name}</p>
-                )}
-              </div>
-            </div>
+          </div>
+          <div className="mt-2 text-center">
+            <p className="text-sm text-muted-foreground">Max Temperature</p>
+            {gpu?.name && (
+              <p className="text-xs text-muted-foreground truncate max-w-[180px]">{gpu.name}</p>
+            )}
+          </div>
+        </div>
 
-            {/* Stats */}
-            <div className="space-y-3">
-              <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                <Gauge className="h-5 w-5 text-blue-500" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Average FPS</p>
-                  <p className="text-lg font-bold">{fpsAvg}</p>
-                </div>
-              </div>
-
-              {data.fps && (
-                <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                  <Activity className="h-5 w-5 text-purple-500" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">FPS Range</p>
-                    <p className="text-lg font-bold">
-                      {data.fps.min} - {data.fps.max}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {gpu?.max_usage_percent !== null && (
-                <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                  <Cpu className="h-5 w-5 text-green-500" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">GPU Usage</p>
-                    <p className="text-lg font-bold">{gpu.max_usage_percent}%</p>
-                  </div>
-                </div>
-              )}
-
-              {data.frames !== null && (
-                <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
-                  <Timer className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Frames</p>
-                    <p className="text-lg font-bold">{data.frames.toLocaleString()}</p>
-                  </div>
-                </div>
-              )}
+        {/* Stats */}
+        <div className="space-y-3">
+          <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+            <Gauge className="h-5 w-5 text-blue-500" />
+            <div>
+              <p className="text-sm text-muted-foreground">Average FPS</p>
+              <p className="text-lg font-bold">{fpsAvg}</p>
             </div>
           </div>
 
-          {/* Resolution & Duration Info */}
-          <div className="mt-4 flex gap-4 text-sm text-muted-foreground">
-            {data.resolution && (
-              <span>Resolution: {data.resolution.width}x{data.resolution.height}</span>
-            )}
-            {data.durationMs && (
-              <span>Duration: {(data.durationMs / 1000).toFixed(1)}s</span>
-            )}
-            {data.api && <span>API: {data.api}</span>}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          {data.fps && (
+            <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+              <Activity className="h-5 w-5 text-purple-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">FPS Range</p>
+                <p className="text-lg font-bold">
+                  {data.fps.min} - {data.fps.max}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {gpu?.max_usage_percent !== null && (
+            <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+              <Cpu className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">GPU Usage</p>
+                <p className="text-lg font-bold">{gpu.max_usage_percent}%</p>
+              </div>
+            </div>
+          )}
+
+          {data.frames !== null && (
+            <div className="p-3 rounded-xl bg-muted/50 border flex items-center gap-3">
+              <Timer className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Total Frames</p>
+                <p className="text-lg font-bold">{data.frames.toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Resolution & Duration Info */}
+      <div className="mt-4 flex gap-4 text-sm text-muted-foreground">
+        {data.resolution && (
+          <span>Resolution: {data.resolution.width}x{data.resolution.height}</span>
+        )}
+        {data.durationMs && (
+          <span>Duration: {(data.durationMs / 1000).toFixed(1)}s</span>
+        )}
+        {data.api && <span>API: {data.api}</span>}
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/icon.png" width="128" height="128" alt="RustService Logo">
+  <img src="public/logo.svg" width="128" height="128" alt="RustService Logo">
   <h1 align="center">RustService</h1>
   <p align="center">
     <strong>A blazing-fast portable toolkit for computer repair technicians</strong>
@@ -20,14 +20,23 @@ Run diagnostic and maintenance services with a beautiful 4-step workflow:
 - **Runner** → Real-time log streaming with live progress
 - **Results** → Detailed findings, technical printout, or customer-friendly summary
 
-**19+ Built-in Services:**
+**25+ Built-in Services:**
 | Category | Services |
 |----------|----------|
 | Diagnostics | Ping Test, Speedtest, iPerf, WinSAT, SmartCTL, WhyNotWin11 |
-| Stress Testing | FurMark, HeavyLoad, CHKDSK |
+| Stress Testing | FurMark, HeavyLoad, CHKDSK, USB Stability |
 | Cleanup | BleachBit, Drive Cleanup, DISM, SFC |
 | Security | KVRT, AdwCleaner, Trellix Stinger |
-| System | Windows Update, Battery Info, Disk Space |
+| System | Windows Update, Battery Report, Energy Report, Disk Space, Driver Audit, Installed Software, Network Config, Startup Optimize, Restore Point |
+
+### 🤖 AI Agent (ServiceAgent)
+An agentic AI assistant with human-in-the-loop tool execution:
+- Multi-provider support (OpenAI, Anthropic, Google, xAI, Mistral, Groq, DeepSeek, OpenRouter, Ollama)
+- 30+ tools: command execution, file management, web search, service automation
+- Command approval modes: Safe (always approve), Whitelist, YOLO (auto-execute)
+- Service supervision: agent monitors running services and writes analysis reports
+- Persistent conversations with SQLite storage
+- MCP server for remote LLM control via HTTP
 
 ### 💻 System Information
 Comprehensive hardware & OS reporting at a glance:
@@ -74,18 +83,18 @@ Comprehensive hardware & OS reporting at a glance:
 
 ### Prerequisites
 - Windows 10/11
-- Node.js + pnpm
+- Bun ([bun.sh](https://bun.sh/))
 - Rust toolchain ([rustup.rs](https://rustup.rs/))
 
 ### Development
 ```bash
-pnpm install          # Install dependencies
-pnpm tauri dev        # Run in dev mode
+bun install           # Install dependencies
+bun tauri dev         # Run in dev mode
 ```
 
 ### Build
 ```bash
-pnpm tauri build      # Build portable executable
+bun tauri build       # Build portable executable
 # Output: src-tauri/target/release/rustservice.exe
 ```
 
@@ -102,6 +111,7 @@ data/
 ├── reports/       # Saved service reports
 ├── logs/          # Application logs
 ├── scripts/       # Custom scripts
+├── agent/         # AI agent data (memory.db, files)
 └── settings.json  # Your preferences
 ```
 
@@ -118,12 +128,14 @@ data/
 | System Info | sysinfo, gfxinfo, battery crates |
 | Animations | Framer Motion |
 | Drag & Drop | dnd-kit |
+| AI Agent | Vercel AI SDK + multi-provider |
 
 ---
 
 ## 📚 Documentation
 
 - [Adding Services](docs/adding-services.md) — Create new diagnostic/maintenance services
+- [Agent System](docs/agent-system.md) — AI agent architecture, tools, and MCP server
 - [Animation System](docs/animations.md) — Framer Motion integration guide
 
 ---

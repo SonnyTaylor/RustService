@@ -83,6 +83,8 @@ impl Service for ChkdskService {
                 },
             ],
             icon: "hard-drive-download".to_string(),
+            exclusive_resources: vec!["disk-exclusive".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -147,6 +149,7 @@ impl Service for ChkdskService {
                 duration_ms: start.elapsed().as_millis() as u64,
                 findings,
                 logs,
+                agent_analysis: None,
             };
         }
 
@@ -206,6 +209,7 @@ impl Service for ChkdskService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -351,6 +355,7 @@ impl Service for ChkdskService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

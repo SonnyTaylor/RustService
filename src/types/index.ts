@@ -1,9 +1,12 @@
 /**
  * Re-export all types from the types directory
  */
+export * from './agent';
+export * from './agent-activity';
 export * from './bluescreen';
 export * from './component-test';
 export * from './event-log';
+export * from './file-attachment';
 export * from './network-diagnostics';
 export * from './programs';
 export * from './required-programs';

@@ -8,7 +8,7 @@ Services are modular diagnostic/maintenance tasks that can be:
 - Combined into presets (Diagnostics, General, Complete, Custom)
 - Individually enabled/disabled by users
 - Configured with custom options
-- Run in sequence with live log output
+- Run in sequence or in parallel (experimental) with live log output
 - Have custom results renderers (for findings view and customer print)
 
 ## Architecture
@@ -72,6 +72,7 @@ impl Service for MyService {
                 },
             ],
             icon: "icon-name".to_string(), // lucide icon name
+            exclusive_resources: vec![], // Resource tags for parallel mode (see below)
         }
     }
 
@@ -320,3 +321,45 @@ If a service run is blocked due to missing programs, a dialog shows what's neede
 4. Verify it appears in the queue
 5. Run the service and check logs/findings
 6. If you added a custom renderer, verify it displays correctly
+
+---
+
+## Parallel Execution (Experimental)
+
+Services can optionally run in parallel. When the user enables the **Parallel** toggle in the queue view, services without conflicting resource tags execute concurrently, while services sharing any resource tag are serialized.
+
+### `exclusive_resources` Field
+
+Each `ServiceDefinition` has an `exclusive_resources: Vec<String>` field that declares which shared resources this service requires exclusive access to. Services with overlapping tags will never run at the same time.
+
+**Resource tags in use:**
+
+| Tag | Description | Services |
+|-----|-------------|----------|
+| `network-bandwidth` | Services that measure network speed | speedtest, iperf |
+| `cpu-stress` | CPU/GPU stress tests and benchmarks | heavyload, winsat, furmark |
+| `disk-exclusive` | Services that lock a disk volume | chkdsk |
+| `disk-heavy` | Heavy disk I/O (repairs, cleanups) | dism, sfc, bleachbit, drivecleanup |
+| `filesystem-scan` | Full filesystem scans (virus/malware) | kvrt-scan, adwcleaner, stinger |
+
+Services with an empty `exclusive_resources` vec (e.g., `ping-test`, `battery-info`, `disk-space`, `network-config`) can run in parallel with anything.
+
+### How It Works
+
+1. The scheduler maintains a set of currently-held resource tags
+2. For each unstarted service, it checks if any of its `exclusive_resources` overlap with held resources
+3. If no conflict, the service starts on a new thread and its resources are marked as held
+4. When a service completes, its resources are released, potentially unblocking waiting services
+5. Services with no resource tags can always start immediately
+
+### Choosing Resource Tags
+
+When adding a new service, consider:
+- **Does it heavily use the network?** → Add `"network-bandwidth"`
+- **Does it stress the CPU or GPU?** → Add `"cpu-stress"`
+- **Does it lock a volume/drive?** → Add `"disk-exclusive"`
+- **Does it do heavy disk I/O?** → Add `"disk-heavy"`
+- **Does it scan the entire filesystem?** → Add `"filesystem-scan"`
+- **Is it a lightweight info-gathering tool?** → Use `vec![]`
+
+You can also create a new tag if needed. Any string works as a resource tag — services sharing the same tag will be serialized.

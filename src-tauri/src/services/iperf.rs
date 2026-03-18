@@ -68,6 +68,8 @@ impl Service for IperfService {
                 },
             ],
             icon: "network".to_string(),
+            exclusive_resources: vec!["network-bandwidth".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -126,6 +128,7 @@ impl Service for IperfService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -136,6 +139,7 @@ impl Service for IperfService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -307,6 +311,7 @@ impl Service for IperfService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

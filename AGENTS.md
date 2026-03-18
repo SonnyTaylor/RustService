@@ -12,14 +12,14 @@ Agent-focused development context for RustService, a Tauri + React Windows deskt
 
 ### Prerequisites
 - Windows 10/11
-- Node.js + pnpm
+- Bun (https://bun.sh/)
 - Rust toolchain (https://rustup.rs/)
 
 ### Quick Start
 ```bash
-pnpm install          # Install frontend dependencies
-pnpm tauri dev        # Run in development mode (requires admin for some features)
-pnpm tauri build      # Build portable executable
+bun install           # Install frontend dependencies
+bun tauri dev         # Run in development mode (requires admin for some features)
+bun tauri build       # Build portable executable
 ```
 
 ### Project Structure
@@ -48,7 +48,7 @@ src-tauri/             # Backend (Rust)
 ### Adding shadcn Components
 Always use the CLI, never manually create shadcn components:
 ```bash
-pnpm dlx shadcn@latest add <component-name>
+bunx shadcn@latest add <component-name>
 ```
 Components are configured with `new-york` style and TailwindCSS v4.
 
@@ -312,7 +312,7 @@ Modular service automation with 4-step flow: **Presets → Queue → Runner → 
 ### Architecture
 - **Presets**: Pre-configured service bundles (Diagnostics, General, Complete, Custom)
 - **Queue**: Drag-and-drop reordering, enable/disable, configure options
-- **Runner**: Executes services sequentially with real-time log streaming
+- **Runner**: Executes services sequentially or in parallel (experimental) with real-time log streaming
 - **Results**: 3 tabs - Findings (detailed), Printout (technical), Customer Print (simplified)
 
 ### Key Files
@@ -327,10 +327,19 @@ Modular service automation with 4-step flow: **Presets → Queue → Runner → 
 ### Adding a New Service
 1. Add `ServiceDefinition` to `get_all_service_definitions()` in `services.rs`
 2. Implement service logic in `run_service()` match arm
-3. Optionally add to presets in `get_all_presets()`
-4. Add icon to `ICON_MAP` in `ServicePage.tsx` if needed
+3. Set `exclusive_resources` for parallel mode (see below)
+4. Optionally add to presets in `get_all_presets()`
+5. Add icon to `ICON_MAP` in `ServicePage.tsx` if needed
 
 See `docs/adding-services.md` for detailed instructions.
+
+### Parallel Execution (Experimental)
+- **Toggle**: Per-run switch in the queue view footer (not a global setting)
+- **Scheduler**: Resource-based concurrent execution — services with overlapping `exclusive_resources` tags are serialized; non-conflicting services run in parallel on separate threads
+- **Resource tags**: `network-bandwidth`, `cpu-stress`, `disk-exclusive`, `disk-heavy`, `filesystem-scan`
+- **Pause**: Disabled in parallel mode (only cancel supported)
+- **Time tracking**: Individual service durations are measured per-thread — ML models are unaffected
+- **Report**: `ServiceReport.parallelMode` flag + `currentServiceIndices` for multi-active tracking
 
 ### Tauri Commands
 | Command | Description |
@@ -339,7 +348,7 @@ See `docs/adding-services.md` for detailed instructions.
 | `get_service_presets` | Get preset configurations |
 | `validate_service_requirements` | Check if programs installed |
 | `get_service_run_state` | Get current run state (persists across tabs) |
-| `run_services` | Execute service queue |
+| `run_services` | Execute service queue (accepts optional `parallel: bool`) |
 | `cancel_service_run` | Cancel running services |
 | `get_service_report` | Get saved report by ID |
 | `list_service_reports` | List all saved reports |
@@ -401,6 +410,174 @@ function MyList() {
 ### Adding the Setting Toggle
 The toggle is in Settings → Appearance → Animations. When disabled, all `motion.div` elements render as plain `div` elements with no transitions.
 
+## Agent System
+
+AI-powered assistant with command execution, memory, and web search. Human-in-the-loop design ensures user control over all system modifications.
+
+### Architecture
+- **Frontend**: React chat UI + Vercel AI SDK (`@ai-sdk/react`, `ai`)
+- **Backend**: Rust commands in `src-tauri/src/commands/agent.rs`
+- **Storage**: SQLite database at `data/agent.db`
+- **Settings**: `data/settings.json` under `agent` key
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/pages/AgentPage.tsx` | Main chat interface |
+| `src/components/agent/ChatMessage.tsx` | Message display with tool calls |
+| `src/components/agent/CommandApproval.tsx` | Pending command approval UI |
+| `src/components/agent/MemoryBrowser.tsx` | Memory viewing/search |
+| `src/lib/agent-tools.ts` | Vercel AI SDK tool definitions |
+| `src/types/agent.ts` | TypeScript types |
+| `src-tauri/src/commands/agent.rs` | Rust backend commands |
+| `src-tauri/src/types/agent.rs` | Rust types |
+| `docs/agent-system.md` | Full documentation |
+
+### ⚠️ Critical: Tauri Parameter Naming
+
+**Tauri does NOT auto-convert between camelCase and snake_case.**
+
+When calling Tauri commands from TypeScript, **use snake_case** parameter names:
+
+```typescript
+// ❌ WRONG - will fail
+await invoke('approve_command', { commandId: id });
+
+// ✅ CORRECT - matches Rust parameter name
+await invoke('approve_command', { command_id: id });
+```
+
+### Tauri Commands
+| Command | Parameters (snake_case!) | Description |
+|---------|--------------------------|-------------|
+| `queue_agent_command` | `command`, `reason` | Queue command for approval |
+| `approve_command` | `command_id` | Approve and execute |
+| `reject_command` | `command_id` | Reject command |
+| `save_memory` | `memory_type`, `content`, `metadata?` | Save to memory |
+| `search_memories` | `query`, `memory_type?`, `limit?` | Search memories |
+| `get_all_memories` | `memory_type?`, `limit?` | Get all memories |
+| `delete_memory` | `memory_id` | Delete a memory |
+| `search_tavily` | `query`, `api_key` | Web search via Tavily |
+| `search_searxng` | `query`, `instance_url` | Web search via SearXNG |
+| `get_command_history` | `limit?` | Get executed commands |
+| `list_agent_programs` | - | List tools in data/programs/ |
+
+### Command Approval Modes
+| Mode | Behavior |
+|------|----------|
+| `always` | All commands require approval (default, safest) |
+| `whitelist` | Whitelisted patterns auto-execute, others need approval |
+| `yolo` | All commands auto-execute (⚠️ dangerous) |
+
+### Memory Types
+| Type | Purpose |
+|------|---------|
+| `fact` | User-provided information |
+| `solution` | Successful past solutions |
+| `conversation` | Chat context fragments |
+| `instruction` | Behavioral rules |
+
+### Adding an Agent Tool
+1. Add Rust command in `src-tauri/src/commands/agent.rs`
+2. Register in `src-tauri/src/lib.rs` invoke_handler
+3. Create Vercel AI SDK tool in `src/lib/agent-tools.ts`
+4. Add to tools array in `AgentPage.tsx`
+
+See `docs/agent-system.md` for complete documentation.
+
+## MCP Server (Remote Control)
+
+Model Context Protocol (MCP) server for remote LLM control. Allows external AI systems (Agent Zero, Claude Desktop, etc.) to control this machine via HTTP.
+
+### Architecture
+- **HTTP Server**: Runs on configurable port (default: 8377)
+- **Authentication**: Bearer token in Authorization header
+- **Protocol**: JSON-RPC 2.0 over HTTP
+- **Backend**: Rust module at `src-tauri/src/mcp/`
+- **Settings**: `mcpServerEnabled`, `mcpApiKey`, `mcpPort` in AgentSettings
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/mcp/mod.rs` | Module exports |
+| `src-tauri/src/mcp/server.rs` | HTTP server with JSON-RPC handling |
+| `src-tauri/src/mcp/tools.rs` | MCP tool definitions |
+| `src/pages/SettingsPage.tsx` | MCP settings UI in Agent panel |
+
+### Available Tools (11)
+| Tool | Description |
+|------|-------------|
+| `execute_command` | Run PowerShell commands |
+| `read_file` | Read file contents |
+| `write_file` | Write to files |
+| `list_dir` | List directory contents |
+| `move_file` | Move/rename files |
+| `copy_file` | Copy files |
+| `get_system_info` | Get system info (CPU, memory, disks) |
+| `search_web` | Web search (Tavily/SearXNG) |
+| `list_programs` | List portable programs |
+| `list_instruments` | List custom scripts |
+| `run_instrument` | Run a custom script |
+
+### JSON-RPC Methods
+| Method | Description |
+|--------|-------------|
+| `initialize` | Initialize connection, get capabilities |
+| `tools/list` | Get list of available tools |
+| `tools/call` | Execute a tool by name |
+
+### Endpoints
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | GET | No | Health check |
+| `/health` | GET | No | Health check |
+| `/mcp` | POST | Yes | MCP JSON-RPC endpoint |
+
+### Quick Start
+1. Enable in Settings → AI Agent → MCP Server
+2. Copy the auto-generated API key
+3. Restart the app
+4. Connect via: `POST http://localhost:8377/mcp` with `Authorization: Bearer <key>`
+
+### Testing
+```bash
+# Health check
+curl http://localhost:8377/
+
+# Initialize (get capabilities)
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"initialize","id":1}' \
+  http://localhost:8377/mcp
+
+# List tools
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}' \
+  http://localhost:8377/mcp
+
+# Execute command
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_command","arguments":{"command":"whoami","reason":"testing"}},"id":3}' \
+  http://localhost:8377/mcp
+
+# Get system info
+curl -X POST \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_system_info","arguments":{}},"id":4}' \
+  http://localhost:8377/mcp
+```
+
+### Security
+- Always use a strong API key
+- For remote access, use HTTPS via a reverse proxy
+- Requires app restart after configuration changes
+
 ## Dependencies to Know
 
 | Package | Purpose |
@@ -413,6 +590,11 @@ The toggle is in Settings → Appearance → Animations. When disabled, all `mot
 | `lucide-react` | Icon library |
 | `class-variance-authority` | Component variants (shadcn) |
 | `tailwind-merge` | Merge Tailwind classes (shadcn) |
+| `ai` | Vercel AI SDK core |
+| `@ai-sdk/react` | React hooks for AI SDK |
+| `@ai-sdk/openai` | OpenAI provider for AI SDK |
+| `@ai-sdk/anthropic` | Anthropic provider for AI SDK |
+| `zod` | Schema validation for AI tools |
 | `sysinfo` | System hardware/OS info (Rust) |
 | `gfxinfo` | GPU information (Rust) |
 | `battery` | Battery status (Rust) |
@@ -420,4 +602,10 @@ The toggle is in Settings → Appearance → Animations. When disabled, all `mot
 | `chrono` | Timestamps (Rust) |
 | `image` | Icon conversion (Rust) |
 | `winapi` | Windows icon extraction (Rust) |
+| `rusqlite` | SQLite database for agent memory (Rust) |
+| `urlencoding` | URL encoding for search queries (Rust) |
+| `rmcp` | Rust MCP SDK for protocol implementation (Rust) |
+| `hyper` | HTTP server for MCP (Rust) |
+| `hyper-util` | HTTP utilities (Rust) |
+| `http-body-util` | HTTP body utilities (Rust) |
 

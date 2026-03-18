@@ -47,6 +47,8 @@ impl Service for DriveCleanupService {
                 ),
             }],
             icon: "usb".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -106,6 +108,7 @@ impl Service for DriveCleanupService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -121,6 +124,7 @@ impl Service for DriveCleanupService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -175,6 +179,7 @@ impl Service for DriveCleanupService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -283,6 +288,7 @@ impl Service for DriveCleanupService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

@@ -318,7 +318,7 @@ export function ShortcutsPage() {
 
       {/* Shortcuts grid */}
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6 space-y-6">
+        <div className="p-4 space-y-6">
           {filteredCategories.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Search className="h-12 w-12 mb-4 opacity-50" />

@@ -34,6 +34,8 @@ impl Service for WhyNotWin11Service {
             required_programs: vec!["whynotwin11".to_string()],
             options: vec![],
             icon: "monitor-check".to_string(),
+            exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 
@@ -71,6 +73,7 @@ impl Service for WhyNotWin11Service {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -81,6 +84,7 @@ impl Service for WhyNotWin11Service {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings: vec![],
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -249,6 +253,7 @@ impl Service for WhyNotWin11Service {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

@@ -1,8 +1,8 @@
 [package]
 name = "rustservice"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Portable Windows desktop toolkit for computer repair technicians"
+authors = ["Sonny Taylor"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -22,10 +22,15 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sysinfo = { version = "0.37", features = ["serde", "component", "user", "network"] }
+sysinfo = { version = "0.37", features = [
+    "serde",
+    "component",
+    "user",
+    "network",
+] }
 gfxinfo = "0.1"
 battery = "0.7"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -33,8 +38,34 @@ image = "0.25"
 tauri-plugin-dialog = "2"
 base64 = "0.22"
 regex = "1.12.2"
+glob = "0.3"
 dirs = "5"
 
+# Agent memory database
+rusqlite = { version = "0.32", features = ["bundled"] }
+zerocopy = "0.8"                                        # For efficient vector serialization
+urlencoding = "2"                                       # For URL encoding in search queries
+gethostname = "0.4"                                     # For machine identification in portable memory system
+tracing = "0.1"                                         # For structured logging
+sha2 = "0.10"                                           # For SHA-256 checksums
+hex = "0.4"                                             # For hex encoding
+mime_guess = "2"                                        # For MIME type detection from file extension
+
+# MCP Server
+rmcp = { version = "0.1", features = ["server"] }
+schemars = "0.8"                                        # Required for tool JSON schema generation
+hyper = { version = "1", features = ["server", "http1"] }  # HTTP types
+hyper-util = { version = "0.1", features = ["tokio"] }  # HTTP server utilities  
+http-body-util = "0.1"                                  # HTTP body utilities
+tower-http = { version = "0.6", features = ["cors"] }   # CORS for web clients
+
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["shellapi", "winuser", "wingdi", "libloaderapi", "winbase"] }
+winapi = { version = "0.3", features = [
+    "shellapi",
+    "winuser",
+    "wingdi",
+    "libloaderapi",
+    "winbase",
+    "winver",
+] }
 widestring = "1.0"

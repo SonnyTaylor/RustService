@@ -29,6 +29,8 @@ impl Service for DiskSpaceService {
             required_programs: vec![],
             options: vec![],
             icon: "hard-drive".to_string(),
+            exclusive_resources: vec![],
+            dependencies: vec![],
         }
     }
 
@@ -180,6 +182,7 @@ impl Service for DiskSpaceService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

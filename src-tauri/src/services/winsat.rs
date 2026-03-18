@@ -42,6 +42,8 @@ impl Service for WinsatService {
                 description: Some("Drive letter to benchmark (e.g., C, D)".to_string()),
             }],
             icon: "gauge".to_string(),
+            exclusive_resources: vec!["cpu-stress".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -285,6 +287,7 @@ impl Service for WinsatService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

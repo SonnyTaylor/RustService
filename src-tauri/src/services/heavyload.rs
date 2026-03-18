@@ -74,6 +74,8 @@ impl Service for HeavyLoadService {
                 },
             ],
             icon: "weight".to_string(),
+            exclusive_resources: vec!["cpu-stress".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -138,6 +140,7 @@ impl Service for HeavyLoadService {
                 duration_ms: start.elapsed().as_millis() as u64,
                 findings,
                 logs,
+                agent_analysis: None,
             };
         }
 
@@ -163,6 +166,7 @@ impl Service for HeavyLoadService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
             Err(e) => {
@@ -178,6 +182,7 @@ impl Service for HeavyLoadService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -255,6 +260,7 @@ impl Service for HeavyLoadService {
                     duration_ms: start.elapsed().as_millis() as u64,
                     findings,
                     logs,
+                    agent_analysis: None,
                 };
             }
         };
@@ -329,6 +335,7 @@ impl Service for HeavyLoadService {
             duration_ms: actual_duration.as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

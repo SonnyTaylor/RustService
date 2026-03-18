@@ -74,6 +74,15 @@ pub struct ServiceDefinition {
     pub options: Vec<ServiceOptionSchema>,
     /// Icon name (lucide icon identifier)
     pub icon: String,
+    /// Resource tags that conflict with other services sharing the same tag.
+    /// Services with overlapping exclusive_resources will not run concurrently.
+    /// Empty vec means the service can run in parallel with anything.
+    #[serde(default)]
+    pub exclusive_resources: Vec<String>,
+    /// Service IDs that must complete before this service can run.
+    /// Empty vec means no dependencies.
+    #[serde(default)]
+    pub dependencies: Vec<ServiceId>,
 }
 
 // =============================================================================
@@ -178,6 +187,9 @@ pub struct ServiceResult {
     pub findings: Vec<ServiceFinding>,
     /// Log output from the service
     pub logs: Vec<String>,
+    /// Agent-generated analysis for this service result
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_analysis: Option<String>,
 }
 
 /// Status of a service run
@@ -188,6 +200,8 @@ pub enum ServiceRunStatus {
     Pending,
     /// Currently running
     Running,
+    /// Paused (e.g., by agent for intervention)
+    Paused,
     /// Completed successfully
     Completed,
     /// Failed with error
@@ -216,14 +230,29 @@ pub struct ServiceReport {
     pub queue: Vec<ServiceQueueItem>,
     /// Results for each service (keyed by service_id)
     pub results: Vec<ServiceResult>,
-    /// Index of currently running service (for progress)
+    /// Index of currently running service (for progress, sequential mode)
     pub current_service_index: Option<usize>,
+    /// Indices of currently running services (parallel mode)
+    #[serde(default)]
+    pub current_service_indices: Vec<usize>,
+    /// Whether this run used parallel (experimental) execution
+    #[serde(default)]
+    pub parallel_mode: bool,
     /// Technician who performed the service (business mode)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub technician_name: Option<String>,
     /// Customer name (business mode)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub customer_name: Option<String>,
+    /// Whether this run was initiated by the AI agent
+    #[serde(default)]
+    pub agent_initiated: bool,
+    /// Agent-generated executive summary
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_summary: Option<String>,
+    /// Agent-computed health score (0-100)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_score: Option<u8>,
 }
 
 // =============================================================================
@@ -236,6 +265,8 @@ pub struct ServiceReport {
 pub struct ServiceRunState {
     /// Whether a service run is currently active
     pub is_running: bool,
+    /// Whether the run is currently paused (agent intervention)
+    pub is_paused: bool,
     /// Current report being generated
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_report: Option<ServiceReport>,
@@ -245,7 +276,49 @@ impl Default for ServiceRunState {
     fn default() -> Self {
         Self {
             is_running: false,
+            is_paused: false,
             current_report: None,
         }
     }
+}
+
+// =============================================================================
+// Report Statistics (computed by agent tooling)
+// =============================================================================
+
+/// Computed statistics for a service report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportStatistics {
+    /// Total number of services run
+    pub total_services: usize,
+    /// Number of services that succeeded
+    pub passed: usize,
+    /// Number of services that failed
+    pub failed: usize,
+    /// Total duration in milliseconds
+    pub total_duration_ms: u64,
+    /// Average duration per service in milliseconds
+    pub avg_duration_ms: u64,
+    /// Slowest service ID and duration
+    pub slowest_service: Option<(String, u64)>,
+    /// Fastest service ID and duration
+    pub fastest_service: Option<(String, u64)>,
+    /// Finding counts by severity
+    pub findings_by_severity: FindingSeverityCounts,
+    /// Total number of findings
+    pub total_findings: usize,
+    /// Computed health score (0-100)
+    pub health_score: u8,
+}
+
+/// Counts of findings grouped by severity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FindingSeverityCounts {
+    pub info: usize,
+    pub success: usize,
+    pub warning: usize,
+    pub error: usize,
+    pub critical: usize,
 }

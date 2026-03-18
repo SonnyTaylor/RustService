@@ -71,12 +71,17 @@ export interface NetworkTestResult {
 /**
  * Display test patterns
  */
-export type DisplayPattern = 
-  | 'red' 
-  | 'green' 
-  | 'blue' 
-  | 'white' 
-  | 'black' 
-  | 'gradient' 
-  | 'checkerboard' 
-  | 'grid';
+export type DisplayPattern =
+  | 'red'
+  | 'green'
+  | 'blue'
+  | 'white'
+  | 'black'
+  | 'gradient'
+  | 'checkerboard'
+  | 'grid'
+  | 'smpte'
+  | 'crosshatch'
+  | 'dot-matrix'
+  | 'stripes-h'
+  | 'stripes-v';

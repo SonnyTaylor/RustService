@@ -43,6 +43,8 @@ impl Service for DismService {
                 ),
             }],
             icon: "package-check".to_string(),
+            exclusive_resources: vec!["disk-heavy".to_string()],
+            dependencies: vec![],
         }
     }
 
@@ -117,6 +119,7 @@ impl Service for DismService {
                         duration_ms: start.elapsed().as_millis() as u64,
                         findings,
                         logs,
+                        agent_analysis: None,
                     };
                 }
             };
@@ -258,6 +261,7 @@ impl Service for DismService {
             duration_ms: start.elapsed().as_millis() as u64,
             findings,
             logs,
+            agent_analysis: None,
         }
     }
 }

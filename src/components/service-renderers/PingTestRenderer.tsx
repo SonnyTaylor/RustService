@@ -14,8 +14,8 @@ import {
   SignalZero,
   Clock,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -68,7 +68,7 @@ function getLatencyLabel(latency: number): string {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
   // Extract latency and packet loss data from findings
   const latencyFinding = result.findings.find(
     (f) => (f.data as LatencyData | undefined)?.type === 'latency'
@@ -81,103 +81,83 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const packetLossData = packetLossFinding?.data as PacketLossData | undefined;
 
   return (
-    <div className="space-y-4">
-      {/* Network Status Overview */}
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-blue-500/10 to-cyan-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/20">
-              <Wifi className="h-5 w-5 text-blue-500" />
+    <ServiceCardWrapper definition={definition} result={result}>
+      <div className="grid grid-cols-2 gap-4">
+        {/* Latency Card */}
+        {latencyData && (
+          <div className="p-4 rounded-xl bg-muted/50 border">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
+              <Clock className="h-4 w-4" />
+              Latency
             </div>
-            Network Connectivity Test
-            <span
-              className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
-                result.success ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-              }`}
-            >
-              {result.success ? 'PASS' : 'FAIL'}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 gap-4">
-            {/* Latency Card */}
-            {latencyData && (
-              <div className="p-4 rounded-xl bg-muted/50 border">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
-                  <Clock className="h-4 w-4" />
-                  Latency
-                </div>
-                <div className={`text-3xl font-bold ${getLatencyColor(latencyData.avgLatency)}`}>
-                  {Math.round(latencyData.avgLatency)}
-                  <span className="text-lg font-normal">ms</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Target: {latencyData.target}</span>
-                  <span className={getLatencyColor(latencyData.avgLatency)}>
-                    {getLatencyLabel(latencyData.avgLatency)}
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <Progress
-                    value={Math.min(100, (latencyData.avgLatency / 200) * 100)}
-                    className={`h-2 ${getLatencyBgColor(latencyData.avgLatency)}`}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Packet Loss Card */}
-            {packetLossData && (
-              <div className="p-4 rounded-xl bg-muted/50 border">
-                <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
-                  {packetLossData.packetLoss === 0 ? (
-                    <Signal className="h-4 w-4" />
-                  ) : (
-                    <SignalZero className="h-4 w-4" />
-                  )}
-                  Packet Loss
-                </div>
-                <div className={`text-3xl font-bold ${getPacketLossColor(packetLossData.packetLoss)}`}>
-                  {packetLossData.packetLoss}
-                  <span className="text-lg font-normal">%</span>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  {packetLossData.packetLoss === 0 ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-500">No packets lost</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-500">Connection unstable</span>
-                    </>
-                  )}
-                </div>
-                <div className="mt-3">
-                  <Progress
-                    value={packetLossData.packetLoss}
-                    className={`h-2 ${packetLossData.packetLoss === 0 ? 'bg-green-500' : 'bg-yellow-500'}`}
-                  />
-                </div>
-              </div>
-            )}
+            <div className={`text-3xl font-bold ${getLatencyColor(latencyData.avgLatency)}`}>
+              {Math.round(latencyData.avgLatency)}
+              <span className="text-lg font-normal">ms</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Target: {latencyData.target}</span>
+              <span className={getLatencyColor(latencyData.avgLatency)}>
+                {getLatencyLabel(latencyData.avgLatency)}
+              </span>
+            </div>
+            <div className="mt-3">
+              <Progress
+                value={Math.min(100, (latencyData.avgLatency / 200) * 100)}
+                className={`h-2 ${getLatencyBgColor(latencyData.avgLatency)}`}
+              />
+            </div>
           </div>
+        )}
 
-          {/* Error state */}
-          {result.error && (
-            <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-              <div className="flex items-center gap-2 text-red-500">
-                <XCircle className="h-4 w-4" />
-                <span className="font-medium">Error</span>
-              </div>
-              <p className="mt-1 text-sm text-red-400">{result.error}</p>
+        {/* Packet Loss Card */}
+        {packetLossData && (
+          <div className="p-4 rounded-xl bg-muted/50 border">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
+              {packetLossData.packetLoss === 0 ? (
+                <Signal className="h-4 w-4" />
+              ) : (
+                <SignalZero className="h-4 w-4" />
+              )}
+              Packet Loss
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            <div className={`text-3xl font-bold ${getPacketLossColor(packetLossData.packetLoss)}`}>
+              {packetLossData.packetLoss}
+              <span className="text-lg font-normal">%</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              {packetLossData.packetLoss === 0 ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span className="text-sm text-green-500">No packets lost</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <span className="text-sm text-yellow-500">Connection unstable</span>
+                </>
+              )}
+            </div>
+            <div className="mt-3">
+              <Progress
+                value={packetLossData.packetLoss}
+                className={`h-2 ${packetLossData.packetLoss === 0 ? 'bg-green-500' : 'bg-yellow-500'}`}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Error state */}
+      {result.error && (
+        <div className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <div className="flex items-center gap-2 text-red-500">
+            <XCircle className="h-4 w-4" />
+            <span className="font-medium">Error</span>
+          </div>
+          <p className="mt-1 text-sm text-red-400">{result.error}</p>
+        </div>
+      )}
+    </ServiceCardWrapper>
   );
 }
 

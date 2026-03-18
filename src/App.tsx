@@ -22,6 +22,7 @@ import {
   Rocket,
   Network,
   Skull,
+  Bot,
   // Icon picker icons
   Folder,
   Database,
@@ -51,9 +52,13 @@ import {
 import { ThemeProvider } from '@/components/theme-provider';
 import { SettingsProvider, useSettings } from '@/components/settings-context';
 import { AnimationProvider, useAnimation, motion, AnimatePresence, tabContentVariants } from '@/components/animation-context';
+import { ServiceRunProvider } from '@/components/service-run-context';
+import { FloatingServiceStatus } from '@/components/floating-service-status';
 import { Titlebar } from '@/components/titlebar';
 import { IframeTabContent } from '@/components/IframeTabContent';
+import { ErrorBoundary } from '@/components/error-boundary';
 import {
+  AgentPage,
   ServicePage,
   SystemInfoPage,
   ComponentTestPage,
@@ -142,6 +147,7 @@ function TechnicianTabIcon({ tab, useFavicons }: { tab: TechnicianTab; useFavico
  * Primary tabs shown directly in the tab bar
  */
 const PRIMARY_TABS = [
+  { id: 'agent', label: 'Agent', icon: Bot, component: AgentPage },
   { id: 'service', label: 'Service', icon: Wrench, component: ServicePage },
   { id: 'system-info', label: 'System Info', icon: Monitor, component: SystemInfoPage },
   { id: 'component-test', label: 'Component Test', icon: TestTube, component: ComponentTestPage },
@@ -357,7 +363,9 @@ function AppContent() {
                   className="absolute inset-0 data-[state=active]:flex data-[state=active]:flex-col m-0"
                 >
                   <AnimatedTabContent id={animationsEnabled ? id : 'static'}>
-                    <Component />
+                    <ErrorBoundary label={ALL_TABS.find(t => t.id === id)?.label}>
+                      <Component />
+                    </ErrorBoundary>
                   </AnimatedTabContent>
                 </TabsContent>
               )
@@ -378,6 +386,9 @@ function AppContent() {
           })}
         </div>
       </Tabs>
+
+      {/* Floating service status pill - visible when services run on another tab */}
+      <FloatingServiceStatus activeTab={activeTab} />
     </div>
   );
 }
@@ -402,7 +413,11 @@ function App() {
     <ThemeProvider defaultTheme="system">
       <SettingsProvider>
         <AnimationProvider>
-          <AppContent />
+          <ServiceRunProvider>
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
+          </ServiceRunProvider>
         </AnimationProvider>
       </SettingsProvider>
     </ThemeProvider>

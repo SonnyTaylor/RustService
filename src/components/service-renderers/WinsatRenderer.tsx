@@ -7,13 +7,13 @@
 
 import { Gauge, Zap, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Bar, BarChart, XAxis, YAxis, Cell, LabelList } from 'recharts';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -66,7 +66,7 @@ function getRatingColor(rating: string): string {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
   // Extract winsat data from findings
   const winsatFinding = result.findings.find(
     (f) => (f.data as WinsatData | undefined)?.type === 'winsat_summary'
@@ -77,30 +77,17 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   if (!winsatData) {
     const errorFinding = result.findings.find((f) => f.severity === 'error');
     return (
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-red-500/10 to-orange-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-500/20">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-            </div>
-            Disk Performance Benchmark
-            <span className="ml-auto px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">
-              FAILED
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-            <p className="font-medium text-red-500">{errorFinding?.title || 'Benchmark Failed'}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {errorFinding?.description || result.error || 'Could not complete benchmark'}
-            </p>
-            {errorFinding?.recommendation && (
-              <p className="text-sm text-red-400 mt-2">💡 {errorFinding.recommendation}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <ServiceCardWrapper definition={definition} result={result} statusBadge={{ label: 'FAILED', color: 'red' }}>
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <p className="font-medium text-red-500">{errorFinding?.title || 'Benchmark Failed'}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {errorFinding?.description || result.error || 'Could not complete benchmark'}
+          </p>
+          {errorFinding?.recommendation && (
+            <p className="text-sm text-red-400 mt-2">💡 {errorFinding.recommendation}</p>
+          )}
+        </div>
+      </ServiceCardWrapper>
     );
   }
 
@@ -121,93 +108,83 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
     },
   };
 
+  const statusBadge = {
+    label: rating.toUpperCase(),
+    color: (['Excellent', 'Good'].includes(rating) ? 'green' : ['Average'].includes(rating) ? 'blue' : rating === 'Below Average' ? 'yellow' : 'red') as 'green' | 'blue' | 'yellow' | 'red',
+  };
+
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-500/20">
-              <Gauge className="h-5 w-5 text-purple-500" />
-            </div>
-            Disk Performance Benchmark
-            <span className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${getRatingColor(rating)}`}>
-              {rating.toUpperCase()}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          {/* Summary Stats */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-4 rounded-xl bg-muted/50 border text-center">
-              <p className="text-muted-foreground text-sm">Drive</p>
-              <p className="text-2xl font-bold mt-1">{drive}:</p>
-            </div>
-            <div className="p-4 rounded-xl bg-muted/50 border text-center">
-              <p className="text-muted-foreground text-sm">Avg Speed</p>
-              <p className="text-2xl font-bold mt-1">
-                {avgSpeed.toFixed(0)}
-                <span className="text-sm font-normal text-muted-foreground"> MB/s</span>
-              </p>
-            </div>
-            <div className="p-4 rounded-xl bg-muted/50 border text-center">
-              <p className="text-muted-foreground text-sm">Rating</p>
-              <p className={`text-xl font-bold mt-1 ${getRatingColor(rating).split(' ')[0]}`}>
-                {rating}
-              </p>
-            </div>
-          </div>
+    <ServiceCardWrapper definition={definition} result={result} statusBadge={statusBadge}>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="p-4 rounded-xl bg-muted/50 border text-center">
+          <p className="text-muted-foreground text-sm">Drive</p>
+          <p className="text-2xl font-bold mt-1">{drive}:</p>
+        </div>
+        <div className="p-4 rounded-xl bg-muted/50 border text-center">
+          <p className="text-muted-foreground text-sm">Avg Speed</p>
+          <p className="text-2xl font-bold mt-1">
+            {avgSpeed.toFixed(0)}
+            <span className="text-sm font-normal text-muted-foreground"> MB/s</span>
+          </p>
+        </div>
+        <div className="p-4 rounded-xl bg-muted/50 border text-center">
+          <p className="text-muted-foreground text-sm">Rating</p>
+          <p className={`text-xl font-bold mt-1 ${getRatingColor(rating).split(' ')[0]}`}>
+            {rating}
+          </p>
+        </div>
+      </div>
 
-          {/* Bar Chart */}
-          {chartData.length > 0 && (
-            <ChartContainer config={chartConfig} className="h-[200px] w-full">
-              <BarChart
-                data={chartData}
-                layout="vertical"
-                margin={{ left: 10, right: 60 }}
-              >
-                <XAxis type="number" hide />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  tickLine={false}
-                  axisLine={false}
-                  width={90}
-                  tick={{ fontSize: 12 }}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent formatter={(value) => `${value} MB/s`} hideLabel />}
-                />
-                <Bar dataKey="value" radius={[4, 4, 4, 4]} maxBarSize={30}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                  <LabelList
-                    dataKey="value"
-                    position="right"
-                    formatter={(value: number) => `${value.toFixed(0)} MB/s`}
-                    className="fill-foreground"
-                    fontSize={12}
-                  />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          )}
+      {/* Bar Chart */}
+      {chartData.length > 0 && (
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
+          <BarChart
+            data={chartData}
+            layout="vertical"
+            margin={{ left: 10, right: 60 }}
+          >
+            <XAxis type="number" hide />
+            <YAxis
+              dataKey="name"
+              type="category"
+              tickLine={false}
+              axisLine={false}
+              width={90}
+              tick={{ fontSize: 12 }}
+            />
+            <ChartTooltip
+              cursor={false}
+              content={<ChartTooltipContent formatter={(value) => `${value} MB/s`} hideLabel />}
+            />
+            <Bar dataKey="value" radius={[4, 4, 4, 4]} maxBarSize={30}>
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+              <LabelList
+                dataKey="value"
+                position="right"
+                formatter={(value: number) => `${value.toFixed(0)} MB/s`}
+                className="fill-foreground"
+                fontSize={12}
+              />
+            </Bar>
+          </BarChart>
+        </ChartContainer>
+      )}
 
-          {/* Performance Note */}
-          <div className="mt-4 p-3 rounded-lg bg-muted/50 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-yellow-500" />
-            <span className="text-sm text-muted-foreground">
-              {avgSpeed >= 300
-                ? 'SSD-level performance detected. Your disk is fast!'
-                : avgSpeed >= 100
-                  ? 'Decent performance. Consider upgrading to SSD for better speeds.'
-                  : 'Slow disk detected. An SSD upgrade would significantly improve performance.'}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Performance Note */}
+      <div className="mt-4 p-3 rounded-lg bg-muted/50 flex items-center gap-2">
+        <Zap className="h-4 w-4 text-yellow-500" />
+        <span className="text-sm text-muted-foreground">
+          {avgSpeed >= 300
+            ? 'SSD-level performance detected. Your disk is fast!'
+            : avgSpeed >= 100
+              ? 'Decent performance. Consider upgrading to SSD for better speeds.'
+              : 'Slow disk detected. An SSD upgrade would significantly improve performance.'}
+        </span>
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

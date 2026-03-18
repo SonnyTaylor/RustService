@@ -183,7 +183,13 @@ pub fn get_required_programs_by_ids(ids: Vec<String>) -> Vec<RequiredProgramDef>
 
 /// Get the status of all required programs (found/not found, paths)
 #[tauri::command]
-pub fn get_required_programs_status() -> Result<Vec<RequiredProgramStatus>, String> {
+pub async fn get_required_programs_status() -> Result<Vec<RequiredProgramStatus>, String> {
+    tokio::task::spawn_blocking(get_required_programs_status_blocking)
+        .await
+        .map_err(|e| format!("Required programs task failed: {e}"))?
+}
+
+fn get_required_programs_status_blocking() -> Result<Vec<RequiredProgramStatus>, String> {
     let settings = get_settings()?;
     let overrides = &settings.programs.overrides;
 

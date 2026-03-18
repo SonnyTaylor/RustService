@@ -6,8 +6,8 @@
  */
 
 import { HardDrive, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { ServiceCardWrapper } from './ServiceCardWrapper';
 import type { ServiceRendererProps } from './index';
 
 // =============================================================================
@@ -59,7 +59,7 @@ function formatBytes(bytes: number): string {
 // Findings Variant
 // =============================================================================
 
-function FindingsRenderer({ result }: ServiceRendererProps) {
+function FindingsRenderer({ result, definition }: ServiceRendererProps) {
   // Extract summary data from findings
   const summaryFinding = result.findings.find(
     (f) => (f.data as DiskSummaryData | undefined)?.type === 'disk_summary'
@@ -70,73 +70,58 @@ function FindingsRenderer({ result }: ServiceRendererProps) {
   const hasIssues = drives.some((d) => d.usagePercent >= 85);
 
   return (
-    <div className="space-y-4">
-      <Card className="overflow-hidden pt-0">
-        <CardHeader className="py-3 bg-gradient-to-r from-blue-500/10 to-purple-500/10">
-          <CardTitle className="text-base flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/20">
-              <HardDrive className="h-5 w-5 text-blue-500" />
-            </div>
-            Disk Space Analysis
-            <span
-              className={`ml-auto px-2 py-0.5 rounded text-xs font-medium ${
-                !hasIssues ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'
+    <ServiceCardWrapper
+      definition={definition}
+      result={result}
+      statusBadge={{ label: hasIssues ? 'ATTENTION NEEDED' : 'HEALTHY', color: hasIssues ? 'yellow' : 'green' }}
+    >
+      {/* Drive Cards */}
+      <div className="grid gap-3">
+        {drives.map((drive) => (
+          <div
+            key={drive.mountPoint}
+            className="p-4 rounded-xl bg-muted/50 border flex items-center gap-4"
+          >
+            <div
+              className={`p-2 rounded-lg ${
+                drive.usagePercent >= 85
+                  ? 'bg-red-500/10'
+                  : drive.usagePercent >= 70
+                    ? 'bg-yellow-500/10'
+                    : 'bg-green-500/10'
               }`}
             >
-              {!hasIssues ? 'HEALTHY' : 'ATTENTION NEEDED'}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          {/* Drive Cards */}
-          <div className="grid gap-3">
-            {drives.map((drive) => (
-              <div
-                key={drive.mountPoint}
-                className="p-4 rounded-xl bg-muted/50 border flex items-center gap-4"
-              >
-                <div
-                  className={`p-2 rounded-lg ${
-                    drive.usagePercent >= 85
-                      ? 'bg-red-500/10'
-                      : drive.usagePercent >= 70
-                        ? 'bg-yellow-500/10'
-                        : 'bg-green-500/10'
+              {drive.usagePercent >= 85 ? (
+                <AlertTriangle className="h-5 w-5 text-red-500" />
+              ) : (
+                <CheckCircle2
+                  className={`h-5 w-5 ${
+                    drive.usagePercent >= 70 ? 'text-yellow-500' : 'text-green-500'
                   }`}
-                >
-                  {drive.usagePercent >= 85 ? (
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                  ) : (
-                    <CheckCircle2
-                      className={`h-5 w-5 ${
-                        drive.usagePercent >= 70 ? 'text-yellow-500' : 'text-green-500'
-                      }`}
-                    />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium">{drive.mountPoint}</span>
-                    <span className={`text-sm font-medium ${getUsageTextColor(drive.usagePercent)}`}>
-                      {drive.usagePercent}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={drive.usagePercent}
-                    className="h-2"
-                    style={{ '--progress-color': getUsageColor(drive.usagePercent) } as React.CSSProperties}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                    <span>{formatBytes(drive.availableBytes)} free</span>
-                    <span>{formatBytes(drive.totalBytes)} total</span>
-                  </div>
-                </div>
+                />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-medium">{drive.mountPoint}</span>
+                <span className={`text-sm font-medium ${getUsageTextColor(drive.usagePercent)}`}>
+                  {drive.usagePercent}%
+                </span>
               </div>
-            ))}
+              <Progress
+                value={drive.usagePercent}
+                className="h-2"
+                style={{ '--progress-color': getUsageColor(drive.usagePercent) } as React.CSSProperties}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>{formatBytes(drive.availableBytes)} free</span>
+                <span>{formatBytes(drive.totalBytes)} total</span>
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        ))}
+      </div>
+    </ServiceCardWrapper>
   );
 }
 

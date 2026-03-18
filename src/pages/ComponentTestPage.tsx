@@ -5,7 +5,7 @@
  * mouse, network, and display diagnostics.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Camera,
@@ -28,6 +28,10 @@ import {
   Download,
   Bluetooth,
   Usb,
+  Gamepad2,
+  Hand,
+  AudioWaveform,
+  TrendingUp,
 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -41,6 +45,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 import type { MouseTestState, DisplayPattern } from '@/types';
+import { GamepadTestTab } from '@/components/component-test/GamepadTestTab';
 
 // ============================================================================
 // CAMERA TEST TAB
@@ -56,6 +61,33 @@ function CameraTestTab() {
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [actualFps, setActualFps] = useState<number>(0);
+  const [videoInfo, setVideoInfo] = useState<{
+    width?: number;
+    height?: number;
+    frameRate?: number;
+    aspectRatio?: number;
+    facingMode?: string;
+    deviceId?: string;
+    groupId?: string;
+    colorSpace?: string;
+    resizeMode?: string;
+    readyState?: string;
+    enabled?: boolean;
+    muted?: boolean;
+  }>({});
+  const [videoElementSize, setVideoElementSize] = useState<{
+    width: number, 
+    height: number, 
+    readyState: number, 
+    networkState: number,
+    decodedFrames?: number,
+    droppedFrames?: number
+  }>({width: 0, height: 0, readyState: 0, networkState: 0});
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // Get available cameras
   useEffect(() => {
@@ -130,6 +162,96 @@ function CameraTestTab() {
     }
   };
 
+  // Track video settings
+  useEffect(() => {
+    if (stream) {
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        const settings = track.getSettings() as any;
+        setVideoInfo({
+          width: settings.width,
+          height: settings.height,
+          frameRate: settings.frameRate,
+          aspectRatio: settings.aspectRatio,
+          facingMode: settings.facingMode,
+          deviceId: settings.deviceId,
+          groupId: settings.groupId,
+          resizeMode: settings.resizeMode,
+          colorSpace: settings.colorSpace ? (typeof settings.colorSpace === 'string' ? settings.colorSpace : JSON.stringify(settings.colorSpace)) : undefined,
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+        });
+
+        // Listen for track changes
+        const handleTrackChange = () => {
+          setVideoInfo(prev => ({
+            ...prev,
+            readyState: track.readyState,
+            enabled: track.enabled,
+            muted: track.muted,
+          }));
+        };
+
+        track.addEventListener('mute', handleTrackChange);
+        track.addEventListener('unmute', handleTrackChange);
+        track.addEventListener('ended', handleTrackChange);
+
+        return () => {
+          track.removeEventListener('mute', handleTrackChange);
+          track.removeEventListener('unmute', handleTrackChange);
+          track.removeEventListener('ended', handleTrackChange);
+        };
+      }
+    } else {
+      setVideoInfo({});
+      setActualFps(0);
+    }
+  }, [stream]);
+
+  // Calculate actual FPS
+  useEffect(() => {
+    if (!isActive || !videoRef.current) return;
+
+    const video = videoRef.current;
+    let lastTime = performance.now();
+    let frames = 0;
+    let callbackId: number;
+
+    const onFrame = (now: number) => {
+      frames++;
+      if (now - lastTime >= 1000) {
+        setActualFps(Math.round((frames * 1000) / (now - lastTime)));
+        frames = 0;
+        lastTime = now;
+        
+        if (video.videoWidth && video.videoHeight) {
+          setVideoElementSize({
+            width: video.videoWidth,
+            height: video.videoHeight,
+            readyState: video.readyState,
+            networkState: video.networkState,
+            decodedFrames: (video as any).webkitDecodedFrameCount,
+            droppedFrames: (video as any).webkitDroppedFrameCount
+          });
+        }
+      }
+      if ('requestVideoFrameCallback' in video) {
+        callbackId = (video as any).requestVideoFrameCallback(onFrame);
+      }
+    };
+
+    if ('requestVideoFrameCallback' in video) {
+      callbackId = (video as any).requestVideoFrameCallback(onFrame);
+    }
+
+    return () => {
+      if (callbackId && 'cancelVideoFrameCallback' in video) {
+        (video as any).cancelVideoFrameCallback(callbackId);
+      }
+    };
+  }, [isActive]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -138,6 +260,23 @@ function CameraTestTab() {
       }
     };
   }, [stream]);
+
+  // Handle fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!document.fullscreenElement) {
+      await videoContainerRef.current?.requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -196,15 +335,35 @@ function CameraTestTab() {
             </div>
 
             {isActive && (
-              <Button variant="outline" onClick={takeScreenshot}>
-                <Download className="h-4 w-4 mr-2" />
-                Screenshot
-              </Button>
+              <>
+                <Button variant="outline" onClick={takeScreenshot}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Screenshot
+                </Button>
+                <Button variant="outline" onClick={toggleFullscreen}>
+                  {isFullscreen ? <Minimize className="h-4 w-4 mr-2" /> : <Maximize className="h-4 w-4 mr-2" />}
+                  {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                </Button>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Switch 
+                    checked={showDiagnostics} 
+                    onCheckedChange={setShowDiagnostics}
+                    id="diagnostics"
+                  />
+                  <label htmlFor="diagnostics" className="text-sm flex items-center gap-1">
+                    <Monitor className="h-4 w-4" />
+                    Diagnostics
+                  </label>
+                </div>
+              </>
             )}
           </div>
 
           {/* Video Preview */}
-          <div className="relative bg-muted rounded-lg overflow-hidden flex items-center justify-center w-full h-[min(56.25vw,42vh)]">
+          <div 
+            ref={videoContainerRef}
+            className={`relative bg-muted rounded-lg overflow-hidden flex items-center justify-center w-full ${isFullscreen ? 'h-screen' : 'h-[min(56.25vw,42vh)]'}`}
+          >
             <video
               ref={videoRef}
               autoPlay
@@ -216,6 +375,56 @@ function CameraTestTab() {
               <div className="text-muted-foreground text-center">
                 <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>Click Start to preview camera</p>
+              </div>
+            )}
+
+            {/* Diagnostic Overlay */}
+            {isActive && showDiagnostics && (
+              <div className="absolute top-2 left-2 bg-background/80 text-foreground text-xs p-3 rounded-md border backdrop-blur-sm pointer-events-none shadow-lg z-10 min-w-[200px]">
+                <div className="font-bold mb-2 border-b pb-1 flex items-center gap-2">
+                  <Monitor className="h-3 w-3" />
+                  Stream Diagnostics
+                </div>
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+                  <span className="text-muted-foreground">Source Res:</span>
+                  <span className="font-medium">{videoInfo.width || '?'} x {videoInfo.height || '?'}</span>
+                  
+                  <span className="text-muted-foreground">Render Res:</span>
+                  <span className="font-medium">{videoElementSize.width || '?'} x {videoElementSize.height || '?'}</span>
+                  
+                  <span className="text-muted-foreground">Target FPS:</span>
+                  <span className="font-medium">{videoInfo.frameRate ? Math.round(videoInfo.frameRate) : 'N/A'}</span>
+                  
+                  <span className="text-muted-foreground">Actual FPS:</span>
+                  <span className={`font-medium ${actualFps < (videoInfo.frameRate || 30) * 0.8 ? 'text-destructive' : 'text-green-500'}`}>
+                    {actualFps || '...'}
+                  </span>
+                  
+                  <span className="text-muted-foreground">Aspect Ratio:</span>
+                  <span className="font-medium">
+                    {videoInfo.aspectRatio 
+                      ? videoInfo.aspectRatio.toFixed(3) 
+                      : (videoInfo.width && videoInfo.height ? (videoInfo.width / videoInfo.height).toFixed(3) : 'N/A')}
+                  </span>
+                  
+                  <span className="text-muted-foreground">Facing Mode:</span>
+                  <span className="capitalize font-medium">{videoInfo.facingMode || 'N/A'}</span>
+                  
+                  <span className="text-muted-foreground">Track State:</span>
+                  <span className={`font-medium ${videoInfo.readyState === 'live' ? 'text-green-500' : 'text-destructive'}`}>
+                    {videoInfo.readyState || 'N/A'}
+                  </span>
+
+                  {videoElementSize.decodedFrames !== undefined && (
+                    <>
+                      <span className="text-muted-foreground">Frames:</span>
+                      <span className="font-medium">
+                        {videoElementSize.decodedFrames} decoded
+                        {videoElementSize.droppedFrames !== undefined && videoElementSize.droppedFrames > 0 ? ` (${videoElementSize.droppedFrames} dropped)` : ''}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -248,46 +457,47 @@ function AudioTestTab() {
   const [isMicActive, setIsMicActive] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSweeping, setIsSweeping] = useState(false);
   const [frequency, setFrequency] = useState([440]);
+  const [waveform, setWaveform] = useState<OscillatorType>('sine');
+  const [pan, setPan] = useState(0); // -1 = L, 0 = both, 1 = R
+  const [volume, setVolume] = useState([10]); // 0–100
   const [error, setError] = useState<string | null>(null);
-  
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const panNodeRef = useRef<StereoPannerNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationRef = useRef<number | null>(null);
+  const sweepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getOrCreateContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+    return audioContextRef.current;
+  };
 
   // Start microphone test
   const toggleMic = async () => {
     if (isMicActive) {
-      // Stop
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
       setIsMicActive(false);
       setMicVolume(0);
       return;
     }
-
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-      
+      const audioContext = getOrCreateContext();
       const analyser = audioContext.createAnalyser();
       analyserRef.current = analyser;
       analyser.fftSize = 256;
-      
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
-
-      // Volume meter loop
+      audioContext.createMediaStreamSource(stream).connect(analyser);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const updateVolume = () => {
         analyser.getByteFrequencyData(dataArray);
@@ -297,64 +507,124 @@ function AudioTestTab() {
       };
       updateVolume();
       setIsMicActive(true);
-    } catch (err) {
+    } catch {
       setError('Microphone permission denied or not available');
     }
   };
 
-  // Play test tone
-  const toggleTone = () => {
-    if (isPlaying && oscillatorRef.current) {
-      oscillatorRef.current.stop();
+  const stopTone = () => {
+    if (oscillatorRef.current) {
+      try { oscillatorRef.current.stop(); } catch { /* already stopped */ }
       oscillatorRef.current = null;
-      setIsPlaying(false);
-      return;
     }
-
-    const audioContext = audioContextRef.current || new AudioContext();
-    if (!audioContextRef.current) {
-      audioContextRef.current = audioContext;
+    if (sweepTimerRef.current) {
+      clearTimeout(sweepTimerRef.current);
+      sweepTimerRef.current = null;
     }
+    setIsPlaying(false);
+    setIsSweeping(false);
+  };
 
+  const startTone = (freqOverride?: number) => {
+    const audioContext = getOrCreateContext();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(frequency[0], audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    
+    const panNode = audioContext.createStereoPanner();
+
+    oscillator.type = waveform;
+    oscillator.frequency.setValueAtTime(freqOverride ?? frequency[0], audioContext.currentTime);
+    gainNode.gain.setValueAtTime(volume[0] / 1000, audioContext.currentTime);
+    panNode.pan.setValueAtTime(pan, audioContext.currentTime);
+
     oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    gainNode.connect(panNode);
+    panNode.connect(audioContext.destination);
     oscillator.start();
-    
+
     oscillatorRef.current = oscillator;
+    gainNodeRef.current = gainNode;
+    panNodeRef.current = panNode;
     setIsPlaying(true);
   };
 
-  // Update frequency when changed
+  const toggleTone = () => {
+    if (isPlaying) { stopTone(); return; }
+    startTone();
+  };
+
+  // Sweep: 100Hz → 2000Hz over 3s
+  const startSweep = () => {
+    if (isPlaying) stopTone();
+    const audioContext = getOrCreateContext();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    const panNode = audioContext.createStereoPanner();
+
+    oscillator.type = waveform;
+    gainNode.gain.setValueAtTime(volume[0] / 1000, audioContext.currentTime);
+    panNode.pan.setValueAtTime(pan, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(100, audioContext.currentTime);
+    oscillator.frequency.linearRampToValueAtTime(2000, audioContext.currentTime + 3);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(panNode);
+    panNode.connect(audioContext.destination);
+    oscillator.start();
+
+    oscillatorRef.current = oscillator;
+    gainNodeRef.current = gainNode;
+    panNodeRef.current = panNode;
+    setIsPlaying(true);
+    setIsSweeping(true);
+
+    sweepTimerRef.current = setTimeout(() => {
+      stopTone();
+      setFrequency([440]);
+    }, 3100);
+  };
+
+  // Live-update frequency on slider change
   useEffect(() => {
-    if (oscillatorRef.current && audioContextRef.current) {
-      oscillatorRef.current.frequency.setValueAtTime(
-        frequency[0], 
-        audioContextRef.current.currentTime
-      );
+    if (oscillatorRef.current && audioContextRef.current && !isSweeping) {
+      oscillatorRef.current.frequency.setValueAtTime(frequency[0], audioContextRef.current.currentTime);
     }
-  }, [frequency]);
+  }, [frequency, isSweeping]);
+
+  // Live-update waveform
+  useEffect(() => {
+    if (oscillatorRef.current) oscillatorRef.current.type = waveform;
+  }, [waveform]);
+
+  // Live-update volume
+  useEffect(() => {
+    if (gainNodeRef.current && audioContextRef.current) {
+      gainNodeRef.current.gain.setValueAtTime(volume[0] / 1000, audioContextRef.current.currentTime);
+    }
+  }, [volume]);
+
+  // Live-update pan
+  useEffect(() => {
+    if (panNodeRef.current && audioContextRef.current) {
+      panNodeRef.current.pan.setValueAtTime(pan, audioContextRef.current.currentTime);
+    }
+  }, [pan]);
 
   // Cleanup
   useEffect(() => {
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
-      if (oscillatorRef.current) {
-        oscillatorRef.current.stop();
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (oscillatorRef.current) { try { oscillatorRef.current.stop(); } catch { /* ok */ } }
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
     };
   }, []);
+
+  const waveforms: { type: OscillatorType; label: string }[] = [
+    { type: 'sine', label: 'Sine' },
+    { type: 'square', label: 'Square' },
+    { type: 'sawtooth', label: 'Saw' },
+    { type: 'triangle', label: 'Triangle' },
+  ];
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -376,7 +646,7 @@ function AudioTestTab() {
           <CardDescription>Test microphone input level</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
+          <Button
             onClick={toggleMic}
             variant={isMicActive ? "destructive" : "default"}
             className="w-full"
@@ -384,73 +654,118 @@ function AudioTestTab() {
             {isMicActive ? <Square className="h-4 w-4 mr-2" /> : <Mic className="h-4 w-4 mr-2" />}
             {isMicActive ? 'Stop Recording' : 'Start Recording'}
           </Button>
-
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Input Level</span>
-              <Badge variant={micVolume > 50 ? 'default' : 'secondary'}>
-                {micVolume}%
-              </Badge>
+              <Badge variant={micVolume > 50 ? 'default' : 'secondary'}>{micVolume}%</Badge>
             </div>
             <Progress value={micVolume} className="h-4" />
           </div>
-
           <p className="text-xs text-muted-foreground text-center">
             Speak into the microphone - the meter should respond
           </p>
         </CardContent>
       </Card>
 
-      {/* Speaker Test */}
+      {/* Speaker / Tone Generator */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Volume2 className="h-5 w-5 text-green-500" />
-            Speaker Test
+            Tone Generator
           </CardTitle>
-          <CardDescription>Play test tones at different frequencies</CardDescription>
+          <CardDescription>Test speakers with precise tones</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={toggleTone}
-            variant={isPlaying ? "destructive" : "default"}
-            className="w-full"
-          >
-            {isPlaying ? <Square className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-            {isPlaying ? 'Stop Tone' : 'Play Tone'}
-          </Button>
 
+          {/* Play / Stop / Sweep */}
+          <div className="flex gap-2">
+            <Button
+              onClick={toggleTone}
+              variant={isPlaying && !isSweeping ? "destructive" : "default"}
+              className="flex-1"
+              disabled={isSweeping}
+            >
+              {isPlaying && !isSweeping ? <Square className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+              {isPlaying && !isSweeping ? 'Stop' : 'Play'}
+            </Button>
+            <Button
+              onClick={isSweeping ? stopTone : startSweep}
+              variant={isSweeping ? "destructive" : "outline"}
+              className="flex-1"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              {isSweeping ? 'Stop Sweep' : 'Sweep'}
+            </Button>
+          </div>
+
+          {/* Waveform */}
+          <div className="space-y-1.5">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <AudioWaveform className="h-3.5 w-3.5" /> Waveform
+            </span>
+            <div className="flex gap-1.5">
+              {waveforms.map(({ type, label }) => (
+                <Button
+                  key={type}
+                  size="sm"
+                  variant={waveform === type ? 'default' : 'outline'}
+                  className="flex-1 text-xs"
+                  onClick={() => setWaveform(type)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Frequency */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Frequency</span>
               <Badge variant="outline">{frequency[0]} Hz</Badge>
             </div>
-            <Slider
-              value={frequency}
-              onValueChange={setFrequency}
-              min={100}
-              max={2000}
-              step={50}
-              className="w-full"
-            />
+            <Slider value={frequency} onValueChange={setFrequency} min={100} max={2000} step={50} className="w-full" disabled={isSweeping} />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Bass (100Hz)</span>
-              <span>Treble (2000Hz)</span>
+              <span>100 Hz</span>
+              <span>2000 Hz</span>
+            </div>
+            <div className="flex gap-1.5 justify-center">
+              {[100, 261, 440, 880, 1000, 2000].map(freq => (
+                <Button key={freq} variant="outline" size="sm" className="text-xs px-2" onClick={() => setFrequency([freq])} disabled={isSweeping}>
+                  {freq === 261 ? 'C4' : freq === 440 ? 'A4' : freq === 880 ? 'A5' : `${freq}`}
+                </Button>
+              ))}
             </div>
           </div>
 
-          <div className="flex gap-2 justify-center">
-            {[261, 440, 880, 1000].map(freq => (
-              <Button
-                key={freq}
-                variant="outline"
-                size="sm"
-                onClick={() => setFrequency([freq])}
-              >
-                {freq === 261 ? 'C4' : freq === 440 ? 'A4' : freq === 880 ? 'A5' : '1kHz'}
-              </Button>
-            ))}
+          {/* Volume */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Volume</span>
+              <Badge variant="outline">{volume[0]}%</Badge>
+            </div>
+            <Slider value={volume} onValueChange={setVolume} min={0} max={100} step={5} className="w-full" />
           </div>
+
+          {/* L/R Channel */}
+          <div className="space-y-1.5">
+            <span className="text-sm text-muted-foreground">Channel</span>
+            <div className="flex gap-1.5">
+              {([[-1, 'Left'], [0, 'Both'], [1, 'Right']] as [number, string][]).map(([val, label]) => (
+                <Button
+                  key={label}
+                  size="sm"
+                  variant={pan === val ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setPan(val)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
         </CardContent>
       </Card>
     </div>
@@ -957,6 +1272,11 @@ function DisplayTestTab() {
     { id: 'gradient', label: 'Gradient', style: 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500' },
     { id: 'checkerboard', label: 'Checker', style: '' },
     { id: 'grid', label: 'Grid', style: '' },
+    { id: 'smpte', label: 'SMPTE', style: '' },
+    { id: 'crosshatch', label: 'Crosshatch', style: '' },
+    { id: 'dot-matrix', label: 'Dots', style: '' },
+    { id: 'stripes-h', label: 'H-Stripes', style: '' },
+    { id: 'stripes-v', label: 'V-Stripes', style: '' },
   ];
 
   const toggleFullscreen = async () => {
@@ -986,31 +1306,54 @@ function DisplayTestTab() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // Compute inline style for custom patterns (shared between thumbnail and fullscreen)
+  const getPatternStyle = (id: DisplayPattern | null): React.CSSProperties | undefined => {
+    switch (id) {
+      case 'checkerboard':
+        return {
+          backgroundImage: 'repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%), repeating-linear-gradient(45deg, #000 25%, #fff 25%, #fff 75%, #000 75%)',
+          backgroundSize: '40px 40px',
+          backgroundPosition: '0 0, 20px 20px',
+        };
+      case 'grid':
+        return {
+          backgroundColor: '#fff',
+          backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        };
+      case 'smpte':
+        return {
+          background: 'linear-gradient(to right, #c0c0c0 14.28%, #c0c000 14.28% 28.56%, #00c0c0 28.56% 42.84%, #00c000 42.84% 57.12%, #c000c0 57.12% 71.4%, #c00000 71.4% 85.68%, #0000c0 85.68%)',
+        };
+      case 'crosshatch':
+        return {
+          backgroundColor: '#fff',
+          backgroundImage: 'linear-gradient(to right, #999 1px, transparent 1px), linear-gradient(to bottom, #999 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+        };
+      case 'dot-matrix':
+        return {
+          backgroundColor: '#fff',
+          backgroundImage: 'radial-gradient(circle, #333 1.5px, transparent 1.5px)',
+          backgroundSize: '16px 16px',
+        };
+      case 'stripes-h':
+        return {
+          backgroundImage: 'repeating-linear-gradient(to bottom, #000 0px, #000 10px, #fff 10px, #fff 20px)',
+        };
+      case 'stripes-v':
+        return {
+          backgroundImage: 'repeating-linear-gradient(to right, #000 0px, #000 10px, #fff 10px, #fff 20px)',
+        };
+      default:
+        return undefined;
+    }
+  };
+
   // Render pattern
   const renderPattern = () => {
-    if (activePattern === 'checkerboard') {
-      return (
-        <div 
-          className="w-full h-full"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%), repeating-linear-gradient(45deg, #000 25%, #fff 25%, #fff 75%, #000 75%)',
-            backgroundSize: '40px 40px',
-            backgroundPosition: '0 0, 20px 20px',
-          }}
-        />
-      );
-    }
-    if (activePattern === 'grid') {
-      return (
-        <div 
-          className="w-full h-full bg-white"
-          style={{
-            backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-          }}
-        />
-      );
-    }
+    const style = getPatternStyle(activePattern);
+    if (style) return <div className="w-full h-full" style={style} />;
     const pattern = patterns.find(p => p.id === activePattern);
     return <div className={`w-full h-full ${pattern?.style || 'bg-muted'}`} />;
   };
@@ -1057,23 +1400,9 @@ function DisplayTestTab() {
                   ${activePattern === id ? 'border-primary ring-2 ring-primary/20' : 'border-muted hover:border-muted-foreground/50'}
                 `}
               >
-                <div 
+                <div
                   className={`w-full aspect-square rounded mb-1 ${style || 'bg-muted'}`}
-                  style={
-                    id === 'checkerboard' 
-                      ? {
-                          backgroundImage: 'repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%), repeating-linear-gradient(45deg, #000 25%, #fff 25%, #fff 75%, #000 75%)',
-                          backgroundSize: '8px 8px',
-                          backgroundPosition: '0 0, 4px 4px',
-                        }
-                      : id === 'grid'
-                        ? {
-                            backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)',
-                            backgroundSize: '6px 6px',
-                            backgroundColor: 'white',
-                          }
-                        : undefined
-                  }
+                  style={getPatternStyle(id)}
                 />
                 <span className="text-xs">{label}</span>
               </button>
@@ -1082,23 +1411,9 @@ function DisplayTestTab() {
 
           {/* Preview & Fullscreen */}
           <div className="flex gap-4 items-center">
-            <div 
+            <div
               className={`w-32 h-20 rounded-lg border overflow-hidden ${patterns.find(p => p.id === activePattern)?.style || 'bg-muted'}`}
-              style={
-                activePattern === 'checkerboard' 
-                  ? {
-                      backgroundImage: 'repeating-linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%), repeating-linear-gradient(45deg, #000 25%, #fff 25%, #fff 75%, #000 75%)',
-                      backgroundSize: '20px 20px',
-                      backgroundPosition: '0 0, 10px 10px',
-                    }
-                  : activePattern === 'grid'
-                    ? {
-                        backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)',
-                        backgroundSize: '10px 10px',
-                        backgroundColor: 'white',
-                      }
-                    : undefined
-              }
+              style={getPatternStyle(activePattern)}
             />
             <Button 
               onClick={toggleFullscreen}
@@ -1214,6 +1529,186 @@ function MoreTestsTab() {
 }
 
 // ============================================================================
+// TOUCH / STYLUS TEST TAB
+// ============================================================================
+
+const POINTER_COLORS = ['#ef4444','#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#14b8a6','#f97316'];
+
+function TouchTestTab() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [activePointers, setActivePointers] = useState<Map<number, { x: number; y: number; type: string; pressure: number }>>(new Map());
+  const [maxPoints, setMaxPoints] = useState(0);
+  const [lastType, setLastType] = useState<string>('—');
+  const [lastPressure, setLastPressure] = useState(0);
+  const activePointersRef = useRef<Map<number, { x: number; y: number; type: string; pressure: number }>>(new Map());
+
+  const getColor = (id: number) => POINTER_COLORS[id % POINTER_COLORS.length];
+
+  const getCanvasPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    canvasRef.current?.setPointerCapture(e.pointerId);
+    const pos = getCanvasPos(e);
+    const updated = new Map(activePointersRef.current);
+    updated.set(e.pointerId, { ...pos, type: e.pointerType, pressure: e.pressure });
+    activePointersRef.current = updated;
+    setActivePointers(new Map(updated));
+    setMaxPoints(prev => Math.max(prev, updated.size));
+    setLastType(e.pointerType);
+    setLastPressure(e.pressure);
+
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = getColor(e.pointerId);
+    ctx.fill();
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!activePointersRef.current.has(e.pointerId)) return;
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const prev = activePointersRef.current.get(e.pointerId)!;
+    const pos = getCanvasPos(e);
+    const lineWidth = e.pointerType === 'pen' ? Math.max(1, e.pressure * 12) : 2;
+
+    ctx.beginPath();
+    ctx.moveTo(prev.x, prev.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = getColor(e.pointerId);
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    const updated = new Map(activePointersRef.current);
+    updated.set(e.pointerId, { ...pos, type: e.pointerType, pressure: e.pressure });
+    activePointersRef.current = updated;
+    setLastPressure(e.pressure);
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const updated = new Map(activePointersRef.current);
+    updated.delete(e.pointerId);
+    activePointersRef.current = updated;
+    setActivePointers(new Map(updated));
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setMaxPoints(0);
+    setLastType('—');
+    setLastPressure(0);
+  };
+
+  // Resize canvas to match container
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const resize = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
+      const { width, height } = container.getBoundingClientRect();
+      // Preserve drawing on resize by saving/restoring image
+      const img = canvas.toDataURL();
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx && img) {
+        const image = new Image();
+        image.onload = () => ctx.drawImage(image, 0, 0);
+        image.src = img;
+      }
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-4">
+        {/* Active points */}
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <div className="text-3xl font-bold">{activePointers.size}</div>
+            <div className="text-xs text-muted-foreground mt-1">Active Points</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <div className="text-3xl font-bold">{maxPoints}</div>
+            <div className="text-xs text-muted-foreground mt-1">Max Simultaneous</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <div className="text-3xl font-bold capitalize">{lastType}</div>
+            <div className="text-xs text-muted-foreground mt-1">Pointer Type</div>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <div className="text-3xl font-bold">{lastPressure.toFixed(2)}</div>
+            <div className="text-xs text-muted-foreground mt-1">Pressure</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Hand className="h-5 w-5 text-purple-500" />
+              Touch / Stylus Draw Area
+            </CardTitle>
+            <CardDescription>Draw with your finger, stylus, or mouse</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={clearCanvas}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Clear
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div
+            ref={containerRef}
+            className="w-full rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/20 overflow-hidden touch-none"
+            style={{ height: 320 }}
+          >
+            <canvas
+              ref={canvasRef}
+              className="w-full h-full cursor-crosshair"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              style={{ touchAction: 'none' }}
+            />
+          </div>
+          {activePointers.size > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Array.from(activePointers.entries()).map(([id, info]) => (
+                <Badge key={id} variant="outline" style={{ borderColor: getColor(id), color: getColor(id) }}>
+                  #{id} ({Math.round(info.x)}, {Math.round(info.y)})
+                </Badge>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN COMPONENT TEST PAGE
 // ============================================================================
 
@@ -1222,6 +1717,8 @@ const TEST_TABS = [
   { id: 'audio', label: 'Audio', icon: Volume2, component: AudioTestTab },
   { id: 'keyboard', label: 'Keyboard', icon: Keyboard, component: KeyboardTestTab },
   { id: 'mouse', label: 'Mouse', icon: Mouse, component: MouseTestTab },
+  { id: 'gamepad', label: 'Gamepad', icon: Gamepad2, component: GamepadTestTab },
+  { id: 'touch', label: 'Touch', icon: Hand, component: TouchTestTab },
   { id: 'network', label: 'Network', icon: Wifi, component: NetworkTestTab },
   { id: 'display', label: 'Display', icon: Monitor, component: DisplayTestTab },
   { id: 'more', label: 'More', icon: MoreHorizontal, component: MoreTestsTab },
@@ -1231,19 +1728,19 @@ export function ComponentTestPage() {
   return (
   <div className="h-full flex flex-col overflow-hidden min-h-0">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6 space-y-6">
+        <div className="p-4 space-y-6">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-2">
               <CheckCircle2 className="h-6 w-6" />
               Component Testing
             </h2>
             <p className="text-muted-foreground text-sm mt-1">
-              Test hardware components - camera, audio, keyboard, mouse, network, and display
+              Test hardware components - camera, audio, keyboard, mouse, gamepad, network, and display
             </p>
           </div>
 
           <Tabs defaultValue="camera" className="w-full">
-            <TabsList className="grid w-full grid-cols-7 h-auto">
+            <TabsList className="grid w-full grid-cols-9 h-auto">
               {TEST_TABS.map(({ id, label, icon: Icon }) => (
                 <TabsTrigger
                   key={id}

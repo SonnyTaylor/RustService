@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "feature/**"]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  frontend:
+    name: Frontend Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: TypeScript check
+        run: bunx tsc --noEmit
+
+      - name: Vite build
+        run: bun run build
+
+  rust:
+    name: Rust Check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-ci-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-ci-
+
+      - name: Cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets

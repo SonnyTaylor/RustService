@@ -41,7 +41,7 @@ pub fn ensure_data_dir() -> Result<(), String> {
     let data_dir = get_data_dir_path();
 
     // Create main data directory and subdirectories
-    let subdirs = ["programs", "logs", "reports", "scripts"];
+    let subdirs = ["programs", "logs", "reports", "scripts", "agent"];
 
     for subdir in subdirs {
         let path = data_dir.join(subdir);

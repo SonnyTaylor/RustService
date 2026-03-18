@@ -183,7 +183,7 @@ export function EventLogPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="p-6 space-y-6">
+        <div className="p-4 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
@@ -312,7 +312,7 @@ export function EventLogPage() {
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search in messages..."
+                      placeholder="Search messages, sources, or event IDs..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
