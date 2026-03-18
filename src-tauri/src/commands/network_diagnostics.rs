@@ -219,7 +219,7 @@ pub async fn get_detailed_network_info() -> Result<Vec<NetworkInterfaceDetails>,
 /// Ping a host and return detailed results
 #[tauri::command]
 pub async fn ping_host(host: String, count: u32) -> PingResult {
-    let count = count.min(20).max(1); // Limit between 1-20
+    let count = count.clamp(1, 20); // Limit between 1-20
 
     let output = match Command::new("ping")
         .args(["-n", &count.to_string(), &host])
@@ -558,8 +558,8 @@ fn parse_nslookup_output(
         let trimmed = line.trim();
 
         // Get DNS server used
-        if trimmed.starts_with("Server:") {
-            result.server_used = Some(trimmed[7..].trim().to_string());
+        if let Some(rest) = trimmed.strip_prefix("Server:") {
+            result.server_used = Some(rest.trim().to_string());
         }
 
         // Check for non-authoritative answer section
@@ -568,13 +568,11 @@ fn parse_nslookup_output(
         }
 
         // Parse addresses
-        if in_answer_section {
-            if trimmed.starts_with("Address:") || trimmed.starts_with("Addresses:") {
-                let addr_part = if trimmed.starts_with("Addresses:") {
-                    &trimmed[10..]
-                } else {
-                    &trimmed[8..]
-                };
+        if in_answer_section
+            && (trimmed.starts_with("Address:") || trimmed.starts_with("Addresses:")) {
+                let addr_part = trimmed.strip_prefix("Addresses:")
+                    .or_else(|| trimmed.strip_prefix("Address:"))
+                    .unwrap_or("");
 
                 for addr in addr_part.split(',') {
                     let addr = addr.trim();
@@ -591,7 +589,6 @@ fn parse_nslookup_output(
                     }
                 }
             }
-        }
     }
 
     // Check for errors

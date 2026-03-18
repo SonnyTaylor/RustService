@@ -318,6 +318,7 @@ fn parse_drivecleanup_output(output: &str) -> DriveCleanupResult {
     let re_version = Regex::new(r"DriveCleanup\s+V([\d.]+)\s+\((x86|x64)\)").ok();
 
     // Count patterns
+    #[allow(clippy::type_complexity)]
     let patterns: Vec<(&str, Box<dyn Fn(&mut DriveCleanupResult, u32)>)> = vec![
         (
             r"Removed\s+(\d+)\s+USB devices?",

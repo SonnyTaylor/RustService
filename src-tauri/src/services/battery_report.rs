@@ -380,7 +380,7 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
             // Extract cells from each row
             let cells: Vec<String> = row
                 .split("</td>")
-                .map(|c| strip_html_tags(c))
+                .map(strip_html_tags)
                 .map(|c| c.trim().to_string())
                 .filter(|c| !c.is_empty())
                 .collect();
@@ -434,7 +434,7 @@ fn parse_battery_html(html: &str) -> ParsedBatteryReport {
             // Extract cells
             let cells: Vec<String> = row
                 .split("</td>")
-                .map(|c| strip_html_tags(c))
+                .map(strip_html_tags)
                 .map(|c| c.trim().to_string())
                 .filter(|c| !c.is_empty())
                 .collect();

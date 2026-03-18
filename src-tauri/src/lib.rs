@@ -10,6 +10,7 @@
 //! - `commands` - Tauri command handlers exposed to the frontend
 //! - `mcp` - Model Context Protocol server for remote LLM access
 
+#[allow(hidden_glob_reexports)]
 mod commands;
 mod mcp;
 mod services;

@@ -383,7 +383,7 @@ fn find_latest_log(logs_dir: &Path) -> Option<PathBuf> {
         })
         .collect();
 
-    logs.sort_by_key(|p| std::cmp::Reverse(p.metadata().ok().map(|m| m.modified().ok()).flatten()));
+    logs.sort_by_key(|p| std::cmp::Reverse(p.metadata().ok().and_then(|m| m.modified().ok())));
 
     logs.into_iter().next()
 }
@@ -441,9 +441,7 @@ fn parse_adwcleaner_log(log_path: &Path) -> AdwCleanerResult {
         if let Some(ref re) = re_section {
             if let Some(caps) = re.captures(line) {
                 let section_name = caps.get(1).map_or("", |m| m.as_str()).trim();
-                if section_map.contains_key(section_name) {
-                    current_section = Some(section_name);
-                } else if browser_sections.contains(&section_name) {
+                if section_map.contains_key(section_name) || browser_sections.contains(&section_name) {
                     current_section = Some(section_name);
                 } else {
                     current_section = None;

@@ -161,13 +161,13 @@ impl Service for DriverAuditService {
 
         // Build driver data for renderer
         let driver_data: Vec<serde_json::Value> = if show_all {
-            drivers.iter().map(|d| driver_to_json(d)).collect()
+            drivers.iter().map(driver_to_json).collect()
         } else {
             // Only include problematic + stopped (useful) drivers
             drivers
                 .iter()
                 .filter(|d| d.status != "OK" || d.state != "Running")
-                .map(|d| driver_to_json(d))
+                .map(driver_to_json)
                 .collect()
         };
 

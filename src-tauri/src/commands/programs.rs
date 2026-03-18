@@ -429,7 +429,7 @@ pub fn import_legacy_programs(file_path: String, reset_launch_count: bool) -> Re
     for legacy in legacy_programs {
         // Convert legacy exe_path (relative with backslashes) to absolute path
         // Legacy format: "programs\\Folder\\program.exe"
-        let exe_path = data_dir.join(&legacy.exe_path.replace("\\", "/"));
+        let exe_path = data_dir.join(legacy.exe_path.replace("\\", "/"));
         let exe_path_str = exe_path.to_string_lossy().to_string();
 
         // Handle logo_data_url - extract base64 and save as PNG

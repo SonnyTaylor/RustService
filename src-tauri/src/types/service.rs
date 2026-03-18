@@ -262,6 +262,7 @@ pub struct ServiceReport {
 /// Global service run state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ServiceRunState {
     /// Whether a service run is currently active
     pub is_running: bool,
@@ -272,15 +273,6 @@ pub struct ServiceRunState {
     pub current_report: Option<ServiceReport>,
 }
 
-impl Default for ServiceRunState {
-    fn default() -> Self {
-        Self {
-            is_running: false,
-            is_paused: false,
-            current_report: None,
-        }
-    }
-}
 
 // =============================================================================
 // Report Statistics (computed by agent tooling)

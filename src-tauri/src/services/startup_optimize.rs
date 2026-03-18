@@ -698,9 +698,7 @@ impl Service for StartupOptimizeService {
 
         let mode = if disable_unnecessary { "disable" } else { "report" };
 
-        let severity = if unnecessary_enabled.is_empty() {
-            FindingSeverity::Success
-        } else if disable_unnecessary && failed_items.is_empty() {
+        let severity = if unnecessary_enabled.is_empty() || (disable_unnecessary && failed_items.is_empty()) {
             FindingSeverity::Success
         } else {
             FindingSeverity::Warning

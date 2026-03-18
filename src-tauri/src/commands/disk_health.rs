@@ -299,14 +299,11 @@ fn get_disk_health_blocking() -> DiskHealthResponse {
             .args(["-a", drive, "--json"])
             .output();
 
-        match output {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                if let Some(info) = parse_smartctl_json(&stdout) {
-                    disks.push(info);
-                }
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if let Some(info) = parse_smartctl_json(&stdout) {
+                disks.push(info);
             }
-            Err(_) => {}
         }
     }
 

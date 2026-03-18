@@ -9,18 +9,15 @@ use uuid::Uuid;
 /// Type of script interpreter
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ScriptType {
     /// PowerShell script
+    #[default]
     PowerShell,
     /// CMD/Batch script
     Cmd,
 }
 
-impl Default for ScriptType {
-    fn default() -> Self {
-        Self::PowerShell
-    }
-}
 
 /// Represents a saved script managed by RustService
 #[derive(Debug, Clone, Serialize, Deserialize)]

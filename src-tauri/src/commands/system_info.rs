@@ -257,16 +257,19 @@ fn get_system_info_blocking() -> Result<SystemInfo, String> {
     })
 }
 
-/// Collect additional hardware details via PowerShell WMI queries.
-/// Returns defaults on failure so the main command never errors from this.
-fn collect_wmi_details() -> (
+/// WMI hardware details: (BIOS, SystemProduct, RAM slots, L2 cache KB, L3 cache KB, CPU socket)
+type WmiDetails = (
     Option<BiosInfo>,
     Option<SystemProductInfo>,
     Vec<RamSlotInfo>,
     Option<u64>,
     Option<u64>,
     Option<String>,
-) {
+);
+
+/// Collect additional hardware details via PowerShell WMI queries.
+/// Returns defaults on failure so the main command never errors from this.
+fn collect_wmi_details() -> WmiDetails {
     let script = r#"
 $bios = Get-CimInstance Win32_BIOS | Select-Object Manufacturer, SMBIOSBIOSVersion, ReleaseDate, SerialNumber
 $sys = Get-CimInstance Win32_ComputerSystemProduct | Select-Object Vendor, Name, IdentifyingNumber, UUID
@@ -369,10 +372,10 @@ $result | ConvertTo-Json -Depth 3 -Compress
                     capacity_bytes: slot["capacityBytes"].as_u64(),
                     form_factor: slot["formFactor"]
                         .as_u64()
-                        .map(|n| form_factor_name(n)),
+                        .map(&form_factor_name),
                     memory_type: slot["smbiosMemoryType"]
                         .as_u64()
-                        .map(|n| memory_type_name(n)),
+                        .map(&memory_type_name),
                 })
                 .collect()
         })

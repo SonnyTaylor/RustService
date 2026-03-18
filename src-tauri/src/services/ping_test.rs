@@ -118,7 +118,7 @@ impl Service for PingTestService {
 
                 // Parse average latency from "Average = XXms"
                 if let Some(avg_line) = stdout.lines().find(|l| l.contains("Average")) {
-                    if let Some(avg_str) = avg_line.split('=').last() {
+                    if let Some(avg_str) = avg_line.split('=').next_back() {
                         let cleaned = avg_str.trim().replace("ms", "");
                         avg_latency = cleaned.parse().ok();
                     }
@@ -127,12 +127,11 @@ impl Service for PingTestService {
                 // Parse packet loss from "(X% loss)" or "Lost = X"
                 if let Some(loss_line) = stdout.lines().find(|l| l.contains("Lost")) {
                     if let Some(lost_part) = loss_line.split("Lost").nth(1) {
-                        if let Some(num) = lost_part
+                        if let Ok(num) = lost_part
                             .chars()
                             .filter(|c| c.is_ascii_digit())
                             .collect::<String>()
                             .parse::<u32>()
-                            .ok()
                         {
                             packet_loss = Some((num * 100) / count);
                         }

@@ -395,7 +395,7 @@ fn run_services_sequential(
             let mut state = SERVICE_STATE.lock().unwrap();
             while state
                 .as_ref()
-                .map_or(false, |s| s.is_paused && s.is_running)
+                .is_some_and(|s| s.is_paused && s.is_running)
             {
                 state = PAUSE_CONDVAR.wait(state).unwrap();
             }
@@ -609,7 +609,7 @@ fn run_services_parallel(
             let deps = dep_map.get(&queue_item.service_id).cloned().unwrap_or_default();
             let deps_satisfied = deps.iter().all(|dep_id| {
                 let dep_index = enabled_queue.iter().position(|q| q.service_id == *dep_id);
-                dep_index.map_or(true, |idx| completed.contains(&idx))
+                dep_index.is_none_or(|idx| completed.contains(&idx))
             });
 
             if has_conflict || !deps_satisfied {
@@ -785,7 +785,7 @@ pub fn list_service_reports() -> Result<Vec<ServiceReport>, String> {
         fs::read_dir(&reports_dir).map_err(|e| format!("Failed to read reports dir: {}", e))?;
 
     for entry in entries.flatten() {
-        if entry.path().extension().map_or(false, |ext| ext == "json") {
+        if entry.path().extension().is_some_and(|ext| ext == "json") {
             if let Ok(json) = fs::read_to_string(entry.path()) {
                 if let Ok(report) = serde_json::from_str(&json) {
                     reports.push(report);
@@ -825,11 +825,10 @@ pub fn clear_all_reports() -> Result<u32, String> {
         fs::read_dir(&reports_dir).map_err(|e| format!("Failed to read reports dir: {}", e))?;
 
     for entry in entries.flatten() {
-        if entry.path().extension().map_or(false, |ext| ext == "json") {
-            if fs::remove_file(entry.path()).is_ok() {
+        if entry.path().extension().is_some_and(|ext| ext == "json")
+            && fs::remove_file(entry.path()).is_ok() {
                 deleted_count += 1;
             }
-        }
     }
 
     Ok(deleted_count)

@@ -385,7 +385,7 @@ fn calculate_stats(values: &[f64]) -> ThroughputStats {
     let sum: f64 = sorted.iter().sum();
     let mean = sum / n as f64;
 
-    let median = if n % 2 == 0 {
+    let median = if n.is_multiple_of(2) {
         (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
     } else {
         sorted[n / 2]

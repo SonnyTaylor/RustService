@@ -96,7 +96,7 @@ fn get_restore_points_blocking() -> RestorePointsResponse {
                 Ok(serde_json::Value::Array(arr)) => {
                     let points = arr
                         .iter()
-                        .filter_map(|item| parse_restore_point(item))
+                        .filter_map(parse_restore_point)
                         .collect();
                     RestorePointsResponse {
                         restore_points: points,
@@ -174,10 +174,7 @@ pub async fn create_restore_point(description: String) -> Result<String, String>
 pub(crate) fn create_restore_point_blocking(description: &str) -> Result<String, String> {
     // Sanitize the description to prevent command injection
     let safe_desc = description
-        .replace('\'', "")
-        .replace('"', "")
-        .replace('`', "")
-        .replace('$', "")
+        .replace(['\'', '"', '`', '$'], "")
         .chars()
         .take(256)
         .collect::<String>();

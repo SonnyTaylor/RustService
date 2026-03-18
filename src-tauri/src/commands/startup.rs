@@ -355,10 +355,10 @@ pub(crate) fn get_scheduled_startup_tasks_sync() -> Result<Vec<StartupItem>, Str
 #[tauri::command]
 pub async fn toggle_startup_item(id: String, enabled: bool) -> Result<(), String> {
     // Parse the ID to determine the source
-    if id.starts_with("reg_") {
-        toggle_registry_startup_item_sync(&id[4..], enabled)
-    } else if id.starts_with("task_") {
-        toggle_scheduled_task_sync(&id[5..], enabled)
+    if let Some(rest) = id.strip_prefix("reg_") {
+        toggle_registry_startup_item_sync(rest, enabled)
+    } else if let Some(rest) = id.strip_prefix("task_") {
+        toggle_scheduled_task_sync(rest, enabled)
     } else if id.starts_with("folder_") {
         Err("Startup folder items cannot be disabled - delete them instead".to_string())
     } else {
@@ -483,12 +483,12 @@ pub async fn open_startup_item_location(path: String) -> Result<(), String> {
 /// Delete a startup item
 #[tauri::command]
 pub async fn delete_startup_item(id: String, command: Option<String>) -> Result<(), String> {
-    if id.starts_with("reg_") {
-        delete_registry_startup_item(&id[4..]).await
-    } else if id.starts_with("folder_") {
-        delete_startup_folder_item(&id[7..], command).await
-    } else if id.starts_with("task_") {
-        delete_scheduled_task(&id[5..]).await
+    if let Some(rest) = id.strip_prefix("reg_") {
+        delete_registry_startup_item(rest).await
+    } else if let Some(rest) = id.strip_prefix("folder_") {
+        delete_startup_folder_item(rest, command).await
+    } else if let Some(rest) = id.strip_prefix("task_") {
+        delete_scheduled_task(rest).await
     } else {
         Err(format!("Unknown startup item type: {}", id))
     }
@@ -626,9 +626,9 @@ fn extract_path_from_command(command: &str) -> Option<String> {
     let cmd = command.trim();
 
     // Handle quoted paths
-    if cmd.starts_with('"') {
-        if let Some(end) = cmd[1..].find('"') {
-            return Some(cmd[1..end + 1].to_string());
+    if let Some(rest) = cmd.strip_prefix('"') {
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
         }
     }
 

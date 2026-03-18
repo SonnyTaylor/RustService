@@ -264,7 +264,7 @@ impl Service for FurmarkService {
         }
 
         // Log GPU metrics if available
-        if let Some(ref gpu) = parsed.gpus.first() {
+        if let Some(gpu) = parsed.gpus.first() {
             if let Some(temp) = gpu.max_temperature_c {
                 emit_log(&format!("Max GPU temperature: {}°C", temp), &mut logs, app);
             }
@@ -274,7 +274,7 @@ impl Service for FurmarkService {
         }
 
         // Determine severity based on results
-        let (severity, title, description) = if let Some(ref gpu) = parsed.gpus.first() {
+        let (severity, title, description) = if let Some(gpu) = parsed.gpus.first() {
             let temp = gpu.max_temperature_c.unwrap_or(0);
             if temp >= 95 {
                 (

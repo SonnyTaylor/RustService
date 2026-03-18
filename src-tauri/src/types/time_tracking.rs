@@ -19,18 +19,15 @@ use std::collections::HashMap;
 /// Network connection type for I/O-bound task estimation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum NetworkType {
     Ethernet,
     Wifi,
     Cellular,
+    #[default]
     Unknown,
 }
 
-impl Default for NetworkType {
-    fn default() -> Self {
-        NetworkType::Unknown
-    }
-}
 
 impl NetworkType {
     /// Convert to regression input value (higher = faster)

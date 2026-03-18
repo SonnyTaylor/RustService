@@ -124,11 +124,9 @@ impl Service for WhyNotWin11Service {
                 }
 
                 // Try to find the CSV file (WhyNotWin11 may put it in different locations)
-                let candidates = vec![
-                    csv_path.clone(),
+                let candidates = [csv_path.clone(),
                     work_dir.join("App").join("WhyNotWin11").join("result.csv"),
-                    work_dir.join("result.csv"),
-                ];
+                    work_dir.join("result.csv")];
 
                 let found_csv = candidates.iter().find(|p| p.exists());
 

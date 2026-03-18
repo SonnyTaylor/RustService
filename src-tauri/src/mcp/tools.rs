@@ -3,8 +3,6 @@
 //! Defines tools exposed via MCP. Tools implement core functionality directly
 //! to avoid complex inter-module dependencies.
 
-use glob;
-use regex;
 use rmcp::model::{CallToolResult, Content};
 use rmcp::tool;
 use std::fs;
@@ -121,15 +119,13 @@ fn list_directory(path: &str) -> Result<Vec<FileEntry>, String> {
     let entries = fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut result = Vec::new();
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let metadata = entry.metadata().ok();
-            result.push(FileEntry {
-                name: entry.file_name().to_string_lossy().to_string(),
-                is_dir: metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false),
-                size: metadata.and_then(|m| if m.is_file() { Some(m.len()) } else { None }),
-            });
-        }
+    for entry in entries.flatten() {
+        let metadata = entry.metadata().ok();
+        result.push(FileEntry {
+            name: entry.file_name().to_string_lossy().to_string(),
+            is_dir: metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+            size: metadata.and_then(|m| if m.is_file() { Some(m.len()) } else { None }),
+        });
     }
 
     Ok(result)

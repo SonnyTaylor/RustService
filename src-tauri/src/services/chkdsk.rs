@@ -428,7 +428,7 @@ fn parse_chkdsk_output(output: &str) -> ChkdskParsedOutput {
         lower.contains("cannot find the drive") || lower.contains("invalid drive");
 
     // Extract filesystem type
-    if let Some(re) = Regex::new(r"(?i)The type of the file system is (\w+)").ok() {
+    if let Ok(re) = Regex::new(r"(?i)The type of the file system is (\w+)") {
         if let Some(caps) = re.captures(output) {
             result.filesystem_type = caps.get(1).map(|m| m.as_str().to_string());
         }
@@ -442,7 +442,7 @@ fn parse_chkdsk_output(output: &str) -> ChkdskParsedOutput {
     result.available_kb = extract_kb_value(r"(\d[\d,]*)\s+KB available on disk", output);
 
     // Extract duration
-    if let Some(re) = Regex::new(r"Total duration:\s*[^()]*\((\d+)\s*ms\)").ok() {
+    if let Ok(re) = Regex::new(r"Total duration:\s*[^()]*\((\d+)\s*ms\)") {
         if let Some(caps) = re.captures(output) {
             if let Ok(ms) = caps
                 .get(1)

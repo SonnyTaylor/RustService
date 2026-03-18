@@ -354,7 +354,7 @@ impl Service for UsbStabilityService {
 
                 // Log progress every 10%
                 let progress = ((i + 1) as f64 / total_chunks as f64 * 100.0) as u32;
-                if progress % 10 == 0 && (i + 1) % (total_chunks / 10).max(1) == 0 {
+                if progress.is_multiple_of(10) && (i + 1) % (total_chunks / 10).max(1) == 0 {
                     emit_log(
                         &format!(
                             "  Write progress: {}% ({} MB)",
@@ -458,7 +458,7 @@ impl Service for UsbStabilityService {
                 bytes_read += n as u64;
 
                 let progress = (bytes_read as f64 / test_size_bytes as f64 * 100.0) as u32;
-                if progress % 10 == 0
+                if progress.is_multiple_of(10)
                     && bytes_read % (test_size_bytes / 10).max(1) < CHUNK_SIZE as u64
                 {
                     emit_log(
@@ -564,13 +564,13 @@ impl Service for UsbStabilityService {
                         break;
                     }
 
-                    for i in 0..n {
+                    for (i, &byte) in verify_buf[..n].iter().enumerate() {
                         let expected = if i % 2 == 0 {
                             PATTERN_BYTE_A
                         } else {
                             PATTERN_BYTE_B
                         };
-                        if verify_buf[i] != expected {
+                        if byte != expected {
                             errors += 1;
                             if first_err.is_none() {
                                 first_err = Some(offset + i as u64);
@@ -580,7 +580,7 @@ impl Service for UsbStabilityService {
                     offset += n as u64;
 
                     let progress = (offset as f64 / test_size_bytes as f64 * 100.0) as u32;
-                    if progress % 20 == 0
+                    if progress.is_multiple_of(20)
                         && offset % (test_size_bytes / 5).max(1) < CHUNK_SIZE as u64
                     {
                         emit_log(&format!("  Verify progress: {}%", progress), &mut logs, app);
@@ -690,7 +690,7 @@ impl Service for UsbStabilityService {
             let mut seed: u64 = 12345;
             for _ in 0..RANDOM_IO_ITERATIONS {
                 seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-                let offset = (seed % (file_size.saturating_sub(RANDOM_IO_BLOCK as u64))).max(0);
+                let offset = seed % (file_size.saturating_sub(RANDOM_IO_BLOCK as u64));
 
                 let io_start = Instant::now();
                 file.seek(SeekFrom::Start(offset))
@@ -798,11 +798,7 @@ impl Service for UsbStabilityService {
 
             // Allow 5% tolerance + 10MB overhead for filesystem metadata
             let tolerance = (expected_used as f64 * 0.05) as u64 + (10 * 1024 * 1024);
-            let discrepancy = if space_used_by_test > expected_used {
-                space_used_by_test - expected_used
-            } else {
-                expected_used - space_used_by_test
-            };
+            let discrepancy = space_used_by_test.abs_diff(expected_used);
 
             let capacity_ok = discrepancy <= tolerance;
 

@@ -235,7 +235,7 @@ pub fn save_business_logo(source_path: String) -> Result<String, String> {
     let dest_path = business_dir.join(&filename);
 
     // Copy file
-    fs::copy(&source, &dest_path).map_err(|e| format!("Failed to copy logo file: {}", e))?;
+    fs::copy(source, &dest_path).map_err(|e| format!("Failed to copy logo file: {}", e))?;
 
     // Return relative path from data directory
     Ok(format!("business/{}", filename))

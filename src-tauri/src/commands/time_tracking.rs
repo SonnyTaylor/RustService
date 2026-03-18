@@ -315,8 +315,8 @@ fn calculate_normalization(samples: &[ServiceTimeSample]) -> FeatureNormalizatio
     }
 
     let n = samples.len() as f64;
-    let mut sums = vec![0.0; NUM_FEATURES];
-    let mut sq_sums = vec![0.0; NUM_FEATURES];
+    let mut sums = [0.0; NUM_FEATURES];
+    let mut sq_sums = [0.0; NUM_FEATURES];
 
     for sample in samples {
         let features = sample.pc_fingerprint.to_feature_vector();
@@ -418,7 +418,7 @@ fn train_sgd_regression(samples: &[ServiceTimeSample]) -> Option<ServiceModelWei
         // This prevents oscillation as we approach the minimum
         let learning_rate = BASE_LEARNING_RATE / (1.0 + LEARNING_RATE_DECAY * epoch as f64);
 
-        let mut gradients = vec![0.0; NUM_FEATURES];
+        let mut gradients = [0.0; NUM_FEATURES];
 
         for i in 0..n {
             // Predict: sum(coef * feature)
@@ -516,7 +516,7 @@ fn predict_duration(weights: &ServiceModelWeights, fingerprint: &PcFingerprint) 
             .sum::<f64>();
 
     // Clamp to reasonable range (1 second to 1 hour)
-    prediction.max(1000.0).min(3_600_000.0) as u64
+    prediction.clamp(1000.0, 3_600_000.0) as u64
 }
 
 // =============================================================================
