@@ -7,21 +7,23 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { streamChat } from '@/lib/agent-chat';
 import { getEnabledTools, isHITLTool, shouldRequireApproval } from '@/lib/agent-tools';
+import { validateToolCall, mapToolToActivityType, extractActivityDetails } from '@/lib/agent-activity-utils';
 import { connectMCPServers, disconnectAll as disconnectMCPServers, getMCPTools, type MCPManagerState } from '@/lib/mcp-manager';
-import { AgentLoopQueue, type LoopRequest } from '@/lib/agent-loop-queue';
+import { AgentLoopQueue, type LoopOptions } from '@/lib/agent-loop-queue';
 import { AgentHeartbeat, type HeartbeatStatus } from '@/lib/agent-heartbeat';
+import { useConversations, type Message } from '@/hooks/useConversations';
+import { useServiceSupervision } from '@/hooks/useServiceSupervision';
 import { CoreMessage, generateId, ToolCallPart } from 'ai';
 import { ChatMessage, type MessagePart } from '@/components/agent/ChatMessage';
 import { AgentRightSidebar } from '@/components/agent/AgentRightSidebar';
 import { ConversationSelector } from '@/components/agent/ConversationSelector';
 import { ServiceRunMonitor } from '@/components/agent/ServiceRunMonitor';
-import type { ApprovalMode, ProviderApiKeys, Conversation, ConversationMessage, ConversationWithMessages } from '@/types/agent';
-import type { AgentActivity, ActivityType, ActivityStatus } from '@/types/agent-activity';
+import type { ApprovalMode, ProviderApiKeys } from '@/types/agent';
+import type { AgentActivity, ActivityStatus } from '@/types/agent-activity';
 import type { FileAttachment } from '@/types/file-attachment';
-import type { ServiceReport, ServiceRunState as ServiceRunStateType, ServiceResult } from '@/types/service';
+import type { ServiceReport, ServiceRunState as ServiceRunStateType } from '@/types/service';
 import {
   Bot,
   Send,
@@ -113,16 +115,6 @@ function SetupPrompt() {
   );
 }
 
-// Message type with interleaved parts for linear flow
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: string;
-  parts?: MessagePart[];
-  attachments?: FileAttachment[];
-}
-
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -146,21 +138,10 @@ export function AgentPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [, setConversationTitle] = useState<string>('New Chat');
   const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const mcpServersKeyRef = useRef<string>('');
 
-  // Service supervision state
-  const [activeServiceRun, setActiveServiceRun] = useState<{
-    reportId: string;
-    startedAt: string;
-    lastResultCount: number;
-    assistantMsgId: string | null;
-  } | null>(null);
-  const activeServiceRunRef = useRef(activeServiceRun);
-  activeServiceRunRef.current = activeServiceRun;
   const [mcpState, setMcpState] = useState<MCPManagerState>({
     servers: [],
     toolCount: 0,
@@ -171,7 +152,6 @@ export function AgentPage() {
   const agentHistoryRef = useRef<CoreMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const isFirstMessageRef = useRef(true);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
 
   // Agent loop queue — ensures only one loop runs at a time
@@ -197,6 +177,22 @@ export function AgentPage() {
   const currentProvider = agentSettings?.provider || 'openai';
   const currentApiKey = agentSettings?.apiKeys?.[currentProvider as keyof ProviderApiKeys] || '';
   const isConfigured = currentApiKey.length > 0;
+
+  // Conversation management hook
+  const {
+    currentConversationId,
+    setConversationTitle,
+    saveConversation,
+    loadConversation,
+    startNewConversation,
+    isFirstMessageRef,
+  } = useConversations({ isConfigured, setMessages, agentHistoryRef });
+
+  // Service supervision hook
+  const { activeServiceRun, setActiveServiceRun } = useServiceSupervision({
+    agentHistoryRef,
+    loopQueueRef,
+  });
 
   const toolSummary = useMemo(() => {
     const enabledTools = getEnabledTools({
@@ -257,473 +253,7 @@ export function AgentPage() {
     };
   }, [agentSettings?.mcpServers]);
 
-  // Save conversation to backend
-  const saveConversation = useCallback(async (msgs: Message[], history: CoreMessage[]) => {
-    if (!currentConversationId || msgs.length === 0) return;
-
-    try {
-      // Convert messages to ConversationMessage format
-      const conversationMessages: ConversationMessage[] = history.map((msg, index) => ({
-        id: generateId(),
-        conversationId: currentConversationId,
-        role: msg.role,
-        content: JSON.stringify(msg.content),
-        createdAt: msgs[Math.floor(index / 2)]?.createdAt || new Date().toISOString(),
-      }));
-
-      await invoke('save_conversation_messages', {
-        conversationId: currentConversationId,
-        messages: conversationMessages,
-      });
-    } catch (err) {
-      console.error('Failed to save conversation:', err);
-    }
-  }, [currentConversationId]);
-
-  // Load a conversation
-  const loadConversation = useCallback(async (conversation: Conversation) => {
-    try {
-      const data = await invoke<ConversationWithMessages>('get_conversation', {
-        conversationId: conversation.id,
-      });
-
-      // Convert stored messages back to CoreMessage format for history
-      const history: CoreMessage[] = data.messages.map((msg) => ({
-        role: msg.role as 'user' | 'assistant' | 'tool',
-        content: JSON.parse(msg.content),
-      }));
-
-      // Build a lookup of tool results by toolCallId for activity reconstruction
-      const toolResults = new Map<string, { output: string; isError: boolean }>();
-      for (const msg of data.messages) {
-        if (msg.role === 'tool') {
-          const content = JSON.parse(msg.content);
-          const parts = Array.isArray(content) ? content : [content];
-          for (const part of parts) {
-            if (part.type === 'tool-result' && part.toolCallId) {
-              const resultData = part.result;
-              let output: string;
-              let isError = !!part.isError;
-              if (typeof resultData === 'string') {
-                output = resultData;
-              } else if (resultData && typeof resultData === 'object') {
-                isError = isError || resultData.status === 'error';
-                output = resultData.output || resultData.error || JSON.stringify(resultData);
-              } else {
-                output = JSON.stringify(resultData);
-              }
-              toolResults.set(part.toolCallId, { output, isError });
-            }
-          }
-        }
-      }
-
-      // Convert to UI Message format - reconstruct interleaved parts from tool-call parts
-      const uiMessages: Message[] = [];
-      for (const msg of data.messages) {
-        if (msg.role === 'user') {
-          const content = JSON.parse(msg.content);
-          uiMessages.push({
-            id: msg.id,
-            role: 'user',
-            content: typeof content === 'string' ? content : '',
-            createdAt: msg.createdAt,
-          });
-        } else if (msg.role === 'assistant') {
-          const content = JSON.parse(msg.content);
-          let textContent = '';
-          const parts: MessagePart[] = [];
-
-          if (typeof content === 'string') {
-            textContent = content;
-            if (content) parts.push({ type: 'text', content });
-          } else if (Array.isArray(content)) {
-            // Build interleaved parts preserving order
-            for (const part of content) {
-              if (part.type === 'text' && part.text) {
-                textContent += part.text;
-                parts.push({ type: 'text', content: part.text });
-              } else if (part.type === 'tool-call') {
-                const toolName = part.toolName || '';
-                const args = part.args || part.input || {};
-                const activityType = mapToolToActivityType(toolName);
-                const activityDetails = extractActivityDetails(toolName, args);
-                const result = toolResults.get(part.toolCallId);
-
-                parts.push({
-                  type: 'tool',
-                  activity: {
-                    id: part.toolCallId,
-                    timestamp: msg.createdAt,
-                    type: activityType,
-                    status: result ? (result.isError ? 'error' : 'success') : 'success',
-                    output: result?.output,
-                    error: result?.isError ? result.output : undefined,
-                    ...activityDetails,
-                  } as AgentActivity,
-                });
-              }
-            }
-          }
-
-          uiMessages.push({
-            id: msg.id,
-            role: 'assistant',
-            content: textContent,
-            createdAt: msg.createdAt,
-            parts,
-          });
-        }
-        // 'tool' messages are consumed via the toolResults lookup, not shown directly
-      }
-
-      setCurrentConversationId(conversation.id);
-      setConversationTitle(conversation.title);
-      setMessages(uiMessages);
-      agentHistoryRef.current = history;
-      isFirstMessageRef.current = uiMessages.length === 0;
-    } catch (err) {
-      console.error('Failed to load conversation:', err);
-    }
-  }, []);
-
-  // Start a new conversation
-  const startNewConversation = useCallback(async () => {
-    try {
-      const conversation = await invoke<Conversation>('create_conversation', { title: null });
-      setCurrentConversationId(conversation.id);
-      setConversationTitle('New Chat');
-      setMessages([]);
-      agentHistoryRef.current = [];
-      isFirstMessageRef.current = true;
-    } catch (err) {
-      console.error('Failed to create conversation:', err);
-    }
-  }, []);
-
-  // Create initial conversation on mount if none exists
-  useEffect(() => {
-    if (!currentConversationId && isConfigured) {
-      startNewConversation();
-    }
-  }, [currentConversationId, isConfigured, startNewConversation]);
-
-  // Service supervision: listen for service events and inject updates via queue
-  useEffect(() => {
-    if (!activeServiceRun) return;
-
-    const unlisteners: Promise<UnlistenFn>[] = [];
-
-    // Listen for state changes (service completed, progress updates)
-    unlisteners.push(
-      listen<ServiceRunStateType>('service-state-changed', (event) => {
-        try {
-          const run = activeServiceRunRef.current;
-          if (!run) return;
-
-          const state = event.payload;
-          const report = state.currentReport;
-          if (!report?.results) return;
-
-          // Check if new results have appeared since last check
-          const newResultCount = report.results.length;
-          if (newResultCount > run.lastResultCount) {
-            const newResults = report.results.slice(run.lastResultCount);
-            setActiveServiceRun(prev => prev ? { ...prev, lastResultCount: newResultCount } : null);
-
-            // Combine ALL new results into a single update message
-            const combinedContent = newResults
-              .map(r => `${r.serviceId} completed:\n${formatServiceResultForAgent(r)}`)
-              .join('\n\n---\n\n');
-
-            const updateMsg: CoreMessage = {
-              role: 'user',
-              content: `[SERVICE UPDATE — ${newResults.length} service(s) completed]\n\n${combinedContent}`,
-            };
-            const history = [...agentHistoryRef.current, updateMsg];
-            agentHistoryRef.current = history;
-
-            // Route through queue instead of calling runAgentLoop directly
-            loopQueueRef.current.enqueue({
-              history,
-              options: {
-                allowAutoContinue: true,
-                reuseMessageId: run.assistantMsgId,
-              },
-              serviceUpdate: { content: combinedContent },
-            });
-          }
-        } catch (err) {
-          console.error('[AgentPage] Error in service-state-changed handler:', err);
-        }
-      })
-    );
-
-    // Listen for run completion
-    unlisteners.push(
-      listen<ServiceReport>('service-completed', (event) => {
-        try {
-          const run = activeServiceRunRef.current;
-          if (!run) return;
-
-          const report = event.payload;
-          const resultCount = report?.results?.length ?? 0;
-          const summaryContent = `Report ID: ${report.id}\nStatus: ${report.status}\nServices run: ${resultCount}\nDuration: ${report.totalDurationMs ? (report.totalDurationMs / 1000).toFixed(1) + 's' : 'unknown'}\n\nAll services have finished. Please review the results using get_service_report and get_report_statistics, then write analysis and generate the PDF report.`;
-          const summaryMsg: CoreMessage = {
-            role: 'user',
-            content: `[SERVICE RUN COMPLETE] ${summaryContent}`,
-          };
-          const history = [...agentHistoryRef.current, summaryMsg];
-          agentHistoryRef.current = history;
-          setActiveServiceRun(null);
-
-          // Route through queue for post-run review
-          loopQueueRef.current.enqueue({
-            history,
-            options: { allowAutoContinue: true },
-          });
-        } catch (err) {
-          console.error('[AgentPage] Error in service-completed handler:', err);
-          setActiveServiceRun(null);
-        }
-      })
-    );
-
-    return () => {
-      unlisteners.forEach(p => p.then(fn => fn()));
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeServiceRun?.reportId]);
-
-  /** Format a service result into a concise text summary for the agent */
-  function formatServiceResultForAgent(result: ServiceResult): string {
-    const lines: string[] = [];
-    lines.push(`Status: ${result.success ? 'SUCCESS' : 'FAILED'}`);
-    if (result.error) lines.push(`Error: ${result.error}`);
-    lines.push(`Duration: ${(result.durationMs / 1000).toFixed(1)}s`);
-    lines.push(`Findings (${result.findings.length}):`);
-    for (const f of result.findings.slice(0, 10)) {
-      lines.push(`  [${f.severity.toUpperCase()}] ${f.title}: ${f.description}`);
-      if (f.recommendation) lines.push(`    → ${f.recommendation}`);
-    }
-    if (result.findings.length > 10) {
-      lines.push(`  ... and ${result.findings.length - 10} more findings`);
-    }
-    return lines.join('\n');
-  }
-
-  /**
-   * Validate tool call arguments and return error if invalid
-   */
-  const validateToolCall = (toolName: string, args: Record<string, unknown>): { valid: boolean; error?: string } => {
-    switch (toolName) {
-      case 'execute_command':
-        if (!args.command || typeof args.command !== 'string' || !args.command.trim()) {
-          return { valid: false, error: 'Missing or empty command argument' };
-        }
-        return { valid: true };
-      case 'write_file':
-        if (!args.path || typeof args.path !== 'string' || !args.path.trim()) {
-          return { valid: false, error: 'Missing or invalid path argument' };
-        }
-        // Validate Windows absolute path (e.g., C:\ or \\server\share)
-        const path = args.path.trim();
-        if (!/^[a-zA-Z]:\\|^\\\\/.test(path)) {
-          return { valid: false, error: 'Path must be an absolute Windows path (e.g., C:\\path\\to\\file.txt)' };
-        }
-        if (args.content === undefined || args.content === null) {
-          return { valid: false, error: 'Missing content argument' };
-        }
-        return { valid: true };
-      case 'edit_file':
-        if (!args.path || typeof args.path !== 'string' || !args.path.trim()) {
-          return { valid: false, error: 'Missing or invalid path argument' };
-        }
-        if (!/^[a-zA-Z]:\\|^\\\\/.test(args.path.trim())) {
-          return { valid: false, error: 'Path must be an absolute Windows path (e.g., C:\\path\\to\\file.txt)' };
-        }
-        if (!args.oldString || typeof args.oldString !== 'string') {
-          return { valid: false, error: 'Missing or invalid oldString argument' };
-        }
-        if (!args.newString || typeof args.newString !== 'string') {
-          return { valid: false, error: 'Missing or invalid newString argument' };
-        }
-        return { valid: true };
-      case 'generate_file':
-        if (!args.filename || typeof args.filename !== 'string') {
-          return { valid: false, error: 'Missing or invalid filename argument' };
-        }
-        if (args.content === undefined || args.content === null) {
-          return { valid: false, error: 'Missing content argument' };
-        }
-        if (!args.description || typeof args.description !== 'string') {
-          return { valid: false, error: 'Missing or invalid description argument' };
-        }
-        return { valid: true };
-      case 'read_file':
-        if (!args.path || typeof args.path !== 'string') {
-          return { valid: false, error: 'Missing or invalid path argument' };
-        }
-        return { valid: true };
-      case 'move_file':
-      case 'copy_file':
-        if (!args.src || typeof args.src !== 'string') {
-          return { valid: false, error: 'Missing source path' };
-        }
-        if (!args.dest || typeof args.dest !== 'string') {
-          return { valid: false, error: 'Missing destination path' };
-        }
-        return { valid: true };
-      default:
-        return { valid: true };
-    }
-  };
-
-  const mapToolToActivityType = (toolName: string): ActivityType => {
-    if (toolName.startsWith('mcp_')) return 'mcp_tool';
-    switch (toolName) {
-      case 'execute_command': return 'ran_command';
-      case 'write_file': return 'write_file';
-      case 'edit_file': return 'edit_file';
-      case 'read_file': return 'read_file';
-      case 'move_file': return 'move_file';
-      case 'copy_file': return 'copy_file';
-      case 'list_dir': return 'list_dir';
-      case 'list_programs': return 'list_dir';
-      case 'list_instruments': return 'list_dir';
-      case 'run_instrument': return 'ran_command';
-      case 'generate_file': return 'generate_file';
-      case 'grep': return 'searched';
-      case 'glob': return 'searched';
-      case 'search_web': return 'web_search';
-      case 'get_system_info': return 'get_system_info';
-      // Service tools — dedicated activity types
-      case 'run_service_queue': return 'service_queue_started';
-      case 'pause_service': return 'service_paused';
-      case 'resume_service': return 'service_resumed';
-      case 'cancel_service': return 'service_cancelled';
-      case 'list_services': return 'service_query';
-      case 'list_service_presets': return 'service_query';
-      case 'check_service_requirements': return 'service_query';
-      case 'get_service_status': return 'service_query';
-      case 'get_service_report': return 'service_report';
-      case 'get_report_statistics': return 'service_report';
-      case 'edit_finding': return 'service_edit';
-      case 'add_finding': return 'service_edit';
-      case 'remove_finding': return 'service_edit';
-      case 'set_report_summary': return 'service_edit';
-      case 'set_service_analysis': return 'service_edit';
-      case 'set_health_score': return 'service_edit';
-      case 'generate_report_pdf': return 'service_pdf';
-      default: return 'ran_command';
-    }
-  };
-
-  const extractActivityDetails = (toolName: string, args: Record<string, unknown>) => {
-    const getPath = (p: unknown) => typeof p === 'string' ? p : '';
-    const getFilename = (p: unknown) => typeof p === 'string' ? p.split(/[/\\]/).pop() || '' : '';
-    const truncate = (value?: string) => {
-      if (!value) return '';
-      const compact = value.replace(/\s+/g, ' ').trim();
-      return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
-    };
-    const stringifyArgs = () => {
-      try {
-        return JSON.stringify(args);
-      } catch {
-        return '';
-      }
-    };
-
-    switch (toolName) {
-      case 'execute_command':
-        return { command: typeof args.command === 'string' ? args.command : '' };
-      case 'write_file':
-        return {
-          path: getPath(args.path),
-          filename: getFilename(args.path),
-          content: typeof args.content === 'string' ? args.content : undefined
-        };
-      case 'edit_file':
-        return {
-          path: getPath(args.path),
-          filename: getFilename(args.path),
-          oldString: typeof args.oldString === 'string' ? truncate(args.oldString) : undefined,
-          newString: typeof args.newString === 'string' ? truncate(args.newString) : undefined,
-          all: typeof args.all === 'boolean' ? args.all : undefined,
-        };
-      case 'read_file':
-        return { path: getPath(args.path), filename: getFilename(args.path) };
-      case 'move_file':
-        return { src: getPath(args.src), dest: getPath(args.dest) };
-      case 'copy_file':
-        return { src: getPath(args.src), dest: getPath(args.dest) };
-      case 'generate_file':
-        return {
-          filename: typeof args.filename === 'string' ? args.filename : 'generated-file',
-          description: typeof args.description === 'string' ? args.description : '',
-        };
-      case 'list_dir':
-        return { path: getPath(args.path) };
-      case 'list_programs':
-        return { path: 'data/programs' };
-      case 'list_instruments':
-        return { path: 'data/instruments' };
-      case 'grep':
-        return { query: typeof args.pattern === 'string' ? args.pattern : '' };
-      case 'glob':
-        return { query: typeof args.pattern === 'string' ? args.pattern : '' };
-      case 'search_web':
-        return { query: typeof args.query === 'string' ? args.query : '' };
-      case 'get_system_info':
-        return {};
-      case 'run_instrument':
-        return { command: `Running instrument: ${typeof args.name === 'string' ? args.name : 'unknown'}` };
-      // Service tools
-      case 'run_service_queue': {
-        const queue = Array.isArray(args.queue) ? args.queue : [];
-        return { serviceCount: queue.filter((q: any) => q.enabled !== false).length, reason: typeof args.reason === 'string' ? args.reason : undefined };
-      }
-      case 'pause_service':
-        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
-      case 'resume_service':
-        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
-      case 'cancel_service':
-        return { reason: typeof args.reason === 'string' ? args.reason : undefined };
-      case 'list_services':
-        return { queryType: 'List services' };
-      case 'list_service_presets':
-        return { queryType: 'List presets' };
-      case 'check_service_requirements':
-        return { queryType: 'Check requirements', detail: typeof args.service_id === 'string' ? args.service_id : undefined };
-      case 'get_service_status':
-        return { queryType: 'Service status' };
-      case 'get_service_report':
-        return { reportAction: 'Get report', reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
-      case 'get_report_statistics':
-        return { reportAction: 'Get statistics', reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
-      case 'edit_finding':
-        return { editAction: 'Edit finding', detail: typeof args.title === 'string' ? args.title : undefined };
-      case 'add_finding':
-        return { editAction: 'Add finding', detail: typeof args.title === 'string' ? args.title : undefined };
-      case 'remove_finding':
-        return { editAction: 'Remove finding', detail: typeof args.title === 'string' ? args.title : undefined };
-      case 'set_report_summary':
-        return { editAction: 'Set summary' };
-      case 'set_service_analysis':
-        return { editAction: 'Set analysis', detail: typeof args.service_id === 'string' ? args.service_id : undefined };
-      case 'set_health_score':
-        return { editAction: 'Set health score', detail: typeof args.score === 'number' ? `Score: ${args.score}` : undefined };
-      case 'generate_report_pdf':
-        return { reportId: typeof args.report_id === 'string' ? args.report_id : undefined };
-      default:
-        if (toolName.startsWith('mcp_')) {
-          return { toolName, arguments: stringifyArgs() };
-        }
-        console.warn('[Agent] Unknown tool for activity details:', toolName);
-        return {};
-    }
-  };
+  // validateToolCall, mapToolToActivityType, extractActivityDetails imported from @/lib/agent-activity-utils
 
   const findMessageIdForActivity = (activityId: string) => {
     for (const msg of messagesRef.current) {
@@ -754,13 +284,16 @@ export function AgentPage() {
     }
   };
 
-  // Auto-execute HITL tool in YOLO mode (bypasses approval UI)
-  const autoExecuteHITLTool = async (
+  /**
+   * Execute a single HITL tool call and return the CoreMessage result.
+   * Shared by YOLO auto-execute and manual approval paths.
+   */
+  const executeHITLTool = async (
     toolCallId: string,
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    reason?: string,
   ): Promise<CoreMessage> => {
-    // Update UI to show running state
     updateActivityInParts(null, toolCallId, { status: 'running' as ActivityStatus });
 
     let result: string;
@@ -775,10 +308,9 @@ export function AgentPage() {
         switch (toolName) {
           case 'execute_command': {
             const command = String(args.command || '');
-            console.log('[Agent YOLO] Auto-executing command:', command);
             const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
               command,
-              reason: String(args.reason || 'YOLO mode - auto-approved')
+              reason: String(args.reason || reason || 'Agent approved'),
             });
             result = res.output || res.error || 'Command executed successfully.';
             isError = !!res.error;
@@ -823,7 +355,7 @@ export function AgentPage() {
           case 'move_file': {
             await invoke('agent_move_file', {
               src: String(args.src || ''),
-              dest: String(args.dest || '')
+              dest: String(args.dest || ''),
             });
             result = `Moved ${args.src} to ${args.dest}`;
             break;
@@ -831,7 +363,7 @@ export function AgentPage() {
           case 'copy_file': {
             await invoke('agent_copy_file', {
               src: String(args.src || ''),
-              dest: String(args.dest || '')
+              dest: String(args.dest || ''),
             });
             result = `Copied ${args.src} to ${args.dest}`;
             break;
@@ -843,13 +375,11 @@ export function AgentPage() {
               order: q.order,
               options: q.options || {},
             })) || [];
-            // Fire-and-forget: start the run, don't await completion
             const reportPromise = invoke<ServiceReport>('run_services', {
               queue,
               technician_name: args.technician_name ? String(args.technician_name) : null,
               customer_name: args.customer_name ? String(args.customer_name) : null,
             });
-            // Get the report ID from state immediately
             await new Promise(r => setTimeout(r, 500));
             const state = await invoke<ServiceRunStateType>('get_service_run_state');
             const reportId = state.currentReport?.id || 'unknown';
@@ -857,9 +387,8 @@ export function AgentPage() {
               reportId,
               startedAt: new Date().toISOString(),
               lastResultCount: 0,
-              assistantMsgId: null,
+              assistantMsgId: findMessageIdForActivity(toolCallId) || null,
             });
-            // Don't await the full run — let events handle progress
             reportPromise.catch(err => console.error('[Agent] Service run error:', err));
             result = JSON.stringify({ status: 'started', report_id: reportId, message: `Service run started with ${queue.filter(q => q.enabled).length} services` });
             break;
@@ -890,15 +419,13 @@ export function AgentPage() {
       isError = true;
     }
 
-    // Update UI with result
     updateActivityInParts(null, toolCallId, {
       status: isError ? 'error' as ActivityStatus : 'success' as ActivityStatus,
       output: result,
       error: isError ? result : undefined,
     });
 
-    // Add tool result to history and continue loop
-    const toolResultMsg: CoreMessage = {
+    return {
       role: 'tool',
       content: [{
         type: 'tool-result',
@@ -907,22 +434,20 @@ export function AgentPage() {
         output: isError
           ? { type: 'error-text' as const, value: result }
           : { type: 'text' as const, value: result },
-      }]
+      }],
     };
-
-    return toolResultMsg;
   };
 
   // Core agentic loop - streams response and handles tool calls recursively.
   // Creates ONE assistant message per turn with interleaved parts (text ↔ tool).
   const runAgentLoop = async (
     currentHistory: CoreMessage[],
-    options?: { allowAutoContinue?: boolean; reuseMessageId?: string | null }
+    options?: LoopOptions,
   ) => {
     setIsLoading(true);
     heartbeatRef.current.start();
     abortControllerRef.current = new AbortController();
-    const allowAutoContinue = options?.allowAutoContinue ?? true;
+    const turnsRemaining = options?.turnsRemaining ?? 50;
 
     const reuseMessageId = options?.reuseMessageId ?? null;
     let assistantMsgId = reuseMessageId || generateId();
@@ -930,12 +455,19 @@ export function AgentPage() {
     let initialContent = '';
 
     if (reuseMessageId) {
-      const existing = messagesRef.current.find(m => m.id === reuseMessageId);
-      if (existing) {
-        initialParts = existing.parts ? [...existing.parts] : [];
-        initialContent = existing.content || '';
+      // Prefer parts passed directly from the previous iteration to avoid
+      // a race with React's batched state updates (messagesRef may be stale).
+      if (options?._currentParts) {
+        initialParts = [...options._currentParts] as MessagePart[];
+        initialContent = options._currentContent || '';
       } else {
-        assistantMsgId = generateId();
+        const existing = messagesRef.current.find(m => m.id === reuseMessageId);
+        if (existing) {
+          initialParts = existing.parts ? [...existing.parts] : [];
+          initialContent = existing.content || '';
+        } else {
+          assistantMsgId = generateId();
+        }
       }
     }
 
@@ -965,7 +497,7 @@ export function AgentPage() {
         settings: agentSettings!,
         tools,
         abortSignal: abortControllerRef.current.signal,
-        maxSteps: activeServiceRunRef.current ? 30 : 10,
+        maxSteps: activeServiceRun ? 30 : 10,
       });
 
       // Track accumulated state for this turn — all in ONE message
@@ -1116,8 +648,15 @@ export function AgentPage() {
       const approvalMode = agentSettings?.approvalMode || 'always';
 
       if (hitlCalls.length === 0) {
-        if (allowAutoContinue && toolResultMessages.length > 0 && !historyTextContent.trim()) {
-          await runAgentLoop(baseHistory, { allowAutoContinue: false, reuseMessageId: assistantMsgId });
+        if (turnsRemaining > 0 && toolResultMessages.length > 0 && !historyTextContent.trim()) {
+          // Model used tools but produced no text — auto-continue so it can
+          // keep working. Pass parts directly to avoid React state race.
+          await runAgentLoop(baseHistory, {
+            turnsRemaining: turnsRemaining - 1,
+            reuseMessageId: assistantMsgId,
+            _currentParts: parts,
+            _currentContent: fullContent,
+          });
         } else {
           heartbeatRef.current.stop();
           setIsLoading(false);
@@ -1144,13 +683,18 @@ export function AgentPage() {
           }
 
           const args = (tc as any).args ?? (tc as any).input ?? {};
-          const resultMsg = await autoExecuteHITLTool(tc.toolCallId, tc.toolName, args);
+          const resultMsg = await executeHITLTool(tc.toolCallId, tc.toolName, args, 'YOLO mode - auto-approved');
           toolResults.push(resultMsg);
         }
 
         const newHistory = [...baseHistory, ...toolResults];
         agentHistoryRef.current = newHistory;
-        await runAgentLoop(newHistory, { reuseMessageId: assistantMsgId });
+        await runAgentLoop(newHistory, {
+          reuseMessageId: assistantMsgId,
+          turnsRemaining: turnsRemaining - 1,
+          _currentParts: parts,
+          _currentContent: fullContent,
+        });
       } else {
         // Multi-HITL: track all pending HITL calls so we only resume after all are resolved
         const hitlCallIds = new Set(hitlCalls.map(tc => tc.toolCallId));
@@ -1207,13 +751,14 @@ export function AgentPage() {
   loopQueueRef.current.setRunFn(runAgentLoop);
 
   const handleActivityApprove = async (activityId: string) => {
-    // 1. Find the pending tool call in history
+    // 1. Find the pending tool call in the last assistant message (not necessarily
+    //    the last message — auto-execute tool results may follow it in history).
     const history = agentHistoryRef.current;
-    const lastMsg = history[history.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant') return;
+    const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistantMsg) return;
 
     // Handle both array content and single content
-    const contentArray = Array.isArray(lastMsg.content) ? lastMsg.content : [];
+    const contentArray = Array.isArray(lastAssistantMsg.content) ? lastAssistantMsg.content : [];
     const toolCall = contentArray.find(
       (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
     );
@@ -1223,161 +768,12 @@ export function AgentPage() {
       return;
     }
 
-    // 2. Update UI to show running state
-    updateActivityInParts(null, activityId, { status: 'running' as ActivityStatus });
-
-    // 3. Execute the tool
+    // 2. Execute the tool (shared helper handles UI status updates)
     setIsLoading(true);
-    let result: string;
-    let isError = false;
     const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
+    const toolResultMsg = await executeHITLTool(activityId, toolCall.toolName, args, 'User approved');
 
-    // Validate args before execution
-    const validation = validateToolCall(toolCall.toolName, args);
-    if (!validation.valid) {
-      console.error('[Agent] Cannot execute invalid tool call:', toolCall.toolName, 'Error:', validation.error);
-      result = validation.error || 'Invalid tool call - missing required arguments';
-      isError = true;
-    } else {
-      try {
-        switch (toolCall.toolName) {
-          case 'execute_command': {
-            const command = String(args.command || '');
-            console.log('[Agent] Executing command:', command);
-            const res = await invoke<{ output?: string; error?: string }>('execute_agent_command', {
-              command,
-              reason: String(args.reason || 'User approved')
-            });
-            result = res.output || res.error || 'Command executed successfully.';
-            isError = !!res.error;
-            break;
-          }
-          case 'write_file': {
-            await invoke('agent_write_file', {
-              path: String(args.path || ''),
-              content: String(args.content || ''),
-            });
-            result = `Successfully wrote to ${args.path}`;
-            break;
-          }
-          case 'edit_file': {
-            const res = await invoke<{ status: string; replacements: number; message?: string }>('agent_edit_file', {
-              path: String(args.path || ''),
-              old_string: String(args.oldString || ''),
-              new_string: String(args.newString || ''),
-              all: Boolean(args.all),
-            });
-            result = res.message || `Edited ${args.path} (${res.replacements} replacements)`;
-            isError = res.status !== 'success';
-            break;
-          }
-          case 'generate_file': {
-            const attachment = await invoke<FileAttachment>('generate_agent_file', {
-              filename: String(args.filename || 'generated.txt'),
-              content: String(args.content || ''),
-              description: String(args.description || ''),
-              mime_type: typeof (args as any).mime_type === 'string' ? (args as any).mime_type : undefined,
-              tool_call_id: activityId,
-              approved: true,
-            });
-            result = `Generated ${attachment.originalName}`;
-            updateActivityInParts(null, activityId, {
-              filename: attachment.originalName,
-              path: attachment.storedPath,
-              size: attachment.size,
-            });
-            break;
-          }
-          case 'move_file': {
-            await invoke('agent_move_file', {
-              src: String(args.src || ''),
-              dest: String(args.dest || '')
-            });
-            result = `Successfully moved ${args.src} to ${args.dest}`;
-            break;
-          }
-          case 'copy_file': {
-            await invoke('agent_copy_file', {
-              src: String(args.src || ''),
-              dest: String(args.dest || '')
-            });
-            result = `Successfully copied ${args.src} to ${args.dest}`;
-            break;
-          }
-          case 'run_service_queue': {
-            const queue = (args.queue as Array<{ service_id: string; enabled: boolean; order: number; options?: Record<string, unknown> }>)?.map(q => ({
-              serviceId: q.service_id,
-              enabled: q.enabled,
-              order: q.order,
-              options: q.options || {},
-            })) || [];
-            const reportPromise = invoke<ServiceReport>('run_services', {
-              queue,
-              technician_name: args.technician_name ? String(args.technician_name) : null,
-              customer_name: args.customer_name ? String(args.customer_name) : null,
-            });
-            await new Promise(r => setTimeout(r, 500));
-            const state = await invoke<ServiceRunStateType>('get_service_run_state');
-            const reportId = state.currentReport?.id || 'unknown';
-            setActiveServiceRun({
-              reportId,
-              startedAt: new Date().toISOString(),
-              lastResultCount: 0,
-              assistantMsgId: findMessageIdForActivity(activityId) || null,
-            });
-            reportPromise.catch(err => console.error('[Agent] Service run error:', err));
-            result = JSON.stringify({ status: 'started', report_id: reportId, message: `Service run started with ${queue.filter(q => q.enabled).length} services` });
-            break;
-          }
-          case 'pause_service': {
-            await invoke('pause_service_run');
-            result = JSON.stringify({ status: 'success', message: 'Service run paused' });
-            break;
-          }
-          case 'resume_service': {
-            await invoke('resume_service_run');
-            result = JSON.stringify({ status: 'success', message: 'Service run resumed' });
-            break;
-          }
-          case 'cancel_service': {
-            await invoke('cancel_service_run');
-            setActiveServiceRun(null);
-            result = JSON.stringify({ status: 'success', message: 'Service run cancelled' });
-            break;
-          }
-          default: {
-            result = `Unknown tool: ${toolCall.toolName}`;
-            isError = true;
-          }
-        }
-      } catch (err) {
-        console.error('[Agent] Tool execution error:', err);
-        result = err instanceof Error ? err.message : String(err);
-        isError = true;
-      }
-    }
-
-    // 4. Update UI Activity with result
-    updateActivityInParts(null, activityId, {
-      status: isError ? 'error' as ActivityStatus : 'success' as ActivityStatus,
-      output: result,
-      error: isError ? result : undefined,
-    });
-
-    // 5. Build tool result message
-    const toolResultMsg: CoreMessage = {
-      role: 'tool',
-      content: [{
-        type: 'tool-result',
-        toolCallId: activityId,
-        toolName: toolCall.toolName,
-        output: isError
-          ? { type: 'error-text' as const, value: result }
-          : { type: 'text' as const, value: result },
-      }]
-    };
-
-    // 6. Multi-HITL: accumulate result, only resume when all calls resolved
+    // 3. Multi-HITL: accumulate result, only resume when all calls resolved
     const msgId = findMessageIdForActivity(activityId);
     const pendingSet = [...pendingHITLCallsRef.current.entries()].find(([, set]) => set.has(activityId));
 
@@ -1408,12 +804,12 @@ export function AgentPage() {
   };
 
   const handleActivityReject = async (activityId: string) => {
-    // 1. Find tool call in history
+    // 1. Find tool call in the last assistant message
     const history = agentHistoryRef.current;
-    const lastMsg = history[history.length - 1];
-    if (!lastMsg || lastMsg.role !== 'assistant') return;
+    const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistantMsg) return;
 
-    const contentArray = Array.isArray(lastMsg.content) ? lastMsg.content : [];
+    const contentArray = Array.isArray(lastAssistantMsg.content) ? lastAssistantMsg.content : [];
     const toolCall = contentArray.find(
       (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
     );

@@ -8,12 +8,18 @@
 
 import type { CoreMessage } from 'ai';
 
+export interface LoopOptions {
+  /** How many more auto-continue turns the agent may take (default: 50). */
+  turnsRemaining?: number;
+  reuseMessageId?: string | null;
+  /** Internal: pass parts directly to avoid React state race. */
+  _currentParts?: unknown[];
+  _currentContent?: string;
+}
+
 export interface LoopRequest {
   history: CoreMessage[];
-  options?: {
-    allowAutoContinue?: boolean;
-    reuseMessageId?: string | null;
-  };
+  options?: LoopOptions;
   /** When set, this request is a service update that can be merged with others. */
   serviceUpdate?: {
     content: string;
@@ -22,7 +28,7 @@ export interface LoopRequest {
 
 type RunAgentLoopFn = (
   history: CoreMessage[],
-  options?: { allowAutoContinue?: boolean; reuseMessageId?: string | null }
+  options?: LoopOptions,
 ) => Promise<void>;
 
 export class AgentLoopQueue {
