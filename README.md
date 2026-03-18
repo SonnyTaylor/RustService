@@ -147,5 +147,5 @@ This project is proprietary software.
 ---
 
 <p align="center">
-  <sub>Made with ❤️ and way too much ☕</sub>
+  <sub>Made with ❤️ and way too much caffeine</sub>
 </p>
