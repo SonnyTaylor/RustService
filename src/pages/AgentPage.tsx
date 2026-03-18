@@ -659,6 +659,7 @@ export function AgentPage() {
           });
         } else {
           heartbeatRef.current.stop();
+          saveConversation(messagesRef.current, agentHistoryRef.current);
           setIsLoading(false);
         }
       } else if (approvalMode === 'yolo') {
@@ -729,6 +730,18 @@ export function AgentPage() {
       }
 
       console.error('Agent loop error:', error);
+
+      // Mark any in-progress tools as errored
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'tool' && parts[i].activity?.status === 'running') {
+          parts[i] = {
+            ...parts[i],
+            activity: { ...parts[i].activity!, status: 'error' as ActivityStatus, error: String(error) } as AgentActivity,
+          };
+        }
+      }
+      updateMsg();
+
       setMessages(prev => prev.map(m =>
         m.id === assistantMsgId
           ? { ...m, content: m.content + `\n\n*[Error: ${error}]*`, parts: [...(m.parts || []), { type: 'text', content: `\n\n*[Error: ${error}]*` }] }
