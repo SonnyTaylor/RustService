@@ -1,18 +1,1 @@
-<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Shield -->
-  <path d="M60 4 L100 22 L100 60 Q100 94 60 114 Q20 94 20 60 L20 22 Z" fill="#d97a2b"/>
-  <path d="M60 14 L90 28 L90 58 Q90 86 60 104 Q30 86 30 58 L30 28 Z" fill="#1a1614"/>
-  <!-- USB connector -->
-  <rect x="48" y="26" width="24" height="10" rx="3" fill="#b86820"/>
-  <rect x="52" y="22" width="5" height="8" rx="1.5" fill="#f5ede8"/>
-  <rect x="63" y="22" width="5" height="8" rx="1.5" fill="#f5ede8"/>
-  <!-- USB body -->
-  <rect x="40" y="34" width="40" height="46" rx="6" fill="#d97a2b"/>
-  <rect x="46" y="40" width="28" height="34" rx="4" fill="#1a1614"/>
-  <!-- Ember -->
-  <circle cx="60" cy="56" r="10" fill="#b86820"/>
-  <circle cx="60" cy="56" r="6" fill="#f0a050"/>
-  <circle cx="60" cy="56" r="3" fill="#ffe0b0"/>
-  <!-- Bottom contact -->
-  <rect x="40" y="76" width="40" height="5" rx="2" fill="#b86820"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" fill="none" viewBox="0 0 120 120"><path fill="#d97a2b" d="M60 4 L100 22 L100 60 Q100 94 60 114 Q20 94 20 60 L20 22 Z"/><path fill="#1a1614" d="M60 14 L90 28 L90 58 Q90 86 60 104 Q30 86 30 58 L30 28 Z"/><rect width="24" height="10" x="48" y="26" fill="#b86820" rx="3"/><rect width="5" height="8" x="52" y="22" fill="#f5ede8" rx="1.5"/><rect width="5" height="8" x="63" y="22" fill="#f5ede8" rx="1.5"/><rect width="40" height="46" x="40" y="34" fill="#d97a2b" rx="6"/><rect width="28" height="34" x="46" y="40" fill="#1a1614" rx="4"/><circle cx="60" cy="56" r="10" fill="#b86820"/><circle cx="60" cy="56" r="6" fill="#f0a050"/><circle cx="60" cy="56" r="3" fill="#ffe0b0"/><rect width="40" height="5" x="40" y="76" fill="#b86820" rx="2"/></svg>
