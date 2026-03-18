@@ -34,7 +34,7 @@ Components use `new-york` style with TailwindCSS v4. Do NOT manually edit files 
 
 ### Backend (`src-tauri/src/`)
 - **`lib.rs`** — Registers all Tauri IPC commands in `invoke_handler`.
-- **`commands/`** — 18 modules, each handling a domain: `agent.rs`, `services.rs`, `system_info.rs`, `programs.rs`, `required_programs.rs`, `settings.rs`, `network_diagnostics.rs`, `startup.rs`, `event_log.rs`, `scripts.rs`, `shortcuts.rs`, `disk_health.rs`, `restore_points.rs`, `time_tracking.rs`, `bluescreen.rs`, `network.rs`, `data_directory.rs`, `utilities.rs`.
+- **`commands/`** — 18 modules, each handling a domain. Most are single files; `agent/` is a directory module split into `mod.rs`, `commands.rs`, `memory.rs`, `files.rs`, `attachments.rs`, `conversations.rs`, `search.rs`.
 - **`mcp/`** — HTTP JSON-RPC server (port 8377 default) for remote LLM control via Bearer token auth.
 - **`types/`** — Rust struct definitions mirroring frontend types.
 

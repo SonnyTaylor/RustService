@@ -24,19 +24,39 @@ The Agent is a conversational AI that can:
 
 ## Key Files
 
+### Frontend
+
 | File | Purpose |
 |------|---------|
-| `src/pages/AgentPage.tsx` | Main chat interface and state management |
-| `src/components/agent/ChatMessage.tsx` | Message rendering with tool call display |
-| `src/components/agent/CommandApproval.tsx` | Pending command approval UI |
-| `src/components/agent/MemoryBrowser.tsx` | Memory dashboard with edit, bulk delete, stats |
-| `src/components/agent/KnowledgeBase.tsx` | Document upload for RAG |
-| `src/components/agent/BehaviorSettings.tsx` | Behavior rules management |
-| `src/lib/agent-tools.ts` | Vercel AI SDK tool definitions |
-| `src/lib/agent-memory.ts` | Memory utilities and context injection |
+| `src/pages/AgentPage.tsx` | Main chat interface, agent loop, tool execution |
+| `src/hooks/useConversations.ts` | Conversation lifecycle (save, load, create) |
+| `src/hooks/useServiceSupervision.ts` | Service run event listeners and state |
+| `src/lib/agent-tools.ts` | Vercel AI SDK tool definitions (30+ tools) |
+| `src/lib/agent-chat.ts` | Multi-provider streaming with `streamText()` |
+| `src/lib/agent-activity-utils.ts` | Tool-to-activity mapping and validation |
+| `src/lib/agent-loop-queue.ts` | Serialized agent loop with service update coalescing |
+| `src/lib/agent-heartbeat.ts` | Watchdog detecting stalled agent loops |
+| `src/lib/mcp-manager.ts` | MCP client for connecting to external servers |
+| `src/components/agent/ChatMessage.tsx` | Message rendering with interleaved text/tool parts |
+| `src/components/agent/AgentActivityItem.tsx` | Tool call status display with approve/reject UI |
+| `src/components/agent/ServiceRunMonitor.tsx` | Live service run progress monitor |
 | `src/types/agent.ts` | TypeScript type definitions |
-| `src-tauri/src/commands/agent.rs` | Rust backend commands |
+| `src/types/agent-activity.ts` | Activity type definitions (24 types) |
+
+### Backend
+
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/commands/agent/mod.rs` | Shared state, DB helpers, re-exports |
+| `src-tauri/src/commands/agent/commands.rs` | Command execution and approval workflow |
+| `src-tauri/src/commands/agent/memory.rs` | Memory CRUD and vector search |
+| `src-tauri/src/commands/agent/files.rs` | File ops, instruments, programs, grep, glob |
+| `src-tauri/src/commands/agent/attachments.rs` | File attachment upload and generation |
+| `src-tauri/src/commands/agent/conversations.rs` | Conversation persistence |
+| `src-tauri/src/commands/agent/search.rs` | Web search (Tavily, SearXNG) |
 | `src-tauri/src/types/agent.rs` | Rust type definitions |
+| `src-tauri/src/mcp/server.rs` | MCP HTTP server with bearer auth |
+| `src-tauri/src/mcp/tools.rs` | MCP tool implementations |
 
 ---
 
@@ -177,42 +197,50 @@ When the agent runs system info commands:
 
 ## AI SDK Tools
 
-### Core Tools
+### HITL Tools (Require Approval)
+
+These tools have no `execute` function — the frontend renders an approve/reject UI.
 
 | Tool | Description |
 |------|-------------|
-| `execute_command` | Queue shell command (HITL) |
-| `search_web` | Search web via Tavily/SearXNG |
-| `read_file` | Read file contents |
-| `write_file` | Write to file (HITL) |
+| `execute_command` | Execute PowerShell commands |
+| `write_file` | Create or overwrite files |
+| `edit_file` | Replace text in files (targeted edits) |
+| `generate_file` | Create downloadable files |
+| `move_file` | Move or rename files |
+| `copy_file` | Copy files |
+| `run_service_queue` | Start a service run |
+| `pause_service` | Pause running services |
+| `resume_service` | Resume paused services |
+| `cancel_service` | Cancel running services |
+
+### Auto-Execute Tools
+
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read file contents with pagination |
 | `list_dir` | List directory contents |
-| `move_file` | Move/rename file (HITL) |
-| `copy_file` | Copy file (HITL) |
-| `list_programs` | List available CLI tools |
+| `grep` | Search regex across files |
+| `glob` | Find files by pattern |
+| `search_web` | Search via Tavily/SearXNG |
+| `get_system_info` | Hardware and OS details (selectable sections) |
+| `list_programs` | List portable tools in data/programs |
+| `find_exe` | Find a specific executable |
 | `list_instruments` | List custom scripts |
-| `run_instrument` | Run a custom instrument |
-
-### Memory Tools
-
-| Tool | Scope | Description |
-|------|-------|-------------|
-| `save_to_memory` | Configurable | Save information to memory (can specify scope) |
-| `recall_memory` | Auto-filtered | Search through saved memories |
-| `save_solution` | **Global** | Save a successful solution (portable!) |
-| `query_knowledge` | **Global** | Search knowledge base |
-| `get_system_context` | **Machine** | Get stored system info (this computer only) |
-| `save_system_state` | **Machine** | Save system information (this computer) |
-| `extract_facts` | **Global** | Extract and save facts from conversation |
-| `save_conversation_context` | **Machine** | Save conversation fragment |
-| `summarize_conversation` | **Machine** | Save conversation summary |
-| `get_context` | Auto-filtered | Get relevant context for current topic |
-
-### Behavior Tools
-
-| Tool | Description |
-|------|-------------|
-| `adjust_behavior` | Modify agent behavior rules |
-| `get_behaviors` | Get active behavior rules |
+| `run_instrument` | Run a custom script |
+| `list_services` | List available services |
+| `list_service_presets` | List service presets |
+| `check_service_requirements` | Verify required programs |
+| `get_service_status` | Get current service run state |
+| `get_service_report` | Get a saved report |
+| `get_report_statistics` | Get report statistics |
+| `edit_finding` | Edit a report finding |
+| `add_finding` | Add a finding to a report |
+| `remove_finding` | Remove a finding |
+| `set_report_summary` | Write report executive summary |
+| `set_service_analysis` | Write per-service analysis |
+| `set_health_score` | Set health score (0-100) |
+| `generate_report_pdf` | Generate PDF report |
 
 ---
 
@@ -230,31 +258,12 @@ When the agent runs system info commands:
     "whitelistedCommands": ["^ipconfig", "^ping "],
     "searchProvider": "tavily",
     "tavilyApiKey": "tvly-...",
-    "memoryEnabled": true,
-    "embeddingProvider": "openai",
-    "embeddingModel": "text-embedding-3-small",
-    "autoMemorySolutions": true,
-    "autoExtractFacts": false,
-    "contextCompressionEnabled": false,
-    "contextCompressionThreshold": 20,
-    "autoRagEnabled": true,
-    "memoryRetentionDays": 0,
-    "maxContextMemories": 5
+    "mcpServerEnabled": false,
+    "mcpApiKey": "auto-generated",
+    "mcpPort": 8377
   }
 }
 ```
-
-### Smart Memory Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `autoMemorySolutions` | `true` | Auto-save successful fixes |
-| `autoExtractFacts` | `false` | Extract facts from conversations |
-| `contextCompressionEnabled` | `false` | Enable conversation summarization |
-| `contextCompressionThreshold` | `20` | Messages before compressing |
-| `autoRagEnabled` | `true` | Auto-inject knowledge on messages |
-| `memoryRetentionDays` | `0` | Days to keep memories (0 = forever) |
-| `maxContextMemories` | `5` | Max memories to inject per response |
 
 ---
 
@@ -278,56 +287,6 @@ whitelistedCommands: [
   '^systeminfo$',     // Exact match "systeminfo"
 ]
 ```
-
----
-
-## Knowledge Base (RAG)
-
-### Uploading Documents
-
-1. Navigate to Agent → Knowledge tab
-2. Drag and drop files or click to upload
-3. Supported formats: `.txt`, `.md`, `.json`, `.csv`, `.xml`, `.log`, `.yaml`, `.html`
-4. Documents are chunked and embedded for semantic search
-
-### Chunking Strategy
-
-- Smart paragraph-aware chunking
-- Respects semantic boundaries (sentences, paragraphs)
-- Configurable chunk size with overlap
-- Prevents context loss at chunk boundaries
-
-### Auto-RAG Injection
-
-When enabled (`autoRagEnabled: true`):
-1. On each user message, knowledge base is searched
-2. Relevant chunks are injected into context
-3. Agent uses this information in responses
-
----
-
-## Behavior System
-
-### Managing Behaviors
-
-- Access via Agent → Behavior tab
-- Add rules to guide agent personality and responses
-- Rules are stored as `behavior` type memories
-- High importance rules take priority
-
-### Agent Self-Adjustment
-
-The agent can adjust its own behavior using `adjust_behavior` tool:
-- Learns from user feedback
-- Remembers preferences
-- Corrects repeated mistakes
-
-### Behavior Injection
-
-Active behaviors are automatically:
-- Injected into system prompt
-- Prioritized by importance score
-- Applied to all responses
 
 ---
 
@@ -415,27 +374,12 @@ Check that frontend invoke calls use **snake_case** parameter names.
 
 ### Memory not persisting
 1. Check that `data/agent/memory.db` exists
-2. Check `memoryEnabled` is true in settings
-3. Check file permissions on data folder
+2. Check file permissions on data folder
 
 ### Search not working
-Configure search provider in Settings → Agent:
+Configure search provider in Settings → AI Agent:
 - **Tavily**: Set API key from [tavily.com](https://tavily.com)
 - **SearXNG**: Set instance URL of your SearXNG deployment
-
-### Auto-solution not saving
-Check that `autoMemorySolutions` is enabled in Settings → Agent → Smart Memory.
-
-### Knowledge base not being used
-1. Check that documents are uploaded in Agent → Knowledge tab
-2. Verify `autoRagEnabled` is true in settings
-3. Ensure embeddings are configured correctly
-
-### System info not recalled on different machine
-This is expected! System memories are machine-scoped. They're only visible on the computer they were recorded on. This prevents confusion between different clients' computers.
-
-### Solutions not showing on new machine
-Check that solutions were saved with global scope. New solutions should automatically use global scope. If you have old solutions from before the scope system, they default to global and should still work.
 
 ---
 
