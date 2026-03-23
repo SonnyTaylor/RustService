@@ -1,10 +1,10 @@
 /**
  * Startup Manager Page
- * 
+ *
  * Manage Windows startup programs from Registry and shell folders.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Rocket,
@@ -20,6 +20,10 @@ import {
   Clock,
   ExternalLink,
   Filter,
+  ArrowUpDown,
+  Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +34,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,23 +47,40 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import type { StartupItem, StartupSource, StartupImpact } from '@/types';
+import { AnimatedList, AnimatedItem } from '@/components/animation-context';
 
-/** Get human-readable source name */
-function getSourceDisplayName(source: StartupSource): string {
-  switch (source) {
-    case 'registryCurrentUser':
-      return 'Registry (User)';
-    case 'registryLocalMachine':
-      return 'Registry (System)';
-    case 'startupFolderUser':
-      return 'Startup Folder (User)';
-    case 'startupFolderAllUsers':
-      return 'Startup Folder (All)';
-    case 'taskScheduler':
-      return 'Task Scheduler';
+import type { StartupItem, StartupSource, StartupImpact } from '@/types';
+import { getSourceDisplayName, getImpactColor } from '@/types/startup';
+
+/** Sort options for startup items */
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'impact', label: 'Impact' },
+  { value: 'source', label: 'Source' },
+  { value: 'status', label: 'Status' },
+];
+
+type SortBy = 'name' | 'impact' | 'source' | 'status';
+
+/** Impact sort order (lower = higher priority) */
+const IMPACT_ORDER: Record<StartupImpact, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+  unknown: 3,
+};
+
+/** Get impact-based left border class */
+function getImpactBorderClass(impact: StartupImpact): string {
+  switch (impact) {
+    case 'high':
+      return 'border-l-4 border-l-destructive';
+    case 'medium':
+      return 'border-l-4 border-l-yellow-500';
+    case 'low':
+      return 'border-l-4 border-l-green-500';
     default:
-      return 'Unknown';
+      return 'border-l-4 border-l-muted-foreground';
   }
 }
 
@@ -77,20 +100,6 @@ function SourceIcon({ source }: { source: StartupSource }) {
   }
 }
 
-/** Get impact badge variant */
-function getImpactBadgeVariant(impact: StartupImpact): 'destructive' | 'default' | 'secondary' | 'outline' {
-  switch (impact) {
-    case 'high':
-      return 'destructive';
-    case 'medium':
-      return 'default';
-    case 'low':
-      return 'secondary';
-    default:
-      return 'outline';
-  }
-}
-
 /**
  * Startup Manager Page - Main component
  */
@@ -101,9 +110,12 @@ export function StartupManagerPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [groupBySource, setGroupBySource] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleteItem, setDeleteItem] = useState<StartupItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   // Load startup items
   const loadItems = useCallback(async () => {
@@ -132,7 +144,7 @@ export function StartupManagerPage() {
         enabled: !item.enabled,
       });
       // Update local state
-      setItems(prev => prev.map(i => 
+      setItems(prev => prev.map(i =>
         i.id === item.id ? { ...i, enabled: !i.enabled } : i
       ));
     } catch (err) {
@@ -160,7 +172,7 @@ export function StartupManagerPage() {
   };
 
   // Filter items
-  const filteredItems = items.filter(item => {
+  const filteredItems = useMemo(() => items.filter(item => {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -169,34 +181,189 @@ export function StartupManagerPage() {
         return false;
       }
     }
-    
+
     // Source filter
     if (sourceFilter !== 'all') {
-      if (sourceFilter === 'registry' && 
+      if (sourceFilter === 'registry' &&
           !item.source.startsWith('registry')) {
         return false;
       }
-      if (sourceFilter === 'folder' && 
+      if (sourceFilter === 'folder' &&
           !item.source.startsWith('startupFolder')) {
         return false;
       }
-      if (sourceFilter === 'task' && 
+      if (sourceFilter === 'task' &&
           item.source !== 'taskScheduler') {
         return false;
       }
     }
-    
+
     // Status filter
     if (statusFilter === 'enabled' && !item.enabled) return false;
     if (statusFilter === 'disabled' && item.enabled) return false;
-    
+
     return true;
-  });
+  }), [items, searchQuery, sourceFilter, statusFilter]);
+
+  // Sort items
+  const sortedItems = useMemo(() => {
+    const sorted = [...filteredItems];
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'impact':
+          return IMPACT_ORDER[a.impact] - IMPACT_ORDER[b.impact];
+        case 'source':
+          return getSourceDisplayName(a.source).localeCompare(getSourceDisplayName(b.source));
+        case 'status':
+          return (a.enabled === b.enabled) ? 0 : a.enabled ? -1 : 1;
+        default:
+          return 0;
+      }
+    });
+    return sorted;
+  }, [filteredItems, sortBy]);
+
+  // Group items by source
+  const groupedItems = useMemo(() => {
+    if (!groupBySource) return null;
+    const groups = new Map<string, StartupItem[]>();
+    for (const item of sortedItems) {
+      const key = item.source;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(item);
+    }
+    return groups;
+  }, [sortedItems, groupBySource]);
 
   // Stats
   const enabledCount = items.filter(i => i.enabled).length;
   const disabledCount = items.filter(i => !i.enabled).length;
   const highImpactCount = items.filter(i => i.impact === 'high' && i.enabled).length;
+
+  const hasFilters = searchQuery || sourceFilter !== 'all' || statusFilter !== 'all';
+
+  /** Render a single startup item card */
+  const renderItem = (item: StartupItem) => (
+    <AnimatedItem key={item.id}>
+      <Collapsible
+        open={expandedItemId === item.id}
+        onOpenChange={(open) => setExpandedItemId(open ? item.id : null)}
+      >
+        <Card className={`${!item.enabled ? 'opacity-60' : ''} ${getImpactBorderClass(item.impact)}`}>
+          <CollapsibleTrigger asChild>
+            <CardContent className="py-4 cursor-pointer">
+              <div className="flex items-start gap-4">
+                {/* Toggle Switch */}
+                <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                  {toggling === item.id ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : item.source.startsWith('startupFolder') ? (
+                    <div className="w-9 h-5 flex items-center justify-center">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    </div>
+                  ) : (
+                    <Switch
+                      checked={item.enabled}
+                      onCheckedChange={() => handleToggle(item)}
+                      disabled={toggling !== null}
+                    />
+                  )}
+                </div>
+
+                {/* Item Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">{item.name}</span>
+                    <Badge variant={getImpactColor(item.impact) as 'destructive' | 'default' | 'secondary' | 'outline'}>
+                      {item.impact} impact
+                    </Badge>
+                    {!item.enabled && (
+                      <Badge variant="secondary">Disabled</Badge>
+                    )}
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="text-sm text-muted-foreground mt-1 truncate max-w-lg">
+                        {item.command}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-md break-all">
+                      {item.command}
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <SourceIcon source={item.source} />
+                      {getSourceDisplayName(item.source)}
+                    </div>
+                    {item.publisher && (
+                      <span>• {item.publisher}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions + Expand indicator */}
+                <div className="flex items-center gap-1">
+                  {(item.path || item.command) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      title="Open file location"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        invoke('open_startup_item_location', { path: item.path || item.command });
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteItem(item);
+                    }}
+                    title="Delete startup item"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  {expandedItemId === item.id ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-6 pb-4 pt-0">
+              <Separator className="mb-3" />
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>
+                  <span className="font-medium text-foreground">Source Location: </span>
+                  {item.sourceLocation}
+                </div>
+                {item.description && (
+                  <div>
+                    <span className="font-medium text-foreground">Description: </span>
+                    {item.description}
+                  </div>
+                )}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+    </AnimatedItem>
+  );
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0">
@@ -229,17 +396,27 @@ export function StartupManagerPage() {
             </Card>
             <Card>
               <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-green-500">{enabledCount}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-green-500">{enabledCount}</div>
+                  {items.length > 0 && (
+                    <Badge variant="secondary">{Math.round((enabledCount / items.length) * 100) + '%'}</Badge>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">Enabled</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-muted-foreground">{disabledCount}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-2xl font-bold text-muted-foreground">{disabledCount}</div>
+                  {items.length > 0 && (
+                    <Badge variant="secondary">{Math.round((disabledCount / items.length) * 100) + '%'}</Badge>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">Disabled</div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-4 border-l-destructive">
               <CardContent className="pt-4">
                 <div className="text-2xl font-bold text-destructive">{highImpactCount}</div>
                 <div className="text-xs text-muted-foreground">High Impact (Active)</div>
@@ -284,6 +461,25 @@ export function StartupManagerPage() {
                     <SelectItem value="disabled">Disabled</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                  <SelectTrigger className="w-32">
+                    <ArrowUpDown className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant={groupBySource ? 'default' : 'outline'}
+                  size="icon"
+                  onClick={() => setGroupBySource(prev => !prev)}
+                  title="Group by source"
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -305,91 +501,46 @@ export function StartupManagerPage() {
             </div>
           )}
 
+          {/* Result Count */}
+          {!loading && (
+            <div className="text-sm text-muted-foreground">
+              Showing {sortedItems.length} of {items.length} items
+            </div>
+          )}
+
           {/* Items List */}
           {!loading && (
             <div className="space-y-2">
-              {filteredItems.length === 0 ? (
+              {sortedItems.length === 0 ? (
                 <Card>
-                  <CardContent className="py-8 text-center text-muted-foreground">
-                    {searchQuery || sourceFilter !== 'all' || statusFilter !== 'all'
-                      ? 'No items match your filters'
-                      : 'No startup items found'}
+                  <CardContent className="py-12 flex flex-col items-center justify-center text-muted-foreground gap-3">
+                    <Search className="h-10 w-10" />
+                    <p className="text-sm">
+                      {hasFilters
+                        ? 'No items match your filters. Try adjusting your filters.'
+                        : 'No startup programs detected.'}
+                    </p>
                   </CardContent>
                 </Card>
-              ) : (
-                filteredItems.map((item) => (
-                  <Card key={item.id} className={!item.enabled ? 'opacity-60' : ''}>
-                    <CardContent className="py-4">
-                      <div className="flex items-start gap-4">
-                        {/* Toggle Switch */}
-                        <div className="pt-1">
-                          {toggling === item.id ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : item.source.startsWith('startupFolder') ? (
-                            <div className="w-9 h-5 flex items-center justify-center">
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            </div>
-                          ) : (
-                            <Switch
-                              checked={item.enabled}
-                              onCheckedChange={() => handleToggle(item)}
-                              disabled={toggling !== null}
-                            />
-                          )}
-                        </div>
-
-                        {/* Item Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{item.name}</span>
-                            <Badge variant={getImpactBadgeVariant(item.impact)}>
-                              {item.impact} impact
-                            </Badge>
-                            {!item.enabled && (
-                              <Badge variant="secondary">Disabled</Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1 truncate max-w-lg">
-                            {item.command}
-                          </div>
-                          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <SourceIcon source={item.source} />
-                              {getSourceDisplayName(item.source)}
-                            </div>
-                            {item.publisher && (
-                              <span>• {item.publisher}</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-1">
-                          {(item.path || item.command) && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="Open file location"
-                              onClick={() => invoke('open_startup_item_location', { path: item.path || item.command })}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => setDeleteItem(item)}
-                            title="Delete startup item"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+              ) : groupBySource && groupedItems ? (
+                // Grouped view
+                Array.from(groupedItems.entries()).map(([source, groupItems]) => (
+                  <div key={source} className="space-y-2">
+                    <div className="flex items-center gap-2 pt-2">
+                      <SourceIcon source={source as StartupSource} />
+                      <span className="text-sm font-semibold">{getSourceDisplayName(source as StartupSource)}</span>
+                      <Badge variant="secondary">{groupItems.length}</Badge>
+                    </div>
+                    <AnimatedList className="space-y-2">
+                      {groupItems.map(renderItem)}
+                    </AnimatedList>
+                  </div>
                 ))
+              ) : (
+                // Flat view
+                <AnimatedList className="space-y-2">
+                  {sortedItems.map(renderItem)}
+                </AnimatedList>
               )}
             </div>
           )}

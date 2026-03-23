@@ -1,10 +1,10 @@
 /**
  * Event Log Viewer Page
- * 
+ *
  * View and filter Windows Event Logs.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   ScrollText,
@@ -21,6 +21,10 @@ import {
   Copy,
   Clock,
   BarChart3,
+  ArrowUpDown,
+  Calendar,
+  Check,
+  Download,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,8 +35,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AnimatedList, AnimatedItem } from '@/components/animation-context';
 
 import type { EventLogSource, EventLogEntry, EventLogFilter, EventLogStats } from '@/types';
+import { getLevelBadgeVariant, formatRelativeTime, getLevelRowClass } from '@/types/event-log';
 
 /** Get level icon */
 function LevelIcon({ level }: { level: string }) {
@@ -44,14 +50,6 @@ function LevelIcon({ level }: { level: string }) {
   return <Info className="h-4 w-4 text-muted-foreground" />;
 }
 
-/** Get level badge variant */
-function getLevelBadgeVariant(level: string): 'destructive' | 'default' | 'secondary' {
-  const l = level.toLowerCase();
-  if (l === 'critical' || l === 'error') return 'destructive';
-  if (l === 'warning') return 'default';
-  return 'secondary';
-}
-
 /** Format timestamp */
 function formatTime(isoString: string): string {
   try {
@@ -61,22 +59,21 @@ function formatTime(isoString: string): string {
   }
 }
 
-/** Format relative time */
-function formatRelativeTime(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    
-    if (diffDays > 0) return `${diffDays}d ago`;
-    if (diffHours > 0) return `${diffHours}h ago`;
-    if (diffMins > 0) return `${diffMins}m ago`;
-    return 'Just now';
-  } catch {
-    return '';
+/** Compute ISO start time from a time range option */
+function computeStartTime(range: string): string | undefined {
+  if (range === 'all') return undefined;
+  const now = new Date();
+  switch (range) {
+    case '1h':
+      return new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    case '24h':
+      return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    case '7d':
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    case '30d':
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    default:
+      return undefined;
   }
 }
 
@@ -96,9 +93,35 @@ export function EventLogPage() {
   const [levelFilter, setLevelFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [limit, setLimit] = useState('100');
+  const [timeRange, setTimeRange] = useState('all');
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
 
   // Expanded entry
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
+
+  // Copy feedback state
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+
+  // Unique providers derived from entries
+  const uniqueProviders = useMemo(() => {
+    const providers = new Set<string>();
+    entries.forEach((entry) => {
+      if (entry.providerName) {
+        providers.add(entry.providerName);
+      }
+    });
+    return Array.from(providers).sort();
+  }, [entries]);
+
+  // Sorted entries
+  const sortedEntries = useMemo(() => {
+    if (sortBy === 'oldest') {
+      return [...entries].reverse();
+    }
+    return entries;
+  }, [entries, sortBy]);
 
   // Load sources on mount
   useEffect(() => {
@@ -111,7 +134,7 @@ export function EventLogPage() {
       loadEntries();
       loadStats();
     }
-  }, [selectedLog, levelFilter, limit]);
+  }, [selectedLog, levelFilter, limit, timeRange]);
 
   const loadSources = async () => {
     try {
@@ -134,6 +157,8 @@ export function EventLogPage() {
       const filter: EventLogFilter = {
         logName: selectedLog,
         level: levelFilter === 'All' ? undefined : levelFilter,
+        startTime: computeStartTime(timeRange),
+        sourceFilter: providerFilter !== 'all' ? providerFilter : undefined,
         limit: parseInt(limit) || 100,
       };
       const result = await invoke<EventLogEntry[]>('get_event_logs', { filter });
@@ -143,7 +168,7 @@ export function EventLogPage() {
     } finally {
       setLoadingEntries(false);
     }
-  }, [selectedLog, levelFilter, limit]);
+  }, [selectedLog, levelFilter, limit, timeRange, providerFilter]);
 
   const loadStats = async () => {
     try {
@@ -159,7 +184,7 @@ export function EventLogPage() {
       loadEntries();
       return;
     }
-    
+
     setLoadingEntries(true);
     setError(null);
     try {
@@ -176,9 +201,37 @@ export function EventLogPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, entryId?: number) => {
     navigator.clipboard.writeText(text);
+    if (entryId !== undefined) {
+      setCopiedId(entryId);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
+
+  const copyAllEntries = () => {
+    const text = sortedEntries
+      .map((entry) => {
+        const lines = [
+          `[${entry.levelDisplay}] Event ID: ${entry.id} | Record: ${entry.recordId}`,
+          `Time: ${formatTime(entry.timeCreated)}`,
+          `Source: ${entry.providerName}`,
+          `Computer: ${entry.computer}`,
+          entry.user ? `User: ${entry.user}` : null,
+          entry.taskCategory ? `Category: ${entry.taskCategory}` : null,
+          `Message: ${entry.message}`,
+          '---',
+        ];
+        return lines.filter(Boolean).join('\n');
+      })
+      .join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedAll(true);
+    setTimeout(() => setCopiedAll(false), 2000);
+  };
+
+  const hasActiveFilters = levelFilter !== 'All' || timeRange !== 'all' || providerFilter !== 'all' || searchQuery.trim() !== '';
+  const parsedLimit = parseInt(limit) || 100;
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-h-0">
@@ -195,60 +248,114 @@ export function EventLogPage() {
                 View and analyze Windows Event Logs
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={loadEntries} disabled={loadingEntries}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loadingEntries ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyAllEntries}
+                disabled={sortedEntries.length === 0}
+              >
+                {copiedAll ? (
+                  <Check className="h-4 w-4 mr-2 text-green-500" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {copiedAll ? 'Copied!' : 'Copy All'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={loadEntries} disabled={loadingEntries}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${loadingEntries ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
 
-          {/* Stats Cards */}
+          {/* Stats Cards - Row 1 */}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2">
-                    <XCircle className="h-4 w-4 text-red-600" />
-                    <span className="text-xs text-muted-foreground">Critical (24h)</span>
-                  </div>
-                  <div className="text-2xl font-bold text-red-600 mt-1">
-                    {stats.critical24h}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                    <span className="text-xs text-muted-foreground">Errors (24h)</span>
-                  </div>
-                  <div className="text-2xl font-bold text-destructive mt-1">
-                    {stats.errors24h}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <span className="text-xs text-muted-foreground">Warnings (24h)</span>
-                  </div>
-                  <div className="text-2xl font-bold text-yellow-600 mt-1">
-                    {stats.warnings24h}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Errors (30d)</span>
-                  </div>
-                  <div className="text-2xl font-bold mt-1">
-                    {stats.errors30d}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-xs text-muted-foreground">Critical (24h)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-red-600 mt-1">
+                      {stats.critical24h}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <span className="text-xs text-muted-foreground">Errors (24h)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-destructive mt-1">
+                      {stats.errors24h}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      <span className="text-xs text-muted-foreground">Warnings (24h)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-yellow-600 mt-1">
+                      {stats.warnings24h}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Errors (30d)</span>
+                    </div>
+                    <div className="text-2xl font-bold mt-1">
+                      {stats.errors30d}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Stats Cards - Row 2 */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <span className="text-xs text-muted-foreground">Errors (7d)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-destructive mt-1">
+                      {stats.errors7d}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      <span className="text-xs text-muted-foreground">Warnings (7d)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-yellow-600 mt-1">
+                      {stats.warnings7d}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                      <span className="text-xs text-muted-foreground">Warnings (30d)</span>
+                    </div>
+                    <div className="text-2xl font-bold text-yellow-600 mt-1">
+                      {stats.warnings30d}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
           )}
 
           {/* Filters */}
@@ -293,6 +400,45 @@ export function EventLogPage() {
                     <SelectItem value="Error">Error</SelectItem>
                     <SelectItem value="Warning">Warning</SelectItem>
                     <SelectItem value="Information">Information</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={timeRange} onValueChange={setTimeRange}>
+                  <SelectTrigger className="w-36">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Time range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="1h">Last Hour</SelectItem>
+                    <SelectItem value="24h">Last 24h</SelectItem>
+                    <SelectItem value="7d">Last 7 Days</SelectItem>
+                    <SelectItem value="30d">Last 30 Days</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={providerFilter} onValueChange={setProviderFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Providers</SelectItem>
+                    {uniqueProviders.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'newest' | 'oldest')}>
+                  <SelectTrigger className="w-36">
+                    <ArrowUpDown className="h-4 w-4 mr-2" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -347,130 +493,150 @@ export function EventLogPage() {
           {/* Event List */}
           {!loadingEntries && (
             <div className="space-y-1">
-              {entries.length === 0 ? (
+              {/* Result count */}
+              {sortedEntries.length > 0 && (
+                <div className="text-sm text-muted-foreground px-1 pb-2">
+                  Showing {sortedEntries.length} events
+                  {sortedEntries.length === parsedLimit && (
+                    <span className="ml-1">(limit: {parsedLimit})</span>
+                  )}
+                </div>
+              )}
+
+              {sortedEntries.length === 0 ? (
                 <Card>
-                  <CardContent className="py-8 text-center text-muted-foreground">
-                    No events found matching your criteria
+                  <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+                    <ScrollText className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground font-medium">
+                      {hasActiveFilters
+                        ? 'No events match your current filters'
+                        : 'No events found'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {hasActiveFilters
+                        ? 'Try adjusting the level, time range, or provider filters'
+                        : `No events available in the ${selectedLog} log`}
+                    </p>
                   </CardContent>
                 </Card>
               ) : (
-                entries.map((entry) => (
-                  <Collapsible
-                    key={entry.recordId}
-                    open={expandedEntry === entry.recordId}
-                    onOpenChange={(open) => setExpandedEntry(open ? entry.recordId : null)}
-                  >
-                    <Card className={`transition-colors ${
-                      entry.levelDisplay.toLowerCase() === 'critical' || 
-                      entry.levelDisplay.toLowerCase() === 'error' 
-                        ? 'border-l-2 border-l-destructive bg-destructive/5' 
-                        : entry.levelDisplay.toLowerCase() === 'warning'
-                          ? 'border-l-2 border-l-yellow-500 bg-yellow-500/5'
-                          : ''
-                    }`}>
-                      <CollapsibleTrigger asChild>
-                        <CardContent className="py-3 cursor-pointer hover:bg-muted/50">
-                          <div className="flex items-start gap-3">
-                            <LevelIcon level={entry.levelDisplay} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant={getLevelBadgeVariant(entry.levelDisplay)}>
-                                  {entry.levelDisplay}
-                                </Badge>
-                                <span className="font-mono text-xs text-muted-foreground">
-                                  ID: {entry.id}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {entry.providerName}
-                                </span>
+                <AnimatedList className="space-y-1">
+                  {sortedEntries.map((entry) => (
+                    <AnimatedItem key={entry.recordId}>
+                      <Collapsible
+                        open={expandedEntry === entry.recordId}
+                        onOpenChange={(open) => setExpandedEntry(open ? entry.recordId : null)}
+                      >
+                        <Card className={`transition-colors ${getLevelRowClass(entry.levelDisplay)}`}>
+                          <CollapsibleTrigger asChild>
+                            <CardContent className="py-3 cursor-pointer hover:bg-muted/50">
+                              <div className="flex items-start gap-3">
+                                <LevelIcon level={entry.levelDisplay} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant={getLevelBadgeVariant(entry.levelDisplay)}>
+                                      {entry.levelDisplay}
+                                    </Badge>
+                                    <span className="font-mono text-xs text-muted-foreground">
+                                      ID: {entry.id}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {entry.providerName}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm mt-1 line-clamp-2">
+                                    {entry.message.split('\n')[0]}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                    <Clock className="h-3 w-3" />
+                                    <span>{formatTime(entry.timeCreated)}</span>
+                                    <span>({formatRelativeTime(entry.timeCreated)})</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {expandedEntry === entry.recordId ? (
+                                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-sm mt-1 line-clamp-2">
-                                {entry.message.split('\n')[0]}
+                            </CardContent>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <Separator />
+                            <CardContent className="py-4 space-y-3">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Event ID</span>
+                                  <div className="font-mono">{entry.id}</div>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Record ID</span>
+                                  <div className="font-mono">{entry.recordId}</div>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Computer</span>
+                                  <div>{entry.computer}</div>
+                                </div>
+                                {entry.user && (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">User</span>
+                                    <div>{entry.user}</div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                <span>{formatTime(entry.timeCreated)}</span>
-                                <span>({formatRelativeTime(entry.timeCreated)})</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {expandedEntry === entry.recordId ? (
-                                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              {entry.taskCategory && (
+                                <div className="text-sm">
+                                  <span className="text-xs text-muted-foreground">Task Category</span>
+                                  <div>{entry.taskCategory}</div>
+                                </div>
                               )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <Separator />
-                        <CardContent className="py-4 space-y-3">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <span className="text-xs text-muted-foreground">Event ID</span>
-                              <div className="font-mono">{entry.id}</div>
-                            </div>
-                            <div>
-                              <span className="text-xs text-muted-foreground">Record ID</span>
-                              <div className="font-mono">{entry.recordId}</div>
-                            </div>
-                            <div>
-                              <span className="text-xs text-muted-foreground">Computer</span>
-                              <div>{entry.computer}</div>
-                            </div>
-                            {entry.user && (
                               <div>
-                                <span className="text-xs text-muted-foreground">User</span>
-                                <div>{entry.user}</div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs text-muted-foreground">Full Message</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2"
+                                    onClick={() => copyToClipboard(entry.message, entry.recordId)}
+                                  >
+                                    {copiedId === entry.recordId ? (
+                                      <Check className="h-3 w-3 mr-1 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 mr-1" />
+                                    )}
+                                    {copiedId === entry.recordId ? 'Copied' : 'Copy'}
+                                  </Button>
+                                </div>
+                                <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono">
+                                  {entry.message}
+                                </pre>
                               </div>
-                            )}
-                          </div>
-                          {entry.taskCategory && (
-                            <div className="text-sm">
-                              <span className="text-xs text-muted-foreground">Task Category</span>
-                              <div>{entry.taskCategory}</div>
-                            </div>
-                          )}
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs text-muted-foreground">Full Message</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2"
-                                onClick={() => copyToClipboard(entry.message)}
-                              >
-                                <Copy className="h-3 w-3 mr-1" />
-                                Copy
-                              </Button>
-                            </div>
-                            <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono">
-                              {entry.message}
-                            </pre>
-                          </div>
-                          {entry.keywords.length > 0 && (
-                            <div>
-                              <span className="text-xs text-muted-foreground">Keywords</span>
-                              <div className="flex gap-1 flex-wrap mt-1">
-                                {entry.keywords.map((kw, idx) => (
-                                  <Badge key={idx} variant="outline" className="text-xs">
-                                    {kw}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </CollapsibleContent>
-                    </Card>
-                  </Collapsible>
-                ))
+                              {entry.keywords.length > 0 && (
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Keywords</span>
+                                  <div className="flex gap-1 flex-wrap mt-1">
+                                    {entry.keywords.map((kw, idx) => (
+                                      <Badge key={idx} variant="outline" className="text-xs">
+                                        {kw}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Card>
+                      </Collapsible>
+                    </AnimatedItem>
+                  ))}
+                </AnimatedList>
               )}
 
-              {entries.length > 0 && entries.length === parseInt(limit) && (
+              {sortedEntries.length > 0 && sortedEntries.length === parsedLimit && (
                 <div className="text-center py-4 text-sm text-muted-foreground">
-                  Showing {entries.length} events. Increase limit to see more.
+                  Showing {sortedEntries.length} events. Increase limit to see more.
                 </div>
               )}
             </div>
