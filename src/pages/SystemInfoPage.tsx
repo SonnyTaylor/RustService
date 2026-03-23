@@ -30,8 +30,6 @@ import {
   Shield,
   History,
   Plus,
-  ChevronDown,
-  ChevronUp,
   AlertCircle,
   Loader2,
   Layers,
@@ -43,16 +41,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -67,320 +59,19 @@ import {
   SystemInfo,
   formatBytes,
   formatUptime,
-  calculatePercentage
 } from '@/types';
 import { useSettings } from '@/components/settings-context';
 import { PrintableSystemInfo } from '@/components/printable-system-info';
 
-// ============================================================================
-// Disk Health & Restore Point Types
-// ============================================================================
-
-interface SmartAttribute {
-  id: number;
-  name: string;
-  value: number;
-  worst: number;
-  threshold: number;
-  rawValue: string;
-}
-
-interface DiskHealthInfo {
-  device: string;
-  model: string;
-  serial: string;
-  firmware: string;
-  healthPassed: boolean;
-  temperatureC: number | null;
-  powerOnHours: number | null;
-  reallocatedSectors: number | null;
-  pendingSectors: number | null;
-  crcErrors: number | null;
-  wearLevelingPct: number | null;
-  attributes: SmartAttribute[];
-}
-
-interface DiskHealthResponse {
-  disks: DiskHealthInfo[];
-  smartctlFound: boolean;
-  error: string | null;
-}
-
-interface RestorePoint {
-  sequenceNumber: number;
-  description: string;
-  creationTime: string;
-  restoreType: string;
-}
-
-interface RestorePointsResponse {
-  restorePoints: RestorePoint[];
-  error: string | null;
-}
-
-// ============================================================================
-// Section Header Component
-// ============================================================================
-
-function SectionHeader({ icon: Icon, title, iconColor }: {
-  icon: React.ElementType;
-  title: string;
-  iconColor?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 pt-2">
-      <Icon className={`h-5 w-5 ${iconColor || 'text-muted-foreground'}`} />
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-    </div>
-  );
-}
-
-/**
- * Info row component for displaying label-value pairs
- */
-function InfoRow({ label, value, mono = false }: {
-  label: string;
-  value: string | null | undefined;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex justify-between items-center py-2 gap-4">
-      <span className="text-muted-foreground text-sm shrink-0">{label}</span>
-      <span className={`text-sm font-medium text-right ${mono ? 'font-mono' : ''}`}>
-        {value || 'N/A'}
-      </span>
-    </div>
-  );
-}
-
-/**
- * Usage bar component for memory/disk usage visualization
- */
-function UsageBar({
-  label,
-  used,
-  total,
-}: {
-  label: string;
-  used: number;
-  total: number;
-}) {
-  const percentage = calculatePercentage(used, total);
-  const isHigh = percentage > 85;
-
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-medium">
-          {formatBytes(used)} / {formatBytes(total)}
-          <Badge
-            variant={isHigh ? 'destructive' : 'secondary'}
-            className="ml-2 text-xs"
-          >
-            {percentage}%
-          </Badge>
-        </span>
-      </div>
-      <Progress
-        value={percentage}
-        className={`h-2 ${isHigh ? '[&>div]:bg-destructive' : ''}`}
-      />
-    </div>
-  );
-}
-
-/**
- * Loading skeleton for system info cards
- */
-function LoadingSkeleton() {
-  return (
-    <div className="p-4 space-y-6">
-      <Skeleton className="h-32 w-full rounded-xl" />
-      <div className="grid gap-6 md:grid-cols-2">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-6 w-32" />
-              <Skeleton className="h-4 w-48" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Refresh overlay skeleton (cross-fades over existing content)
- */
-function RefreshOverlay({ visible }: { visible: boolean }) {
-  return (
-    <div
-      className={
-        `absolute inset-0 pointer-events-none transition-opacity duration-300 ` +
-        `${visible ? 'opacity-100' : 'opacity-0'}`
-      }
-      aria-hidden
-    >
-      <div className="absolute inset-0 bg-background/60" />
-      <div className="relative p-6 grid gap-6 md:grid-cols-2">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-6 w-32" />
-              <Skeleton className="h-4 w-48" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Disk Health Card Component
-// ============================================================================
-
-function DiskHealthCard({ disk }: { disk: DiskHealthInfo }) {
-  const [expanded, setExpanded] = useState(false);
-
-  const healthColor = disk.healthPassed ? 'bg-green-500/20 text-green-600 border-green-500/30' : 'bg-red-500/20 text-red-600 border-red-500/30';
-  const healthLabel = disk.healthPassed ? 'Healthy' : 'Failed';
-
-  // Determine warning conditions
-  const hasWarning = !disk.healthPassed ||
-    (disk.reallocatedSectors !== null && disk.reallocatedSectors > 0) ||
-    (disk.pendingSectors !== null && disk.pendingSectors > 0) ||
-    (disk.temperatureC !== null && disk.temperatureC > 55);
-
-  return (
-    <Card className={hasWarning && disk.healthPassed ? 'border-yellow-500/40' : !disk.healthPassed ? 'border-red-500/40' : ''}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-medium truncate max-w-[70%]">
-            {disk.model}
-          </CardTitle>
-          <Badge className={healthColor}>
-            {healthLabel}
-          </Badge>
-        </div>
-        <CardDescription className="text-xs font-mono">{disk.serial}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <InfoRow label="Firmware" value={disk.firmware} mono />
-        {disk.temperatureC !== null && (
-          <div className="flex justify-between items-center py-2">
-            <span className="text-muted-foreground text-sm">Temperature</span>
-            <Badge variant={disk.temperatureC > 55 ? 'destructive' : disk.temperatureC > 45 ? 'default' : 'secondary'}>
-              {disk.temperatureC}°C
-            </Badge>
-          </div>
-        )}
-        {disk.powerOnHours !== null && (
-          <InfoRow label="Power-On Hours" value={disk.powerOnHours.toLocaleString()} />
-        )}
-        {disk.reallocatedSectors !== null && (
-          <div className="flex justify-between items-center py-2">
-            <span className="text-muted-foreground text-sm">Reallocated Sectors</span>
-            <Badge variant={disk.reallocatedSectors > 0 ? 'destructive' : 'secondary'}>
-              {disk.reallocatedSectors}
-            </Badge>
-          </div>
-        )}
-        {disk.pendingSectors !== null && (
-          <div className="flex justify-between items-center py-2">
-            <span className="text-muted-foreground text-sm">Pending Sectors</span>
-            <Badge variant={disk.pendingSectors > 0 ? 'destructive' : 'secondary'}>
-              {disk.pendingSectors}
-            </Badge>
-          </div>
-        )}
-        {disk.crcErrors !== null && disk.crcErrors > 0 && (
-          <InfoRow label="CRC Errors" value={disk.crcErrors.toString()} />
-        )}
-        {disk.wearLevelingPct !== null && (
-          <div className="space-y-1 pt-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">SSD Life Remaining</span>
-              <Badge variant={disk.wearLevelingPct < 20 ? 'destructive' : disk.wearLevelingPct < 50 ? 'default' : 'secondary'}>
-                {disk.wearLevelingPct}%
-              </Badge>
-            </div>
-            <Progress value={disk.wearLevelingPct} className={`h-2 ${disk.wearLevelingPct < 20 ? '[&>div]:bg-destructive' : ''}`} />
-          </div>
-        )}
-
-        {/* Expandable SMART attributes */}
-        {disk.attributes.length > 0 && (
-          <>
-            <Separator className="my-2" />
-            <Collapsible open={expanded} onOpenChange={setExpanded}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-between text-xs text-muted-foreground">
-                  All S.M.A.R.T. Attributes ({disk.attributes.length})
-                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ScrollArea className="h-48 mt-2">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-muted-foreground border-b">
-                        <th className="text-left py-1 pr-1">ID</th>
-                        <th className="text-left py-1 pr-1">Attribute</th>
-                        <th className="text-right py-1 pr-1">Val</th>
-                        <th className="text-right py-1 pr-1">Wst</th>
-                        <th className="text-right py-1 pr-1">Thr</th>
-                        <th className="text-right py-1">Raw</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {disk.attributes.map((attr) => (
-                        <tr key={attr.id} className={attr.value <= attr.threshold && attr.threshold > 0 ? 'bg-destructive/10' : ''}>
-                          <td className="py-0.5 pr-1 font-mono text-muted-foreground">{attr.id}</td>
-                          <td className="py-0.5 pr-1 truncate max-w-[120px]">{attr.name}</td>
-                          <td className="py-0.5 pr-1 text-right font-mono">{attr.value}</td>
-                          <td className="py-0.5 pr-1 text-right font-mono">{attr.worst}</td>
-                          <td className="py-0.5 pr-1 text-right font-mono">{attr.threshold}</td>
-                          <td className="py-0.5 text-right font-mono truncate max-w-[80px]">{attr.rawValue}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </ScrollArea>
-              </CollapsibleContent>
-            </Collapsible>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================================
-// Restore Point Date Formatting
-// ============================================================================
-
-function formatRestorePointDate(dateStr: string): string {
-  try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-    return date.toLocaleString();
-  } catch {
-    return dateStr;
-  }
-}
+import type { DiskHealthResponse, RestorePointsResponse } from '@/components/system-info/types';
+import {
+  SectionHeader,
+  InfoRow,
+  UsageBar,
+  LoadingSkeleton,
+  RefreshOverlay,
+} from '@/components/system-info/system-info-helpers';
+import { DiskHealthCard, formatRestorePointDate } from '@/components/system-info/DiskHealthCard';
 
 /**
  * System Info Page - Main component
