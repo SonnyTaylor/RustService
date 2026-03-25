@@ -5,7 +5,7 @@
  * parallel mode toggle, add/remove/duplicate services, and save preset.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   DndContext,
@@ -121,6 +121,15 @@ export function QueueView({ queue, definitions, presetName, runError, onBack, on
     previousQueue: ServiceQueueItem[];
     timeoutId: ReturnType<typeof setTimeout>;
   } | null>(null);
+
+  // Clear the undo timeout on unmount to prevent state updates after unmount
+  useEffect(() => {
+    return () => {
+      if (recentlyRemoved?.timeoutId) {
+        clearTimeout(recentlyRemoved.timeoutId);
+      }
+    };
+  }, [recentlyRemoved]);
 
   // Save preset state
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);

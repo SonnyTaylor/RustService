@@ -381,12 +381,15 @@ export function AgentPage() {
               order: q.order,
               options: q.options || {},
             })) || [];
-            const reportPromise = invoke<ServiceReport>('run_services', {
-              queue,
-              technician_name: args.technician_name ? String(args.technician_name) : null,
-              customer_name: args.customer_name ? String(args.customer_name) : null,
-            }).catch(err => console.error('[Agent] Service run error:', err));
-            await new Promise(r => setTimeout(r, 500));
+            try {
+              await invoke<ServiceReport>('run_services', {
+                queue,
+                technician_name: args.technician_name ? String(args.technician_name) : null,
+                customer_name: args.customer_name ? String(args.customer_name) : null,
+              });
+            } catch (err) {
+              console.error('[Agent] Service run error:', err);
+            }
             const state = await invoke<ServiceRunStateType>('get_service_run_state');
             const reportId = state.currentReport?.id || 'unknown';
             setActiveServiceRun({

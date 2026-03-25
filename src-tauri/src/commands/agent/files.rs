@@ -25,8 +25,10 @@ fn validate_agent_path(path: &std::path::Path) -> Result<PathBuf, String> {
         }
     })?;
 
+    // canonicalize() on Windows resolves 8.3 short names (e.g. PROGRA~1 -> Program Files)
     let path_str = canonical.to_string_lossy().to_lowercase();
 
+    // Secondary defense: blocklist of critical system directories
     let blocked = [
         "\\windows\\system32",
         "\\windows\\syswow64",
@@ -43,6 +45,31 @@ fn validate_agent_path(path: &std::path::Path) -> Result<PathBuf, String> {
         }
     }
 
+    // Primary defense: allowlist — path must be under an allowed directory
+    let data_dir = get_data_dir_path()
+        .canonicalize()
+        .unwrap_or_else(|_| get_data_dir_path());
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.canonicalize().ok());
+    let home_dir = dirs::home_dir().and_then(|p| p.canonicalize().ok());
+
+    let allowed_dirs: Vec<PathBuf> = [Some(data_dir), cwd, home_dir]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    let is_allowed = allowed_dirs
+        .iter()
+        .any(|allowed| canonical.starts_with(allowed));
+
+    if !is_allowed {
+        return Err(format!(
+            "Access denied: path '{}' is outside allowed directories",
+            canonical.display()
+        ));
+    }
+
     Ok(canonical)
 }
 
@@ -54,7 +81,9 @@ pub fn agent_read_file(
     limit: Option<usize>,
     line_numbers: Option<bool>,
 ) -> Result<serde_json::Value, String> {
-    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let safe_path = validate_agent_path(std::path::Path::new(&path))?;
+    let content =
+        fs::read_to_string(&safe_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
@@ -94,15 +123,16 @@ pub fn agent_read_file(
 pub fn agent_write_file(path: String, content: String) -> Result<(), String> {
     let path_buf = PathBuf::from(&path);
 
+    // Validate path BEFORE creating any directories
+    let safe_path = validate_agent_path(&path_buf)?;
+
     // Create parent directories if they don't exist
-    if let Some(parent) = path_buf.parent() {
+    if let Some(parent) = safe_path.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create parent directories: {}", e))?;
         }
     }
-
-    let safe_path = validate_agent_path(&path_buf)?;
 
     fs::write(&safe_path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
@@ -141,7 +171,9 @@ pub fn agent_move_file(src: String, dest: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn agent_copy_file(src: String, dest: String) -> Result<(), String> {
-    fs::copy(src, dest)
+    let safe_src = validate_agent_path(std::path::Path::new(&src))?;
+    let safe_dest = validate_agent_path(std::path::Path::new(&dest))?;
+    fs::copy(&safe_src, &safe_dest)
         .map(|_| ())
         .map_err(|e| format!("Failed to copy file: {}", e))
 }
@@ -152,7 +184,8 @@ pub fn list_instruments() -> Result<Vec<Instrument>, String> {
     let instruments_dir = get_data_dir_path().join("instruments");
     if !instruments_dir.exists() {
         // Create if it doesn't exist
-        fs::create_dir_all(&instruments_dir).ok();
+        fs::create_dir_all(&instruments_dir)
+            .map_err(|e| format!("Failed to create instruments directory: {}", e))?;
         return Ok(vec![]);
     }
 
@@ -342,6 +375,9 @@ pub fn agent_grep(
     let regex = Regex::new(&pattern).map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
     let base_path = path.unwrap_or_else(|| ".".to_string());
+    let base_path_buf = PathBuf::from(&base_path);
+    validate_agent_path(&base_path_buf)?;
+
     let max = max_results.unwrap_or(50);
     let glob_pat = file_pattern.unwrap_or_else(|| "*".to_string());
 
@@ -387,6 +423,9 @@ pub fn agent_glob(
     limit: Option<usize>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let base_path = path.unwrap_or_else(|| ".".to_string());
+    let base_path_buf = PathBuf::from(&base_path);
+    validate_agent_path(&base_path_buf)?;
+
     let max = limit.unwrap_or(100);
 
     let full_pattern = format!("{}/{}", base_path, pattern);

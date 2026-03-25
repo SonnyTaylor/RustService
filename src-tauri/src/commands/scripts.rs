@@ -149,6 +149,16 @@ pub fn run_script(id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Spawn a background thread to wait for a child process to exit, then clean up the temp file.
+fn cleanup_temp_after_exit(mut child: std::process::Child, script_path: PathBuf) {
+    std::thread::spawn(move || {
+        // Wait for the process to exit (blocks this thread only)
+        let _ = child.wait();
+        // Best-effort cleanup of the temp file
+        let _ = fs::remove_file(&script_path);
+    });
+}
+
 /// Open a PowerShell window with the script content
 #[cfg(windows)]
 fn open_powershell_window(content: &str, run_as_admin: bool) -> Result<(), String> {
@@ -160,7 +170,10 @@ fn open_powershell_window(content: &str, run_as_admin: bool) -> Result<(), Strin
 
     if run_as_admin {
         // Open elevated PowerShell with the script
-        Command::new("powershell")
+        // Note: Start-Process -Verb RunAs spawns a separate process, so the
+        // launcher exits quickly. We still clean up after the launcher exits,
+        // and add a delayed cleanup as a fallback.
+        let child = Command::new("powershell")
             .args([
                 "-Command",
                 &format!(
@@ -170,9 +183,10 @@ fn open_powershell_window(content: &str, run_as_admin: bool) -> Result<(), Strin
             ])
             .spawn()
             .map_err(|e| format!("Failed to open PowerShell: {}", e))?;
+        cleanup_temp_after_exit(child, script_path);
     } else {
         // Open normal PowerShell with the script
-        Command::new("powershell")
+        let child = Command::new("powershell")
             .args([
                 "-NoExit",
                 "-ExecutionPolicy",
@@ -182,6 +196,7 @@ fn open_powershell_window(content: &str, run_as_admin: bool) -> Result<(), Strin
             ])
             .spawn()
             .map_err(|e| format!("Failed to open PowerShell: {}", e))?;
+        cleanup_temp_after_exit(child, script_path);
     }
 
     Ok(())
@@ -206,7 +221,7 @@ fn open_cmd_window(content: &str, run_as_admin: bool) -> Result<(), String> {
 
     if run_as_admin {
         // Open elevated CMD with the script
-        Command::new("powershell")
+        let child = Command::new("powershell")
             .args([
                 "-Command",
                 &format!(
@@ -216,12 +231,14 @@ fn open_cmd_window(content: &str, run_as_admin: bool) -> Result<(), String> {
             ])
             .spawn()
             .map_err(|e| format!("Failed to open CMD: {}", e))?;
+        cleanup_temp_after_exit(child, script_path);
     } else {
         // Open normal CMD with the script
-        Command::new("cmd")
+        let child = Command::new("cmd")
             .args(["/k", &script_path.to_string_lossy()])
             .spawn()
             .map_err(|e| format!("Failed to open CMD: {}", e))?;
+        cleanup_temp_after_exit(child, script_path);
     }
 
     Ok(())
