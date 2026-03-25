@@ -71,7 +71,6 @@ const SEVERITY_COLORS: Record<string, string> = {
 // =============================================================================
 
 export function RunnerView({ report, definitions, logs, onCancel, onBack, queue, cancelError }: RunnerViewProps) {
-  const logsEndRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [taskElapsedMs, setTaskElapsedMs] = useState(0);
@@ -137,10 +136,7 @@ export function RunnerView({ report, definitions, logs, onCancel, onBack, queue,
   // Count failed services
   const failedResults = completedResults.filter(r => !r.success);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+  // No auto-scroll — user controls scroll position
 
   // Elapsed time ticker
   useEffect(() => {
@@ -589,7 +585,6 @@ export function RunnerView({ report, definitions, logs, onCancel, onBack, queue,
                     <span>{log}</span>
                   </div>
                 ))}
-                <div ref={logsEndRef} />
               </div>
             </div>
           )}

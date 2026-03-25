@@ -107,7 +107,7 @@ export const searchWebTool = tool({
   execute: async ({ query, provider = 'tavily' }) => {
     try {
       const settings = await invoke<{ agent: { tavilyApiKey?: string; searxngUrl?: string } }>('get_settings');
-      let results: SearchResult[];
+      let results: SearchResult[] = [];
       
       if (provider === 'tavily' && settings.agent.tavilyApiKey) {
         results = await invoke<SearchResult[]>('search_tavily', { query, api_key: settings.agent.tavilyApiKey });

@@ -153,6 +153,7 @@ export function AgentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const pendingActivityUpdatesRef = useRef(new Map<string, Partial<AgentActivity>>());
+  const approvalInProgressRef = useRef(false);
 
   // Agent loop queue — ensures only one loop runs at a time
   const loopQueueRef = useRef<AgentLoopQueue>(null!);
@@ -232,23 +233,28 @@ export function AgentPage() {
     if (key === mcpServersKeyRef.current) return; // No actual change
     mcpServersKeyRef.current = key;
 
+    let cancelled = false;
     const enabledServers = mcpServers.filter(s => s.enabled && s.url);
 
     if (enabledServers.length > 0) {
       setMcpState(prev => ({ ...prev, isConnecting: true }));
       connectMCPServers(mcpServers).then(({ state }) => {
+        if (cancelled) return;
         setMcpState(state);
       }).catch(err => {
+        if (cancelled) return;
         console.error('[MCP] Connection error:', err);
         setMcpState(prev => ({ ...prev, isConnecting: false }));
       });
     } else {
       disconnectMCPServers().then(() => {
+        if (cancelled) return;
         setMcpState({ servers: [], toolCount: 0, isConnecting: false, errors: [] });
       });
     }
 
     return () => {
+      cancelled = true;
       disconnectMCPServers();
     };
   }, [agentSettings?.mcpServers]);
@@ -379,7 +385,7 @@ export function AgentPage() {
               queue,
               technician_name: args.technician_name ? String(args.technician_name) : null,
               customer_name: args.customer_name ? String(args.customer_name) : null,
-            });
+            }).catch(err => console.error('[Agent] Service run error:', err));
             await new Promise(r => setTimeout(r, 500));
             const state = await invoke<ServiceRunStateType>('get_service_run_state');
             const reportId = state.currentReport?.id || 'unknown';
@@ -389,7 +395,6 @@ export function AgentPage() {
               lastResultCount: 0,
               assistantMsgId: findMessageIdForActivity(toolCallId) || null,
             });
-            reportPromise.catch(err => console.error('[Agent] Service run error:', err));
             result = JSON.stringify({ status: 'started', report_id: reportId, message: `Service run started with ${queue.filter(q => q.enabled).length} services` });
             break;
           }
@@ -659,7 +664,7 @@ export function AgentPage() {
           });
         } else {
           heartbeatRef.current.stop();
-          saveConversation(messagesRef.current, agentHistoryRef.current);
+          await saveConversation(messagesRef.current, agentHistoryRef.current);
           setIsLoading(false);
         }
       } else if (approvalMode === 'yolo') {
@@ -764,55 +769,61 @@ export function AgentPage() {
   loopQueueRef.current.setRunFn(runAgentLoop);
 
   const handleActivityApprove = async (activityId: string) => {
-    // 1. Find the pending tool call in the last assistant message (not necessarily
-    //    the last message — auto-execute tool results may follow it in history).
-    const history = agentHistoryRef.current;
-    const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
-    if (!lastAssistantMsg) return;
+    if (approvalInProgressRef.current) return;
+    approvalInProgressRef.current = true;
+    try {
+      // 1. Find the pending tool call in the last assistant message (not necessarily
+      //    the last message — auto-execute tool results may follow it in history).
+      const history = agentHistoryRef.current;
+      const lastAssistantMsg = [...history].reverse().find(m => m.role === 'assistant');
+      if (!lastAssistantMsg) return;
 
-    // Handle both array content and single content
-    const contentArray = Array.isArray(lastAssistantMsg.content) ? lastAssistantMsg.content : [];
-    const toolCall = contentArray.find(
-      (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
-    );
+      // Handle both array content and single content
+      const contentArray = Array.isArray(lastAssistantMsg.content) ? lastAssistantMsg.content : [];
+      const toolCall = contentArray.find(
+        (c): c is ToolCallPart => c.type === 'tool-call' && c.toolCallId === activityId
+      );
 
-    if (!toolCall) {
-      console.error('Tool call not found for activity:', activityId);
-      return;
-    }
+      if (!toolCall) {
+        console.error('Tool call not found for activity:', activityId);
+        return;
+      }
 
-    // 2. Execute the tool (shared helper handles UI status updates)
-    setIsLoading(true);
-    const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
-    const toolResultMsg = await executeHITLTool(activityId, toolCall.toolName, args, 'User approved');
+      // 2. Execute the tool (shared helper handles UI status updates)
+      setIsLoading(true);
+      const args = ((toolCall as any).args ?? (toolCall as any).input ?? {}) as Record<string, unknown>;
+      const toolResultMsg = await executeHITLTool(activityId, toolCall.toolName, args, 'User approved');
 
-    // 3. Multi-HITL: accumulate result, only resume when all calls resolved
-    const msgId = findMessageIdForActivity(activityId);
-    const pendingSet = [...pendingHITLCallsRef.current.entries()].find(([, set]) => set.has(activityId));
+      // 3. Multi-HITL: accumulate result, only resume when all calls resolved
+      const msgId = findMessageIdForActivity(activityId);
+      const pendingSet = [...pendingHITLCallsRef.current.entries()].find(([, set]) => set.has(activityId));
 
-    if (pendingSet) {
-      const [pendingMsgId, callIds] = pendingSet;
-      callIds.delete(activityId);
-      const accumulated = hitlToolResultsRef.current.get(pendingMsgId) || [];
-      accumulated.push(toolResultMsg);
-      hitlToolResultsRef.current.set(pendingMsgId, accumulated);
+      if (pendingSet) {
+        const [pendingMsgId, callIds] = pendingSet;
+        callIds.delete(activityId);
+        const accumulated = hitlToolResultsRef.current.get(pendingMsgId) || [];
+        accumulated.push(toolResultMsg);
+        hitlToolResultsRef.current.set(pendingMsgId, accumulated);
 
-      if (callIds.size === 0) {
-        // All HITL calls resolved — resume with ALL accumulated results
-        pendingHITLCallsRef.current.delete(pendingMsgId);
-        const allResults = hitlToolResultsRef.current.get(pendingMsgId) || [];
-        hitlToolResultsRef.current.delete(pendingMsgId);
+        if (callIds.size === 0) {
+          // All HITL calls resolved — resume with ALL accumulated results
+          pendingHITLCallsRef.current.delete(pendingMsgId);
+          const allResults = hitlToolResultsRef.current.get(pendingMsgId) || [];
+          hitlToolResultsRef.current.delete(pendingMsgId);
 
-        const newHistory = [...history, ...allResults];
+          const newHistory = [...history, ...allResults];
+          agentHistoryRef.current = newHistory;
+          await runAgentLoop(newHistory, { reuseMessageId: msgId });
+        }
+        // else: still waiting for other HITL calls, don't resume yet
+      } else {
+        // No multi-HITL tracking (single call) — resume immediately
+        const newHistory = [...history, toolResultMsg];
         agentHistoryRef.current = newHistory;
         await runAgentLoop(newHistory, { reuseMessageId: msgId });
       }
-      // else: still waiting for other HITL calls, don't resume yet
-    } else {
-      // No multi-HITL tracking (single call) — resume immediately
-      const newHistory = [...history, toolResultMsg];
-      agentHistoryRef.current = newHistory;
-      await runAgentLoop(newHistory, { reuseMessageId: msgId });
+    } finally {
+      approvalInProgressRef.current = false;
     }
   };
 
@@ -920,11 +931,15 @@ export function AgentPage() {
     if (isFirstMessageRef.current && currentConversationId) {
       isFirstMessageRef.current = false;
       const title = text.length > 50 ? text.substring(0, 50) + '...' : text;
-      setConversationTitle(title);
-      invoke('update_conversation_title', {
-        conversationId: currentConversationId,
-        title,
-      }).catch(err => console.error('Failed to update title:', err));
+      try {
+        await invoke('update_conversation_title', {
+          conversationId: currentConversationId,
+          title,
+        });
+        setConversationTitle(title); // Only update UI on success
+      } catch (err) {
+        console.error('Failed to update title:', err);
+      }
     }
 
     // Start loop

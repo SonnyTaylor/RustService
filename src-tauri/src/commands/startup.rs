@@ -7,6 +7,16 @@ use std::path::PathBuf;
 use std::process::Command;
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/// Escape a string for safe interpolation inside a PowerShell single-quoted string.
+/// In PowerShell, a single quote inside single quotes is escaped by doubling it: ''
+fn escape_powershell_single_quote(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -369,6 +379,7 @@ pub async fn toggle_startup_item(id: String, enabled: bool) -> Result<(), String
 /// Toggle a registry startup item
 pub(crate) fn toggle_registry_startup_item_sync(name: &str, enabled: bool) -> Result<(), String> {
     // We use the StartupApproved registry key to enable/disable
+    let safe_name = escape_powershell_single_quote(name);
     let script = if enabled {
         format!(
             r#"
@@ -389,7 +400,7 @@ pub(crate) fn toggle_registry_startup_item_sync(name: &str, enabled: bool) -> Re
                 }}
             }}
             "#,
-            name, name
+            safe_name, safe_name
         )
     } else {
         format!(
@@ -411,7 +422,7 @@ pub(crate) fn toggle_registry_startup_item_sync(name: &str, enabled: bool) -> Re
                 }}
             }}
             "#,
-            name, name
+            safe_name, safe_name
         )
     };
 
@@ -431,12 +442,13 @@ pub(crate) fn toggle_registry_startup_item_sync(name: &str, enabled: bool) -> Re
 /// Toggle a scheduled task
 pub(crate) fn toggle_scheduled_task_sync(name: &str, enabled: bool) -> Result<(), String> {
     let action = if enabled { "Enable" } else { "Disable" };
+    let safe_name = escape_powershell_single_quote(name);
 
     let output = Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
-            &format!("{}-ScheduledTask -TaskName '{}'", action, name),
+            &format!("{}-ScheduledTask -TaskName '{}'", action, safe_name),
         ])
         .output()
         .map_err(|e| format!("Failed to {} task: {}", action.to_lowercase(), e))?;
@@ -496,6 +508,7 @@ pub async fn delete_startup_item(id: String, command: Option<String>) -> Result<
 
 /// Delete a registry startup item
 async fn delete_registry_startup_item(name: &str) -> Result<(), String> {
+    let safe_name = escape_powershell_single_quote(name);
     let script = format!(
         r#"
         $paths = @(
@@ -508,7 +521,7 @@ async fn delete_registry_startup_item(name: &str) -> Result<(), String> {
             'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run',
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
         )
-        
+
         foreach ($path in $paths) {{
             Remove-ItemProperty -Path $path -Name '{}' -ErrorAction SilentlyContinue
         }}
@@ -516,7 +529,7 @@ async fn delete_registry_startup_item(name: &str) -> Result<(), String> {
             Remove-ItemProperty -Path $path -Name '{}' -ErrorAction SilentlyContinue
         }}
         "#,
-        name, name
+        safe_name, safe_name
     );
 
     let output = Command::new("powershell")

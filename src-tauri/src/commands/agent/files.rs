@@ -8,6 +8,44 @@ use regex::Regex;
 
 use super::{get_data_dir_path, FileEntry, Instrument};
 
+/// Canonicalizes a path and blocks access to critical Windows system directories.
+///
+/// For new files (not yet on disk), canonicalizes the parent and re-appends the
+/// filename so that `../` tricks are resolved before the path is used.
+fn validate_agent_path(path: &std::path::Path) -> Result<PathBuf, String> {
+    let canonical = path.canonicalize().or_else(|_| {
+        if let Some(parent) = path.parent() {
+            let canonical_parent = parent
+                .canonicalize()
+                .map_err(|e| format!("Invalid path: {}", e))?;
+            Ok(canonical_parent
+                .join(path.file_name().ok_or("Invalid filename")?))
+        } else {
+            Err(format!("Invalid path: {}", path.display()))
+        }
+    })?;
+
+    let path_str = canonical.to_string_lossy().to_lowercase();
+
+    let blocked = [
+        "\\windows\\system32",
+        "\\windows\\syswow64",
+        "\\windows\\winsxs",
+        "\\program files\\windowsapps",
+    ];
+
+    for blocked_path in &blocked {
+        if path_str.contains(blocked_path) {
+            return Err(format!(
+                "Access denied: cannot modify files in {}",
+                blocked_path
+            ));
+        }
+    }
+
+    Ok(canonical)
+}
+
 /// Read file with optional line numbers and pagination
 #[tauri::command(rename_all = "snake_case")]
 pub fn agent_read_file(
@@ -64,13 +102,16 @@ pub fn agent_write_file(path: String, content: String) -> Result<(), String> {
         }
     }
 
-    fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
+    let safe_path = validate_agent_path(&path_buf)?;
+
+    fs::write(&safe_path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
 #[tauri::command]
 pub fn agent_list_dir(path: String) -> Result<Vec<FileEntry>, String> {
+    let safe_path = validate_agent_path(std::path::Path::new(&path))?;
     let mut entries = Vec::new();
-    for entry in fs::read_dir(&path).map_err(|e| format!("Failed to read dir: {}", e))? {
+    for entry in fs::read_dir(&safe_path).map_err(|e| format!("Failed to read dir: {}", e))? {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
         let metadata = entry
@@ -93,7 +134,9 @@ pub fn agent_list_dir(path: String) -> Result<Vec<FileEntry>, String> {
 
 #[tauri::command]
 pub fn agent_move_file(src: String, dest: String) -> Result<(), String> {
-    fs::rename(src, dest).map_err(|e| format!("Failed to move file: {}", e))
+    let safe_src = validate_agent_path(std::path::Path::new(&src))?;
+    let safe_dest = validate_agent_path(std::path::Path::new(&dest))?;
+    fs::rename(&safe_src, &safe_dest).map_err(|e| format!("Failed to move file: {}", e))
 }
 
 #[tauri::command]
@@ -225,8 +268,8 @@ pub fn agent_find_exe(query: String, search_path: Option<bool>) -> Result<Vec<St
     }
 
     if search_path.unwrap_or(false) {
-        if let Ok(output) = std::process::Command::new("cmd")
-            .args(["/C", &format!("where.exe {}", query)])
+        if let Ok(output) = std::process::Command::new("where.exe")
+            .arg(&query)
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
