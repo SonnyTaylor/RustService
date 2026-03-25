@@ -15,6 +15,7 @@ use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
+use super::handlers;
 use super::tools::RustServiceTools;
 
 type BoxBody = Full<Bytes>;
@@ -252,172 +253,26 @@ fn get_tool_definitions() -> serde_json::Value {
 async fn dispatch_tool_call(
     tools: &RustServiceTools,
     name: &str,
-    arguments: serde_json::Value,
+    arguments: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     match name {
-        "execute_command" => {
-            let command = arguments
-                .get("command")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'command' argument")?;
-            let reason = arguments
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("MCP request");
-
-            let result = tools
-                .execute_command(command.to_string(), reason.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "read_file" => {
-            let path = arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'path' argument")?;
-            let offset = arguments
-                .get("offset")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as usize);
-            let limit = arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as usize);
-            let line_numbers = arguments.get("line_numbers").and_then(|v| v.as_bool());
-
-            let result = tools
-                .read_file(path.to_string(), offset, limit, line_numbers)
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "write_file" => {
-            let path = arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'path' argument")?;
-            let content = arguments
-                .get("content")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'content' argument")?;
-
-            let result = tools
-                .write_file(path.to_string(), content.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "list_dir" => {
-            let path = arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'path' argument")?;
-
-            let result = tools
-                .list_dir(path.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "move_file" => {
-            let src = arguments
-                .get("src")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'src' argument")?;
-            let dest = arguments
-                .get("dest")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'dest' argument")?;
-
-            let result = tools
-                .move_file(src.to_string(), dest.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "copy_file" => {
-            let src = arguments
-                .get("src")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'src' argument")?;
-            let dest = arguments
-                .get("dest")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'dest' argument")?;
-
-            let result = tools
-                .copy_file(src.to_string(), dest.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "get_system_info" => {
-            let result = tools
-                .get_system_info()
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "search_web" => {
-            let query = arguments
-                .get("query")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'query' argument")?;
-
-            let result = tools
-                .search_web(query.to_string())
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "list_programs" => {
-            let result = tools
-                .list_programs()
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "list_instruments" => {
-            let result = tools
-                .list_instruments()
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
-        "run_instrument" => {
-            let name = arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or("Missing 'name' argument")?;
-            let args = arguments
-                .get("args")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-
-            let result = tools
-                .run_instrument(name.to_string(), args)
-                .await
-                .map_err(|e| format!("Tool error: {:?}", e))?;
-
-            Ok(call_tool_result_to_json(result))
-        }
+        "execute_command" => handlers::handle_execute_command(tools, arguments).await,
+        "read_file" => handlers::handle_read_file(tools, arguments).await,
+        "write_file" => handlers::handle_write_file(tools, arguments).await,
+        "list_dir" => handlers::handle_list_dir(tools, arguments).await,
+        "move_file" => handlers::handle_move_file(tools, arguments).await,
+        "copy_file" => handlers::handle_copy_file(tools, arguments).await,
+        "get_system_info" => handlers::handle_get_system_info(tools).await,
+        "search_web" => handlers::handle_search_web(tools, arguments).await,
+        "list_programs" => handlers::handle_list_programs(tools).await,
+        "list_instruments" => handlers::handle_list_instruments(tools).await,
+        "run_instrument" => handlers::handle_run_instrument(tools, arguments).await,
         _ => Err(format!("Unknown tool: {}", name)),
     }
 }
 
 /// Convert rmcp CallToolResult to JSON
-fn call_tool_result_to_json(result: rmcp::model::CallToolResult) -> serde_json::Value {
+pub(crate) fn call_tool_result_to_json(result: rmcp::model::CallToolResult) -> serde_json::Value {
     let content: Vec<serde_json::Value> = result
         .content
         .iter()
@@ -596,13 +451,14 @@ async fn handle_mcp_request(
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            let empty_map = serde_json::Map::new();
             let arguments = rpc_request
                 .params
                 .get("arguments")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
+                .and_then(|v| v.as_object())
+                .unwrap_or(&empty_map);
 
-            eprintln!("MCP: Calling tool '{}' with args: {}", tool_name, arguments);
+            eprintln!("MCP: Calling tool '{}' with args: {:?}", tool_name, arguments);
 
             match dispatch_tool_call(&tools, tool_name, arguments).await {
                 Ok(result) => JsonRpcResponse::success(result, rpc_request.id),

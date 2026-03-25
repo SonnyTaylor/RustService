@@ -194,7 +194,7 @@ export function extractActivityDetails(
     case 'run_service_queue': {
       const queue = Array.isArray(args.queue) ? args.queue : [];
       return {
-        serviceCount: queue.filter((q: any) => q.enabled !== false).length,
+        serviceCount: queue.filter((q: Record<string, unknown>) => q.enabled !== false).length,
         reason: typeof args.reason === 'string' ? args.reason : undefined,
       };
     }

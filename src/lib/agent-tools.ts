@@ -1,14 +1,14 @@
 /**
  * Agent Tools for Vercel AI SDK
- * 
+ *
  * Defines the tools available to the AI agent for system operations,
  * file management, and web search.
- * 
+ *
  * Tools without an execute function are "client-side" HITL tools -
  * they will be rendered on the frontend for user interaction/approval.
  */
 
-import { tool, type ToolSet } from 'ai';
+import { tool, type CoreTool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
 import type { SearchResult, FileEntry, Instrument } from '@/types/agent';
@@ -21,7 +21,33 @@ import type {
 } from '@/types/service';
 
 // =============================================================================
-// Common Output Schemas
+// Factory Helper
+// =============================================================================
+
+/**
+ * Create a server-side tool with standardized error handling.
+ * Wraps the execute function in a try-catch that returns { status: 'error' }.
+ */
+function createServerTool<TParams extends z.ZodType, TResult>(config: {
+  description: string;
+  parameters: TParams;
+  execute: (args: z.infer<TParams>) => Promise<TResult>;
+}): CoreTool {
+  return tool({
+    description: config.description,
+    inputSchema: config.parameters,
+    execute: async (args: z.infer<TParams>) => {
+      try {
+        return await config.execute(args);
+      } catch (error) {
+        return { status: 'error', error: String(error) };
+      }
+    },
+  });
+}
+
+// =============================================================================
+// Common Schemas
 // =============================================================================
 
 const commandResultSchema = z.object({
@@ -38,6 +64,31 @@ const fileResultSchema = z.object({
   path: z.string().optional(),
 });
 
+const statusResultSchema = z.object({
+  status: z.enum(['success', 'error']),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+const statusMessageSchema = z.object({
+  status: z.enum(['success', 'error']),
+  message: z.string().optional(),
+  error: z.string().optional(),
+});
+
+const srcDestSchema = z.object({
+  src: z.string().describe('Source path'),
+  dest: z.string().describe('Destination path'),
+});
+
+const reportIdSchema = z.object({
+  report_id: z.string().describe('The report ID'),
+});
+
+const reasonSchema = z.object({
+  reason: z.string().describe('Brief explanation'),
+});
+
 // =============================================================================
 // HITL Tools (Client-Side - No Execute Function)
 // =============================================================================
@@ -47,7 +98,7 @@ export const executeCommandTool = tool({
 
 IMPORTANT POWERSHELL RULES:
 - Use full cmdlet names: Get-ChildItem (not ls/dir), Get-Process (not ps), Select-Object (not select)
-- Chain with semicolons (;) not && 
+- Chain with semicolons (;) not &&
 - Pipe to Format-Table -AutoSize or Select-Object for readable output
 - Quote paths with spaces: "$env:USERPROFILE\\Downloads"
 - Use -ErrorAction SilentlyContinue when checking things that may not exist
@@ -70,86 +121,14 @@ export const writeFileTool = tool({
 
 export const moveFileTool = tool({
   description: 'Move or rename a file or directory. The user will approve this action.',
-  inputSchema: z.object({
-    src: z.string().describe('Source path'),
-    dest: z.string().describe('Destination path'),
-  }),
-  outputSchema: z.object({
-    status: z.enum(['success', 'error']),
-    output: z.string().optional(),
-    error: z.string().optional(),
-  }),
+  inputSchema: srcDestSchema,
+  outputSchema: statusResultSchema,
 });
 
 export const copyFileTool = tool({
   description: 'Copy a file or directory. The user will approve this action.',
-  inputSchema: z.object({
-    src: z.string().describe('Source path'),
-    dest: z.string().describe('Destination path'),
-  }),
-  outputSchema: z.object({
-    status: z.enum(['success', 'error']),
-    output: z.string().optional(),
-    error: z.string().optional(),
-  }),
-});
-
-// =============================================================================
-// Server-Side Tools (Auto-Execute)
-// =============================================================================
-
-export const searchWebTool = tool({
-  description: 'Search the web for information, documentation, error solutions, or guides.',
-  inputSchema: z.object({
-    query: z.string().describe('The search query - be specific, include error codes when applicable'),
-    provider: z.enum(['tavily', 'searxng']).optional().describe('Search provider'),
-  }),
-  execute: async ({ query, provider = 'tavily' }) => {
-    try {
-      const settings = await invoke<{ agent: { tavilyApiKey?: string; searxngUrl?: string } }>('get_settings');
-      let results: SearchResult[] = [];
-      
-      if (provider === 'tavily' && settings.agent.tavilyApiKey) {
-        results = await invoke<SearchResult[]>('search_tavily', { query, api_key: settings.agent.tavilyApiKey });
-      } else if (provider === 'searxng' && settings.agent.searxngUrl) {
-        results = await invoke<SearchResult[]>('search_searxng', { query, instance_url: settings.agent.searxngUrl });
-      } else {
-        return { status: 'error', error: 'No search provider configured. Set up Tavily or SearXNG in Settings → AI Agent → Web Search.' };
-      }
-      
-      return { status: 'success', results: results.map(r => ({ title: r.title, url: r.url, snippet: r.snippet })) };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
-  },
-});
-
-export const readFileTool = tool({
-  description: 'Read the contents of a text file with optional line numbers and pagination. Use for examining logs, configs, scripts, or any text file.',
-  inputSchema: z.object({
-    path: z.string().describe('Full absolute path to the file'),
-    offset: z.number().optional().describe('Line number to start from (0-indexed)'),
-    limit: z.number().optional().describe('Maximum number of lines to read'),
-    lineNumbers: z.boolean().optional().describe('Include line numbers in output (default: true)'),
-  }),
-  execute: async ({ path, offset, limit, lineNumbers }) => {
-    try {
-      const result = await invoke<{ content: string; totalLines: number; hasMore: boolean }>('agent_read_file', { 
-        path, 
-        offset, 
-        limit,
-        line_numbers: lineNumbers ?? true 
-      });
-      return { 
-        status: 'success', 
-        content: result.content,
-        totalLines: result.totalLines,
-        hasMore: result.hasMore,
-      };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
-  },
+  inputSchema: srcDestSchema,
+  outputSchema: statusResultSchema,
 });
 
 export const editFileTool = tool({
@@ -169,365 +148,319 @@ Use this for targeted edits instead of rewriting entire files. Always read the f
   }),
 });
 
-export const grepTool = tool({
+// =============================================================================
+// Server-Side Tools — Filesystem
+// =============================================================================
+
+export const readFileTool = createServerTool({
+  description: 'Read the contents of a text file with optional line numbers and pagination. Use for examining logs, configs, scripts, or any text file.',
+  parameters: z.object({
+    path: z.string().describe('Full absolute path to the file'),
+    offset: z.number().optional().describe('Line number to start from (0-indexed)'),
+    limit: z.number().optional().describe('Maximum number of lines to read'),
+    lineNumbers: z.boolean().optional().describe('Include line numbers in output (default: true)'),
+  }),
+  execute: async ({ path, offset, limit, lineNumbers }) => {
+    const result = await invoke<{ content: string; totalLines: number; hasMore: boolean }>('agent_read_file', {
+      path, offset, limit, line_numbers: lineNumbers ?? true,
+    });
+    return { status: 'success', content: result.content, totalLines: result.totalLines, hasMore: result.hasMore };
+  },
+});
+
+export const grepTool = createServerTool({
   description: `Search for a regex pattern across files in a directory. Returns matching lines with file paths and line numbers.
 Use this to find code patterns, error messages, or specific content across multiple files.`,
-  inputSchema: z.object({
+  parameters: z.object({
     pattern: z.string().describe('Regex pattern to search for'),
     path: z.string().optional().describe('Directory path to search (default: current working directory)'),
     filePattern: z.string().optional().describe('Glob pattern to filter files (e.g., "*.ts", "*.rs")'),
     maxResults: z.number().optional().describe('Maximum number of results (default: 50)'),
   }),
   execute: async ({ pattern, path, filePattern, maxResults }) => {
-    try {
-      const results = await invoke<Array<{ file: string; line: number; content: string }>>('agent_grep', { 
-        pattern, 
-        path, 
-        file_pattern: filePattern,
-        max_results: maxResults ?? 50 
-      });
-      return { 
-        status: 'success', 
-        results,
-        count: results.length,
-      };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const results = await invoke<Array<{ file: string; line: number; content: string }>>('agent_grep', {
+      pattern, path, file_pattern: filePattern, max_results: maxResults ?? 50,
+    });
+    return { status: 'success', results, count: results.length };
   },
 });
 
-export const globTool = tool({
+export const globTool = createServerTool({
   description: `Find files matching a glob pattern, sorted by modification time (newest first).
 Use this to discover files by pattern, e.g., "*.log", "src/**/*.ts", "config.*".`,
-  inputSchema: z.object({
+  parameters: z.object({
     pattern: z.string().describe('Glob pattern (e.g., "*.txt", "src/**/*.rs")'),
     path: z.string().optional().describe('Base directory path (default: current working directory)'),
     limit: z.number().optional().describe('Maximum number of results (default: 100)'),
   }),
   execute: async ({ pattern, path, limit }) => {
-    try {
-      const results = await invoke<Array<{ path: string; name: string; modified: string; size: number }>>('agent_glob', { 
-        pattern, 
-        path,
-        limit: limit ?? 100 
-      });
-      return { 
-        status: 'success', 
-        files: results,
-        count: results.length,
-      };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const results = await invoke<Array<{ path: string; name: string; modified: string; size: number }>>('agent_glob', {
+      pattern, path, limit: limit ?? 100,
+    });
+    return { status: 'success', files: results, count: results.length };
   },
 });
 
-export const listDirTool = tool({
+export const listDirTool = createServerTool({
   description: 'List files and directories at a given path. Returns name, type, and size.',
-  inputSchema: z.object({
+  parameters: z.object({
     path: z.string().describe('Absolute path to list. Use C:\\Users\\<user> for home, C:\\ for root.'),
   }),
   execute: async ({ path }) => {
-    try {
-      const entries = await invoke<FileEntry[]>('agent_list_dir', { path });
-      return {
-        status: 'success',
-        entries: entries.map(e => ({ name: e.name, path: e.path, type: e.is_dir ? 'dir' : 'file', size: e.size })),
-      };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const entries = await invoke<FileEntry[]>('agent_list_dir', { path });
+    return {
+      status: 'success',
+      entries: entries.map(e => ({ name: e.name, path: e.path, type: e.is_dir ? 'dir' : 'file', size: e.size })),
+    };
   },
 });
 
-export const listProgramsTool = tool({
+// =============================================================================
+// Server-Side Tools — Programs & Instruments
+// =============================================================================
+
+export const listProgramsTool = createServerTool({
   description: 'Get an overview of all portable programs installed in data/programs (executables scanned recursively). Use only when you need to see everything at once. For locating a specific tool, prefer find_exe.',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => {
-    try {
-      const programs = await invoke<Array<Record<string, string>>>('list_agent_programs');
-      return { status: 'success', programs: programs.map(p => ({ name: p.name, path: p.path, executables: p.executables })) };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const programs = await invoke<Array<Record<string, string>>>('list_agent_programs');
+    return { status: 'success', programs: programs.map(p => ({ name: p.name, path: p.path, executables: p.executables })) };
   },
 });
 
-export const findExeTool = tool({
+export const findExeTool = createServerTool({
   description: `Preferred tool for locating a specific CLI executable. Searches data/programs recursively.
 Use find_exe("smartctl") instead of list_programs when you know what tool you need.
 Returns full absolute paths of matches. If empty, the program is not installed.
 Set searchPath=true to also check system PATH via where.exe.`,
-  inputSchema: z.object({
+  parameters: z.object({
     query: z.string().describe('Executable name or keyword to search for (e.g. "smartctl", "ffmpeg", "rclone")'),
     searchPath: z.boolean().optional().describe('Also check system PATH via where.exe (default: false)'),
   }),
   execute: async ({ query, searchPath }) => {
-    try {
-      const matches = await invoke<string[]>('agent_find_exe', { query, search_path: searchPath ?? false });
-      return { status: 'success' as const, matches, found: matches.length > 0 };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const matches = await invoke<string[]>('agent_find_exe', { query, search_path: searchPath ?? false });
+    return { status: 'success' as const, matches, found: matches.length > 0 };
   },
 });
 
-export const listInstrumentsTool = tool({
+export const listInstrumentsTool = createServerTool({
   description: 'List available custom instruments (scripts) that can be run with run_instrument.',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => {
-    try {
-      const instruments = await invoke<Instrument[]>('list_instruments');
-      return { status: 'success', instruments: instruments.map(i => ({ name: i.name, description: i.description, extension: i.extension })) };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const instruments = await invoke<Instrument[]>('list_instruments');
+    return { status: 'success', instruments: instruments.map(i => ({ name: i.name, description: i.description, extension: i.extension })) };
   },
 });
 
-export const runInstrumentTool = tool({
+export const runInstrumentTool = createServerTool({
   description: 'Run a custom instrument (script) by name.',
-  inputSchema: z.object({
+  parameters: z.object({
     name: z.string().describe('Name of the instrument to run'),
     args: z.string().optional().describe('Arguments to pass'),
   }),
   execute: async ({ name, args }) => {
-    try {
-      const instruments = await invoke<Instrument[]>('list_instruments');
-      const instrument = instruments.find(i => i.name.toLowerCase() === name.toLowerCase());
-      if (!instrument) return { status: 'error', error: `Instrument '${name}' not found. Use list_instruments to see available.` };
+    const instruments = await invoke<Instrument[]>('list_instruments');
+    const instrument = instruments.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (!instrument) return { status: 'error', error: `Instrument '${name}' not found. Use list_instruments to see available.` };
 
-      let command = '';
-      if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${args || ''}`;
-      else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${args || ''}`;
-      else if (instrument.extension === 'py') command = `python "${instrument.path}" ${args || ''}`;
-      else if (instrument.extension === 'js') command = `node "${instrument.path}" ${args || ''}`;
+    let command = '';
+    if (instrument.extension === 'ps1') command = `powershell -ExecutionPolicy Bypass -File "${instrument.path}" ${args || ''}`;
+    else if (['bat', 'cmd', 'exe'].includes(instrument.extension)) command = `"${instrument.path}" ${args || ''}`;
+    else if (instrument.extension === 'py') command = `python "${instrument.path}" ${args || ''}`;
+    else if (instrument.extension === 'js') command = `node "${instrument.path}" ${args || ''}`;
 
-      const result = await invoke<{ id: string; status: string; output?: string }>('queue_agent_command', { command, reason: `Running instrument: ${name}` });
-      return result.status === 'executed'
-        ? { status: 'success', output: result.output || 'Executed successfully' }
-        : { status: 'pending', commandId: result.id, message: 'Waiting for approval' };
-    } catch (error) {
-      return { status: 'error', error: String(error) };
-    }
+    const result = await invoke<{ id: string; status: string; output?: string }>('queue_agent_command', {
+      command, reason: `Running instrument: ${name}`,
+    });
+    return result.status === 'executed'
+      ? { status: 'success', output: result.output || 'Executed successfully' }
+      : { status: 'pending', commandId: result.id, message: 'Waiting for approval' };
   },
 });
 
-export const getSystemInfoTool = tool({
+// =============================================================================
+// Server-Side Tools — System & Search
+// =============================================================================
+
+export const getSystemInfoTool = createServerTool({
   description: `Get system information (OS, CPU, RAM, disks, GPU, network). Specify sections to avoid loading unnecessary data and save tokens.
 Examples: sections=["disk"] for disk space, sections=["memory"] for RAM, sections=["os","cpu"] for hardware overview.
 Omit sections to get everything.`,
-  inputSchema: z.object({
+  parameters: z.object({
     sections: z.array(z.enum(['os', 'cpu', 'memory', 'disk', 'network'])).optional()
-      .describe('Specific sections to retrieve. Omit for all. Use ["disk"] for disk tasks, ["memory"] for RAM diagnostics, etc.'),
+      .describe('Specific sections to retrieve. Omit for all.'),
   }),
   execute: async ({ sections }) => {
-    try {
-      const info = await invoke<Record<string, unknown>>('get_system_info');
-      if (!sections || sections.length === 0) {
-        return { status: 'success' as const, info };
-      }
-      const keyMap: Record<string, string> = {
-        os: 'os',
-        cpu: 'cpu',
-        memory: 'memory',
-        disk: 'disks',
-        network: 'networks',
-      };
-      const filtered: Record<string, unknown> = {};
-      for (const s of sections) {
-        const key = keyMap[s];
-        if (key && info[key] !== undefined) filtered[key] = info[key];
-      }
-      return { status: 'success' as const, info: filtered };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
+    const info = await invoke<Record<string, unknown>>('get_system_info');
+    if (!sections || sections.length === 0) {
+      return { status: 'success' as const, info };
     }
+    const keyMap: Record<string, string> = {
+      os: 'os', cpu: 'cpu', memory: 'memory', disk: 'disks', network: 'networks',
+    };
+    const filtered: Record<string, unknown> = {};
+    for (const s of sections) {
+      const key = keyMap[s];
+      if (key && info[key] !== undefined) filtered[key] = info[key];
+    }
+    return { status: 'success' as const, info: filtered };
+  },
+});
+
+export const searchWebTool = createServerTool({
+  description: 'Search the web for information, documentation, error solutions, or guides.',
+  parameters: z.object({
+    query: z.string().describe('The search query - be specific, include error codes when applicable'),
+    provider: z.enum(['tavily', 'searxng']).optional().describe('Search provider'),
+  }),
+  execute: async ({ query, provider = 'tavily' }) => {
+    const settings = await invoke<{ agent: { tavilyApiKey?: string; searxngUrl?: string } }>('get_settings');
+    let results: SearchResult[] = [];
+
+    if (provider === 'tavily' && settings.agent.tavilyApiKey) {
+      results = await invoke<SearchResult[]>('search_tavily', { query, api_key: settings.agent.tavilyApiKey });
+    } else if (provider === 'searxng' && settings.agent.searxngUrl) {
+      results = await invoke<SearchResult[]>('search_searxng', { query, instance_url: settings.agent.searxngUrl });
+    } else {
+      return { status: 'error', error: 'No search provider configured. Set up Tavily or SearXNG in Settings -> AI Agent -> Web Search.' };
+    }
+
+    return { status: 'success', results: results.map(r => ({ title: r.title, url: r.url, snippet: r.snippet })) };
   },
 });
 
 // =============================================================================
-// Service Tools — Server-Side (Auto-Execute)
+// Server-Side Tools — Service Query (Auto-Execute)
 // =============================================================================
 
-export const listServicesTool = tool({
-  description: `List all available diagnostic and maintenance services. Returns service ID, name, description, category, estimated duration, and required programs. Use this to understand what services are available before building a queue.`,
-  inputSchema: z.object({}),
+export const listServicesTool = createServerTool({
+  description: 'List all available diagnostic and maintenance services. Returns service ID, name, description, category, estimated duration, and required programs.',
+  parameters: z.object({}),
   execute: async () => {
-    try {
-      const definitions = await invoke<ServiceDefinition[]>('get_service_definitions');
-      return {
-        status: 'success' as const,
-        services: definitions.map(d => ({
-          id: d.id,
-          name: d.name,
-          description: d.description,
-          category: d.category,
-          estimatedDurationSecs: d.estimatedDurationSecs,
-          requiredPrograms: d.requiredPrograms,
-          options: d.options.map(o => ({ id: o.id, label: o.label, type: o.optionType, default: o.defaultValue })),
-        })),
-      };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const definitions = await invoke<ServiceDefinition[]>('get_service_definitions');
+    return {
+      status: 'success' as const,
+      services: definitions.map(d => ({
+        id: d.id, name: d.name, description: d.description, category: d.category,
+        estimatedDurationSecs: d.estimatedDurationSecs, requiredPrograms: d.requiredPrograms,
+        options: d.options.map(o => ({ id: o.id, label: o.label, type: o.optionType, default: o.defaultValue })),
+      })),
+    };
   },
 });
 
-export const listServicePresetsTool = tool({
-  description: `List all service presets (Diagnostics, General, Complete, Custom, and user-created). Each preset contains a pre-configured list of services. Use this to offer the user preset-based runs.`,
-  inputSchema: z.object({}),
+export const listServicePresetsTool = createServerTool({
+  description: 'List all service presets (Diagnostics, General, Complete, Custom, and user-created). Each preset contains a pre-configured list of services.',
+  parameters: z.object({}),
   execute: async () => {
-    try {
-      const presets = await invoke<ServicePreset[]>('get_service_presets');
-      return {
-        status: 'success' as const,
-        presets: presets.map(p => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          serviceCount: p.services.filter(s => s.enabled).length,
-          services: p.services.map(s => ({ serviceId: s.serviceId, enabled: s.enabled })),
-        })),
-      };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const presets = await invoke<ServicePreset[]>('get_service_presets');
+    return {
+      status: 'success' as const,
+      presets: presets.map(p => ({
+        id: p.id, name: p.name, description: p.description,
+        serviceCount: p.services.filter(s => s.enabled).length,
+        services: p.services.map(s => ({ serviceId: s.serviceId, enabled: s.enabled })),
+      })),
+    };
   },
 });
 
-export const checkServiceRequirementsTool = tool({
-  description: `Check if the required external programs are available for a list of services. Returns which services have missing requirements. Use this before running services to verify they can execute.`,
-  inputSchema: z.object({
+export const checkServiceRequirementsTool = createServerTool({
+  description: 'Check if required external programs are available for a list of services. Returns which services have missing requirements.',
+  parameters: z.object({
     service_ids: z.array(z.string()).describe('Array of service IDs to check'),
   }),
   execute: async ({ service_ids }) => {
-    try {
-      const missing = await invoke<Record<string, string[]>>('validate_service_requirements', {
-        service_ids,
-      });
-      const allClear = Object.keys(missing).length === 0;
-      return {
-        status: 'success' as const,
-        allRequirementsMet: allClear,
-        missingPrograms: missing,
-      };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const missing = await invoke<Record<string, string[]>>('validate_service_requirements', { service_ids });
+    return { status: 'success' as const, allRequirementsMet: Object.keys(missing).length === 0, missingPrograms: missing };
   },
 });
 
-export const getServiceStatusTool = tool({
-  description: `Get the current service run state. Returns whether a run is active, paused, and the current report with progress. Use this to check on a running service.`,
-  inputSchema: z.object({}),
+export const getServiceStatusTool = createServerTool({
+  description: 'Get the current service run state. Returns whether a run is active, paused, and the current report with progress.',
+  parameters: z.object({}),
   execute: async () => {
-    try {
-      const state = await invoke<ServiceRunState>('get_service_run_state');
-      return {
-        status: 'success' as const,
-        isRunning: state.isRunning,
-        isPaused: state.isPaused,
-        currentServiceIndex: state.currentReport?.currentServiceIndex,
-        totalServices: state.currentReport?.queue.filter(q => q.enabled).length,
-        currentServiceId: state.currentReport?.currentServiceIndex != null
-          ? state.currentReport?.queue.filter(q => q.enabled)[state.currentReport.currentServiceIndex]?.serviceId
-          : undefined,
-        completedResults: state.currentReport?.results.length ?? 0,
-        reportStatus: state.currentReport?.status,
-      };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const state = await invoke<ServiceRunState>('get_service_run_state');
+    return {
+      status: 'success' as const,
+      isRunning: state.isRunning,
+      isPaused: state.isPaused,
+      currentServiceIndex: state.currentReport?.currentServiceIndex,
+      totalServices: state.currentReport?.queue.filter(q => q.enabled).length,
+      currentServiceId: state.currentReport?.currentServiceIndex != null
+        ? state.currentReport?.queue.filter(q => q.enabled)[state.currentReport.currentServiceIndex]?.serviceId
+        : undefined,
+      completedResults: state.currentReport?.results.length ?? 0,
+      reportStatus: state.currentReport?.status,
+    };
   },
 });
 
-export const getServiceReportTool = tool({
-  description: `Get a saved service report by its ID. Returns the full report with all findings, results, and metadata. Use this after a run completes or to review past reports.`,
-  inputSchema: z.object({
-    report_id: z.string().describe('The report ID to retrieve'),
-  }),
+// =============================================================================
+// Server-Side Tools — Service Report (Auto-Execute)
+// =============================================================================
+
+export const getServiceReportTool = createServerTool({
+  description: 'Get a saved service report by its ID. Returns the full report with all findings, results, and metadata.',
+  parameters: reportIdSchema,
   execute: async ({ report_id }) => {
-    try {
-      const report = await invoke<ServiceReport>('get_service_report', { report_id });
-      return {
-        status: 'success' as const,
-        report: {
-          id: report.id,
-          startedAt: report.startedAt,
-          completedAt: report.completedAt,
-          status: report.status,
-          totalDurationMs: report.totalDurationMs,
-          agentSummary: report.agentSummary,
-          healthScore: report.healthScore,
-          results: report.results.map(r => ({
-            serviceId: r.serviceId,
-            success: r.success,
-            error: r.error,
-            durationMs: r.durationMs,
-            findingsCount: r.findings.length,
-            findings: r.findings.map(f => ({
-              severity: f.severity,
-              title: f.title,
-              description: f.description,
-              recommendation: f.recommendation,
-            })),
-            agentAnalysis: r.agentAnalysis,
+    const report = await invoke<ServiceReport>('get_service_report', { report_id });
+    return {
+      status: 'success' as const,
+      report: {
+        id: report.id, startedAt: report.startedAt, completedAt: report.completedAt,
+        status: report.status, totalDurationMs: report.totalDurationMs,
+        agentSummary: report.agentSummary, healthScore: report.healthScore,
+        results: report.results.map(r => ({
+          serviceId: r.serviceId, success: r.success, error: r.error, durationMs: r.durationMs,
+          findingsCount: r.findings.length,
+          findings: r.findings.map(f => ({
+            severity: f.severity, title: f.title, description: f.description, recommendation: f.recommendation,
           })),
-        },
-      };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+          agentAnalysis: r.agentAnalysis,
+        })),
+      },
+    };
   },
 });
 
-export const getReportStatisticsTool = tool({
-  description: `Get computed statistics for a service report: pass/fail counts, severity breakdown, health score, duration metrics. Use this for a high-level overview before writing a summary.`,
-  inputSchema: z.object({
-    report_id: z.string().describe('The report ID to analyze'),
-  }),
+export const getReportStatisticsTool = createServerTool({
+  description: 'Get computed statistics for a service report: pass/fail counts, severity breakdown, health score, duration metrics.',
+  parameters: reportIdSchema,
   execute: async ({ report_id }) => {
-    try {
-      const stats = await invoke<ReportStatistics>('get_report_statistics', { report_id });
-      return { status: 'success' as const, statistics: stats };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const stats = await invoke<ReportStatistics>('get_report_statistics', { report_id });
+    return { status: 'success' as const, statistics: stats };
   },
 });
 
-export const editFindingTool = tool({
-  description: `Edit an existing finding in a saved report. Can update severity, title, description, or recommendation. Use this to make findings more customer-friendly or correct inaccuracies.`,
-  inputSchema: z.object({
+// =============================================================================
+// Server-Side Tools — Service Report Editing (Auto-Execute)
+// =============================================================================
+
+export const editFindingTool = createServerTool({
+  description: 'Edit an existing finding in a saved report. Can update severity, title, description, or recommendation.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     service_id: z.string().describe('Service ID within the report'),
     finding_index: z.number().describe('Zero-based index of the finding to edit'),
-    severity: z.enum(['info', 'success', 'warning', 'error', 'critical']).optional().describe('New severity level'),
-    title: z.string().optional().describe('New title'),
-    description: z.string().optional().describe('New description'),
-    recommendation: z.string().optional().describe('New recommendation'),
+    severity: z.enum(['info', 'success', 'warning', 'error', 'critical']).optional(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    recommendation: z.string().optional(),
   }),
   execute: async ({ report_id, service_id, finding_index, severity, title, description, recommendation }) => {
-    try {
-      await invoke('edit_report_finding', {
-        report_id, service_id, finding_index,
-        severity: severity ?? null,
-        title: title ?? null,
-        description: description ?? null,
-        recommendation: recommendation ?? null,
-      });
-      return { status: 'success' as const, message: 'Finding updated' };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('edit_report_finding', {
+      report_id, service_id, finding_index,
+      severity: severity ?? null, title: title ?? null,
+      description: description ?? null, recommendation: recommendation ?? null,
+    });
+    return { status: 'success' as const, message: 'Finding updated' };
   },
 });
 
-export const addFindingTool = tool({
-  description: `Add a new finding to a service result in a report. Use this when you discover something during intervention that isn't captured in the original results.`,
-  inputSchema: z.object({
+export const addFindingTool = createServerTool({
+  description: 'Add a new finding to a service result in a report.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     service_id: z.string().describe('Service ID to add the finding to'),
     severity: z.enum(['info', 'success', 'warning', 'error', 'critical']).describe('Finding severity'),
@@ -536,100 +469,75 @@ export const addFindingTool = tool({
     recommendation: z.string().optional().describe('Recommended action'),
   }),
   execute: async ({ report_id, service_id, severity, title, description, recommendation }) => {
-    try {
-      await invoke('add_report_finding', {
-        report_id, service_id, severity, title, description,
-        recommendation: recommendation ?? null,
-      });
-      return { status: 'success' as const, message: 'Finding added' };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('add_report_finding', {
+      report_id, service_id, severity, title, description,
+      recommendation: recommendation ?? null,
+    });
+    return { status: 'success' as const, message: 'Finding added' };
   },
 });
 
-export const removeFindingTool = tool({
-  description: `Remove a finding from a service result in a report by index. Use sparingly — only to remove duplicate or irrelevant findings.`,
-  inputSchema: z.object({
+export const removeFindingTool = createServerTool({
+  description: 'Remove a finding from a service result in a report by index. Use sparingly.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     service_id: z.string().describe('Service ID'),
     finding_index: z.number().describe('Zero-based index of the finding to remove'),
   }),
   execute: async ({ report_id, service_id, finding_index }) => {
-    try {
-      await invoke('remove_report_finding', { report_id, service_id, finding_index });
-      return { status: 'success' as const, message: 'Finding removed' };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('remove_report_finding', { report_id, service_id, finding_index });
+    return { status: 'success' as const, message: 'Finding removed' };
   },
 });
 
-export const setReportSummaryTool = tool({
-  description: `Set the executive summary on a report. Write a comprehensive, professional summary covering overall system health, key findings, and recommendations. This appears at the top of the report.`,
-  inputSchema: z.object({
+export const setReportSummaryTool = createServerTool({
+  description: 'Set the executive summary on a report. Write a comprehensive, professional summary.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     summary: z.string().describe('Executive summary text (professional, comprehensive)'),
   }),
   execute: async ({ report_id, summary }) => {
-    try {
-      await invoke('set_report_summary', { report_id, summary });
-      return { status: 'success' as const, message: 'Summary set' };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('set_report_summary', { report_id, summary });
+    return { status: 'success' as const, message: 'Summary set' };
   },
 });
 
-export const setServiceAnalysisTool = tool({
-  description: `Set agent analysis text for a specific service result. Write a brief interpretation of what the service found and what it means for the user.`,
-  inputSchema: z.object({
+export const setServiceAnalysisTool = createServerTool({
+  description: 'Set agent analysis text for a specific service result.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     service_id: z.string().describe('Service ID to annotate'),
     analysis: z.string().describe('Analysis text explaining the results'),
   }),
   execute: async ({ report_id, service_id, analysis }) => {
-    try {
-      await invoke('set_service_analysis', { report_id, service_id, analysis });
-      return { status: 'success' as const, message: 'Analysis set' };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('set_service_analysis', { report_id, service_id, analysis });
+    return { status: 'success' as const, message: 'Analysis set' };
   },
 });
 
-export const setHealthScoreTool = tool({
-  description: `Set the overall health score (0-100) on a report. Score guidelines: 90-100 excellent, 70-89 good, 50-69 fair, 30-49 poor, 0-29 critical.`,
-  inputSchema: z.object({
+export const setHealthScoreTool = createServerTool({
+  description: 'Set the overall health score (0-100) on a report. 90-100 excellent, 70-89 good, 50-69 fair, 30-49 poor, 0-29 critical.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID'),
     score: z.number().min(0).max(100).describe('Health score 0-100'),
   }),
   execute: async ({ report_id, score }) => {
-    try {
-      await invoke('set_report_health_score', { report_id, score });
-      return { status: 'success' as const, message: `Health score set to ${score}` };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    await invoke('set_report_health_score', { report_id, score });
+    return { status: 'success' as const, message: `Health score set to ${score}` };
   },
 });
 
-export const generateReportPdfTool = tool({
-  description: `Generate a PDF report file from a completed service report. Returns the file path. Use this as the final step after editing findings and writing a summary.`,
-  inputSchema: z.object({
+export const generateReportPdfTool = createServerTool({
+  description: 'Generate a PDF report file from a completed service report. Returns the file path.',
+  parameters: z.object({
     report_id: z.string().describe('Report ID to generate PDF from'),
     output_path: z.string().optional().describe('Custom output path (optional, defaults to data/reports/)'),
   }),
   execute: async ({ report_id, output_path }) => {
-    try {
-      const path = await invoke<string>('generate_report_pdf', {
-        report_id,
-        output_path: output_path ?? null,
-      });
-      return { status: 'success' as const, path, message: `Report PDF generated at ${path}` };
-    } catch (error) {
-      return { status: 'error' as const, error: String(error) };
-    }
+    const path = await invoke<string>('generate_report_pdf', {
+      report_id, output_path: output_path ?? null,
+    });
+    return { status: 'success' as const, path, message: `Report PDF generated at ${path}` };
   },
 });
 
@@ -667,39 +575,27 @@ The run will execute sequentially. You will receive updates as each service comp
 });
 
 export const pauseServiceTool = tool({
-  description: `Pause the currently running service queue. Takes effect between services (the current service will finish first). Use this when you detect an issue that needs investigation before continuing.`,
-  inputSchema: z.object({
+  description: 'Pause the currently running service queue. Takes effect between services.',
+  inputSchema: reasonSchema.extend({
     reason: z.string().describe('Why you are pausing the run'),
   }),
-  outputSchema: z.object({
-    status: z.enum(['success', 'error']),
-    message: z.string().optional(),
-    error: z.string().optional(),
-  }),
+  outputSchema: statusMessageSchema,
 });
 
 export const resumeServiceTool = tool({
-  description: `Resume a paused service run. Use this after investigating and resolving an issue, or deciding the remaining services should continue.`,
-  inputSchema: z.object({
+  description: 'Resume a paused service run.',
+  inputSchema: reasonSchema.extend({
     reason: z.string().describe('Why it is safe to resume'),
   }),
-  outputSchema: z.object({
-    status: z.enum(['success', 'error']),
-    message: z.string().optional(),
-    error: z.string().optional(),
-  }),
+  outputSchema: statusMessageSchema,
 });
 
 export const cancelServiceTool = tool({
-  description: `Cancel the currently running service queue. Use this if a critical issue is found and the remaining services should not run.`,
-  inputSchema: z.object({
+  description: 'Cancel the currently running service queue.',
+  inputSchema: reasonSchema.extend({
     reason: z.string().describe('Why you are cancelling the run'),
   }),
-  outputSchema: z.object({
-    status: z.enum(['success', 'error']),
-    message: z.string().optional(),
-    error: z.string().optional(),
-  }),
+  outputSchema: statusMessageSchema,
 });
 
 // =============================================================================
@@ -707,15 +603,14 @@ export const cancelServiceTool = tool({
 // =============================================================================
 
 export const generateFileTool = tool({
-  description: `Generate a file with content and save it to the agent workspace. 
+  description: `Generate a file with content and save it to the agent workspace.
 Use this when you need to create reports, logs, scripts, configuration files, or any output file.
-The file will be saved and the user will be able to download it from the chat.
-Examples: creating diagnostic reports, exporting logs, generating scripts, saving analysis results.`,
+The file will be saved and the user will be able to download it from the chat.`,
   inputSchema: z.object({
-    filename: z.string().describe('Name for the file including extension (e.g., "report.txt", "script.ps1", "data.json")'),
+    filename: z.string().describe('Name for the file including extension'),
     content: z.string().describe('Full content to write to the file'),
-    description: z.string().describe('Brief description of what this file contains and why it was generated'),
-    mime_type: z.string().optional().describe('MIME type (optional, auto-detected from extension if not provided)'),
+    description: z.string().describe('Brief description of what this file contains'),
+    mime_type: z.string().optional().describe('MIME type (optional, auto-detected from extension)'),
   }),
   outputSchema: z.object({
     status: z.enum(['success', 'error', 'pending']),

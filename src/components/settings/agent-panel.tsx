@@ -36,7 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { useSettings } from '@/components/settings-context';
-import { AGENT_PROVIDERS, type ProviderApiKeys, type MCPServerConfig } from '@/types/agent';
+import { AGENT_PROVIDERS, type AgentSettings, type ProviderApiKeys, type MCPServerConfig } from '@/types/agent';
 
 // =============================================================================
 // MCP Connections Card
@@ -46,8 +46,8 @@ import { AGENT_PROVIDERS, type ProviderApiKeys, type MCPServerConfig } from '@/t
  * MCP Connections Card - Configure external MCP servers the agent connects to
  */
 function MCPConnectionsCard({ agentSettings, updateSetting, isLoading }: {
-  agentSettings: any;
-  updateSetting: (key: string, value: any) => Promise<void>;
+  agentSettings: AgentSettings;
+  updateSetting: (key: 'agent', value: AgentSettings) => Promise<void>;
   isLoading: boolean;
 }) {
   const [editingServer, setEditingServer] = useState<MCPServerConfig | null>(null);

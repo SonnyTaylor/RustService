@@ -177,10 +177,14 @@ pub(crate) fn get_registry_startup_items_sync() -> Result<Vec<StartupItem>, Stri
     let parsed: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse registry items: {} - Output: {}", e, stdout))?;
 
-    let raw_items: Vec<serde_json::Value> = if parsed.is_array() {
-        parsed.as_array().unwrap().clone()
+    let raw_items: Vec<&serde_json::Value> = if parsed.is_array() {
+        parsed
+            .as_array()
+            .ok_or_else(|| "Expected JSON array from PowerShell registry output".to_string())?
+            .iter()
+            .collect()
     } else {
-        vec![parsed]
+        vec![&parsed]
     };
 
     let mut items = Vec::new();
@@ -198,13 +202,14 @@ pub(crate) fn get_registry_startup_items_sync() -> Result<Vec<StartupItem>, Stri
         let impact = estimate_impact(&name, &command);
 
         let publisher = get_file_publisher(path.as_deref());
+        let source_location = raw["SourceLocation"].as_str().unwrap_or("").to_string();
         items.push(StartupItem {
             id: format!("reg_{}", sanitize_id(&name)),
-            name: name.clone(),
+            name,
             command,
             path,
             source,
-            source_location: raw["SourceLocation"].as_str().unwrap_or("").to_string(),
+            source_location,
             enabled,
             publisher,
             description: None,
@@ -271,18 +276,20 @@ fn scan_startup_folder(path: &PathBuf, source: StartupSource) -> Result<Vec<Star
             .to_string();
         let command = file_path.to_string_lossy().to_string();
         let impact = estimate_impact(&name, &command);
+        let publisher = get_file_publisher(Some(&command));
+        let source_location = path.to_string_lossy().to_string();
 
         items.push(StartupItem {
             id: format!("folder_{}", sanitize_id(&name)),
             name,
-            command: command.clone(),
             path: Some(command.clone()),
             source: source.clone(),
-            source_location: path.to_string_lossy().to_string(),
+            source_location,
             enabled: true, // Folder items are always "enabled" if they exist
-            publisher: get_file_publisher(Some(&command)),
+            publisher,
             description: None,
             impact,
+            command,
         });
     }
 
@@ -324,10 +331,14 @@ pub(crate) fn get_scheduled_startup_tasks_sync() -> Result<Vec<StartupItem>, Str
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse tasks: {}", e))?;
 
-    let raw_tasks: Vec<serde_json::Value> = if parsed.is_array() {
-        parsed.as_array().unwrap().clone()
+    let raw_tasks: Vec<&serde_json::Value> = if parsed.is_array() {
+        parsed
+            .as_array()
+            .ok_or_else(|| "Expected JSON array from PowerShell task output".to_string())?
+            .iter()
+            .collect()
     } else {
-        vec![parsed]
+        vec![&parsed]
     };
 
     let mut items = Vec::new();
@@ -343,6 +354,8 @@ pub(crate) fn get_scheduled_startup_tasks_sync() -> Result<Vec<StartupItem>, Str
         let state = raw["State"].as_str().unwrap_or("Unknown");
         let enabled = state == "Ready" || state == "Running";
         let impact = estimate_impact(&name, &full_command);
+        let source_location = raw["Path"].as_str().unwrap_or("").to_string();
+        let description = raw["Description"].as_str().map(|s| s.to_string());
 
         items.push(StartupItem {
             id: format!("task_{}", sanitize_id(&name)),
@@ -350,10 +363,10 @@ pub(crate) fn get_scheduled_startup_tasks_sync() -> Result<Vec<StartupItem>, Str
             command: full_command,
             path: Some(command),
             source: StartupSource::TaskScheduler,
-            source_location: raw["Path"].as_str().unwrap_or("").to_string(),
+            source_location,
             enabled,
             publisher: None,
-            description: raw["Description"].as_str().map(|s| s.to_string()),
+            description,
             impact,
         });
     }

@@ -20,7 +20,6 @@ import {
   Trash2,
   Copy,
   CheckCircle2,
-  Lightbulb,
   AlertTriangle,
   Search,
   ArrowUpDown,
@@ -28,7 +27,7 @@ import {
   Check,
 } from 'lucide-react';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -56,57 +55,9 @@ import { AnimatedList, AnimatedItem } from '@/components/animation-context';
 
 import type { BsodEntry, BsodDetails, BsodStats } from '@/types';
 import { formatCrashTime, formatDumpSize, getStopCodeCategory } from '@/types/bluescreen';
-
-/** Get days since crash */
-function getDaysSinceCrash(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    return `${diffDays} days ago`;
-  } catch {
-    return '';
-  }
-}
-
-/** Get border color class for a stop code category */
-function getCategoryBorderClass(category: string): string {
-  switch (category) {
-    case 'Driver':
-      return 'border-l-4 border-l-yellow-500';
-    case 'Memory':
-      return 'border-l-4 border-l-destructive';
-    case 'Hardware':
-      return 'border-l-4 border-l-orange-500';
-    case 'Graphics':
-      return 'border-l-4 border-l-purple-500';
-    case 'System':
-      return 'border-l-4 border-l-blue-500';
-    default:
-      return 'border-l-4 border-l-muted-foreground';
-  }
-}
-
-/** Get badge variant/class for a stop code category */
-function getCategoryBadgeClass(category: string): string {
-  switch (category) {
-    case 'Driver':
-      return 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30';
-    case 'Memory':
-      return 'bg-destructive/15 text-destructive border-destructive/30';
-    case 'Hardware':
-      return 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30';
-    case 'Graphics':
-      return 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30';
-    case 'System':
-      return 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30';
-    default:
-      return 'bg-muted text-muted-foreground border-muted-foreground/30';
-  }
-}
+import { useClipboard } from '@/lib/clipboard-utils';
+import { getCategoryBorderClass, getCategoryBadgeClass, getDaysSinceCrash } from '@/lib/bluescreen-utils';
+import { BSODDetailView } from '@/components/bluescreen/BSODDetailView';
 
 /**
  * Bluescreen Analysis Page - Main component
@@ -126,8 +77,8 @@ export function BluescreenPage() {
   const [deleteEntry, setDeleteEntry] = useState<BsodEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Copy feedback state
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Clipboard
+  const { copyToClipboard, isCopied } = useClipboard();
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,8 +165,6 @@ export function BluescreenPage() {
     return result;
   }, [entries, searchQuery, timeRange, sortOrder]);
 
-  const hasActiveFilters = searchQuery.trim() !== '' || timeRange !== 'all';
-
   const loadDetails = async (dumpPath: string) => {
     setLoadingDetails(true);
     try {
@@ -252,10 +201,6 @@ export function BluescreenPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
   const copyCrashReport = (entry: BsodEntry) => {
     const report = [
       'BSOD Crash Report',
@@ -266,9 +211,7 @@ export function BluescreenPage() {
       `Dump: ${entry.dumpPath}`,
     ].join('\n');
 
-    navigator.clipboard.writeText(report);
-    setCopiedId(entry.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    copyToClipboard(report, entry.id);
   };
 
   return (
@@ -473,7 +416,7 @@ export function BluescreenPage() {
                   {filteredEntries.map((entry) => {
                     const category = getStopCodeCategory(entry.stopCodeName);
                     const borderClass = getCategoryBorderClass(category);
-                    const isCopied = copiedId === entry.id;
+                    const entryCopied = isCopied(entry.id);
 
                     return (
                       <AnimatedItem key={entry.id}>
@@ -527,7 +470,7 @@ export function BluescreenPage() {
                                         copyCrashReport(entry);
                                       }}
                                     >
-                                      {isCopied ? (
+                                      {entryCopied ? (
                                         <Check className="h-4 w-4 text-green-500" />
                                       ) : (
                                         <Copy className="h-4 w-4" />
@@ -557,98 +500,11 @@ export function BluescreenPage() {
                             <CollapsibleContent>
                               <Separator />
                               <CardContent className="py-4 space-y-4">
-                                {loadingDetails ? (
-                                  <div className="flex items-center justify-center py-8">
-                                    <Loader2 className="h-6 w-6 animate-spin" />
-                                  </div>
-                                ) : details && details.dumpPath === entry.dumpPath ? (
-                                  <>
-                                    {/* Crash Info Grid */}
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                                      <div>
-                                        <span className="text-xs text-muted-foreground">Stop Code</span>
-                                        <div className="font-mono">{details.stopCode}</div>
-                                      </div>
-                                      <div>
-                                        <span className="text-xs text-muted-foreground">Dump Type</span>
-                                        <div>{details.dumpType}</div>
-                                      </div>
-                                      <div>
-                                        <span className="text-xs text-muted-foreground">Crash Time</span>
-                                        <div>{formatCrashTime(details.crashTime)}</div>
-                                      </div>
-                                      {details.faultingModule && (
-                                        <div className="col-span-2">
-                                          <span className="text-xs text-muted-foreground">Faulting Module</span>
-                                          <div className="font-mono">{details.faultingModule}</div>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Stop Code Description */}
-                                    {details.stopCodeDescription && (
-                                      <div>
-                                        <span className="text-xs text-muted-foreground">Description</span>
-                                        <div className="text-sm mt-1 p-3 bg-muted rounded-lg">
-                                          {details.stopCodeDescription}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Possible Causes */}
-                                    {details.possibleCauses.length > 0 && (
-                                      <div>
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
-                                          <AlertCircle className="h-3 w-3" />
-                                          Possible Causes
-                                        </span>
-                                        <ul className="list-disc list-inside space-y-1 text-sm">
-                                          {details.possibleCauses.map((cause, idx) => (
-                                            <li key={idx}>{cause}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {/* Recommendations */}
-                                    {details.recommendations.length > 0 && (
-                                      <div>
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
-                                          <Lightbulb className="h-3 w-3" />
-                                          Recommendations
-                                        </span>
-                                        <ul className="list-disc list-inside space-y-1 text-sm">
-                                          {details.recommendations.map((rec, idx) => (
-                                            <li key={idx}>{rec}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {/* Dump Path */}
-                                    <div>
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="text-xs text-muted-foreground">Dump File Path</span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 px-2"
-                                          onClick={() => copyToClipboard(details.dumpPath)}
-                                        >
-                                          <Copy className="h-3 w-3 mr-1" />
-                                          Copy
-                                        </Button>
-                                      </div>
-                                      <code className="text-xs bg-muted p-2 rounded block overflow-x-auto">
-                                        {details.dumpPath}
-                                      </code>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="text-center text-muted-foreground py-4">
-                                    Click to load details
-                                  </div>
-                                )}
+                                <BSODDetailView
+                                  details={details}
+                                  dumpPath={entry.dumpPath}
+                                  loading={loadingDetails}
+                                />
                               </CardContent>
                             </CollapsibleContent>
                           </Card>

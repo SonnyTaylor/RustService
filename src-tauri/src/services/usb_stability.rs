@@ -411,23 +411,28 @@ impl Service for UsbStabilityService {
             app,
         );
 
-        let write_rating = rate_speed(write_speed_mbps, false);
+        let SpeedRating {
+            severity: write_severity,
+            label: write_label,
+            description: write_desc,
+            recommendation: write_rec,
+        } = rate_speed(write_speed_mbps, false);
         findings.push(ServiceFinding {
-            severity: write_rating.severity.clone(),
+            severity: write_severity,
             title: format!("Sequential Write: {:.1} MB/s", write_speed_mbps),
             description: format!(
                 "Wrote {} MB in {:.1} seconds. {}",
                 test_size_mb,
                 write_duration.as_secs_f64(),
-                write_rating.description
+                write_desc
             ),
-            recommendation: write_rating.recommendation.clone(),
+            recommendation: write_rec,
             data: Some(json!({
                 "type": "usb_write_speed",
                 "speedMbps": write_speed_mbps,
                 "bytesWritten": bytes_written,
                 "durationSecs": write_duration.as_secs_f64(),
-                "rating": write_rating.label,
+                "rating": write_label,
             })),
         });
 
@@ -517,23 +522,28 @@ impl Service for UsbStabilityService {
             app,
         );
 
-        let read_rating = rate_speed(read_speed_mbps, true);
+        let SpeedRating {
+            severity: read_severity,
+            label: read_label,
+            description: read_desc,
+            recommendation: read_rec,
+        } = rate_speed(read_speed_mbps, true);
         findings.push(ServiceFinding {
-            severity: read_rating.severity.clone(),
+            severity: read_severity,
             title: format!("Sequential Read: {:.1} MB/s", read_speed_mbps),
             description: format!(
                 "Read {} MB in {:.1} seconds. {}",
                 test_size_mb,
                 read_duration.as_secs_f64(),
-                read_rating.description
+                read_desc
             ),
-            recommendation: read_rating.recommendation.clone(),
+            recommendation: read_rec,
             data: Some(json!({
                 "type": "usb_read_speed",
                 "speedMbps": read_speed_mbps,
                 "bytesRead": bytes_read,
                 "durationSecs": read_duration.as_secs_f64(),
-                "rating": read_rating.label,
+                "rating": read_label,
             })),
         });
 

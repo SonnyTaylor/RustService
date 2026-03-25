@@ -1,6 +1,6 @@
 /**
  * Network Diagnostics Page
- * 
+ *
  * Advanced network diagnostic tools including ping, traceroute,
  * DNS lookup, and WiFi signal information.
  */
@@ -45,6 +45,9 @@ import type {
   WifiInfo,
 } from '@/types';
 
+import { useClipboard } from '@/lib/clipboard-utils';
+import { formatPingResults, formatTracerouteResults, formatDnsResults } from '@/lib/network-utils';
+
 /**
  * Network Diagnostics Page - Main component
  */
@@ -71,75 +74,8 @@ export function NetworkDiagnosticsPage() {
   const [dnsResult, setDnsResult] = useState<DnsLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
 
-  // Copy state
-  const [copiedSection, setCopiedSection] = useState<string | null>(null);
-
-  const copyToClipboard = (text: string, section: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedSection(section);
-    setTimeout(() => setCopiedSection(null), 2000);
-  };
-
-  const formatPingResults = (): string => {
-    if (!pingResult) return '';
-    const lines = [
-      `Ping Results: ${pingResult.host}`,
-      pingResult.resolvedIp ? `Resolved IP: ${pingResult.resolvedIp}` : '',
-      '',
-      `Packets: ${pingResult.packetsReceived}/${pingResult.packetsSent} received`,
-      `Packet Loss: ${pingResult.packetLossPercent}%`,
-      `Min: ${pingResult.minMs?.toFixed(1) ?? '-'} ms`,
-      `Avg: ${pingResult.avgMs?.toFixed(1) ?? '-'} ms`,
-      `Max: ${pingResult.maxMs?.toFixed(1) ?? '-'} ms`,
-      '',
-      'Replies:',
-      ...pingResult.replies.map(r =>
-        r.status === 'Success'
-          ? `  #${r.seq}: ${r.timeMs?.toFixed(1) ?? '<1'} ms (TTL=${r.ttl})`
-          : `  #${r.seq}: ${r.status}`
-      ),
-    ];
-    return lines.filter(l => l !== undefined).join('\n');
-  };
-
-  const formatTracerouteResults = (): string => {
-    if (!traceResult) return '';
-    const lines = [
-      `Traceroute to ${traceResult.host}`,
-      traceResult.resolvedIp ? `Resolved IP: ${traceResult.resolvedIp}` : '',
-      traceResult.completed ? 'Status: Complete' : 'Status: Incomplete',
-      '',
-      'Hops:',
-      ...traceResult.hops.map(hop =>
-        hop.timedOut
-          ? `  ${hop.hopNumber}  * Request timed out`
-          : `  ${hop.hopNumber}  ${hop.ipAddress || 'Unknown'}  ${hop.rtt1Ms?.toFixed(0) ?? '*'}ms  ${hop.rtt2Ms?.toFixed(0) ?? '*'}ms  ${hop.rtt3Ms?.toFixed(0) ?? '*'}ms`
-      ),
-    ];
-    return lines.filter(l => l !== undefined).join('\n');
-  };
-
-  const formatDnsResults = (): string => {
-    if (!dnsResult) return '';
-    const lines = [
-      `DNS Lookup: ${dnsResult.query} (${dnsResult.queryType})`,
-      `Response Time: ${dnsResult.responseTimeMs} ms`,
-      dnsResult.serverUsed ? `Server: ${dnsResult.serverUsed}` : '',
-      '',
-    ];
-    if (dnsResult.error) {
-      lines.push(`Error: ${dnsResult.error}`);
-    } else {
-      lines.push('Answers:');
-      dnsResult.answers.forEach(record => {
-        lines.push(`  ${record.recordType}  ${record.value}${record.ttl ? `  TTL: ${record.ttl}` : ''}`);
-      });
-      if (dnsResult.answers.length === 0) {
-        lines.push('  No records found');
-      }
-    }
-    return lines.filter(l => l !== undefined).join('\n');
-  };
+  // Clipboard
+  const { copyToClipboard, isCopied } = useClipboard();
 
   // Load network info on mount
   useEffect(() => {
@@ -433,10 +369,10 @@ export function NetworkDiagnosticsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1"
-                          onClick={() => copyToClipboard(formatPingResults(), 'ping')}
+                          onClick={() => copyToClipboard(formatPingResults(pingResult), 'ping')}
                         >
-                          {copiedSection === 'ping' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          {copiedSection === 'ping' ? 'Copied!' : 'Copy'}
+                          {isCopied('ping') ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {isCopied('ping') ? 'Copied!' : 'Copy'}
                         </Button>
                       </div>
 
@@ -558,10 +494,10 @@ export function NetworkDiagnosticsPage() {
                           variant="ghost"
                           size="sm"
                           className={cn("h-7 px-2 text-xs gap-1", !traceResult.completed && "ml-auto")}
-                          onClick={() => copyToClipboard(formatTracerouteResults(), 'trace')}
+                          onClick={() => copyToClipboard(formatTracerouteResults(traceResult), 'trace')}
                         >
-                          {copiedSection === 'trace' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          {copiedSection === 'trace' ? 'Copied!' : 'Copy'}
+                          {isCopied('trace') ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {isCopied('trace') ? 'Copied!' : 'Copy'}
                         </Button>
                       </div>
 
@@ -669,10 +605,10 @@ export function NetworkDiagnosticsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs gap-1 ml-auto"
-                          onClick={() => copyToClipboard(formatDnsResults(), 'dns')}
+                          onClick={() => copyToClipboard(formatDnsResults(dnsResult), 'dns')}
                         >
-                          {copiedSection === 'dns' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          {copiedSection === 'dns' ? 'Copied!' : 'Copy'}
+                          {isCopied('dns') ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {isCopied('dns') ? 'Copied!' : 'Copy'}
                         </Button>
                       </div>
 

@@ -12,6 +12,7 @@
 
 #[allow(hidden_glob_reexports)]
 mod commands;
+pub mod error;
 mod mcp;
 mod services;
 mod types;

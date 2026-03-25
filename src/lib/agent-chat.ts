@@ -353,6 +353,22 @@ export async function streamChat(
 }
 
 /**
+ * Shape of a tool-result part that may come from stored history.
+ * Covers both the legacy (result/isError) and current (output) SDK formats.
+ */
+interface StoredToolResultPart {
+  type: string;
+  toolCallId?: string;
+  toolName?: string;
+  /** Current SDK field */
+  output?: unknown;
+  /** Legacy SDK field */
+  result?: unknown;
+  /** Legacy error flag */
+  isError?: boolean;
+}
+
+/**
  * Sanitize messages for SDK compatibility
  * The SDK now uses ModelMessage format with ToolResultPart requiring 'output' field
  * with LanguageModelV2ToolResultOutput structure
@@ -362,7 +378,7 @@ function sanitizeMessagesForSDK(messages: CoreMessage[]): CoreMessage[] {
     if (msg.role === "tool" && Array.isArray(msg.content)) {
       return {
         ...msg,
-        content: msg.content.map((part: any) => {
+        content: msg.content.map((part: StoredToolResultPart) => {
           if (part.type === "tool-result") {
             // Extract the raw result value
             const rawOutput = part.output ?? part.result;

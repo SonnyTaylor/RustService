@@ -27,6 +27,25 @@ use crate::types::{
 };
 
 // =============================================================================
+// Health Score Constants
+// =============================================================================
+
+const CRITICAL_FINDING_PENALTY: i32 = 30;
+const ERROR_FINDING_PENALTY: i32 = 15;
+const WARNING_FINDING_PENALTY: i32 = 5;
+const SUCCESS_FINDING_BONUS: i32 = 2;
+const HEALTH_SCORE_BASE: i32 = 100;
+
+/// Milliseconds to wait before rechecking cancellation in parallel runner
+const PARALLEL_POLL_INTERVAL_MS: u64 = 250;
+
+/// Bytes per gigabyte (for display formatting)
+const BYTES_PER_GB: f64 = 1_073_741_824.0;
+
+/// Milliseconds per second (for duration formatting)
+const MS_PER_SECOND: f64 = 1000.0;
+
+// =============================================================================
 // Global State for Persistent Service Runs
 // =============================================================================
 
@@ -79,8 +98,8 @@ pub fn list_usb_drives() -> Vec<serde_json::Value> {
             serde_json::json!({
                 "mountPoint": mount.trim_end_matches('\\'),
                 "name": label,
-                "totalSpaceGb": d.total_space() as f64 / 1_073_741_824.0,
-                "availableSpaceGb": d.available_space() as f64 / 1_073_741_824.0,
+                "totalSpaceGb": d.total_space() as f64 / BYTES_PER_GB,
+                "availableSpaceGb": d.available_space() as f64 / BYTES_PER_GB,
                 "fileSystem": d.file_system().to_string_lossy().to_string(),
             })
         })
@@ -258,16 +277,17 @@ pub async fn run_services(
     // Validate dependency ordering
     {
         let all_defs = crate::services::get_all_definitions();
-        let dep_map: std::collections::HashMap<String, Vec<String>> = all_defs
+        let dep_map: HashMap<String, Vec<String>> = all_defs
             .into_iter()
             .map(|d| (d.id.clone(), d.dependencies))
             .collect();
 
-        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut seen_ids: HashSet<String> = HashSet::new();
         for item in &enabled_queue {
-            let deps = dep_map.get(&item.service_id).cloned().unwrap_or_default();
-            for dep in &deps {
-                let dep_in_queue = enabled_queue.iter().any(|q| &q.service_id == dep);
+            let empty_deps = Vec::new();
+            let deps = dep_map.get(&item.service_id).unwrap_or(&empty_deps);
+            for dep in deps {
+                let dep_in_queue = enabled_queue.iter().any(|q| q.service_id == *dep);
                 if dep_in_queue && !seen_ids.contains(dep) {
                     return Err(format!(
                         "Service '{}' depends on '{}' which must come earlier in the queue",
@@ -379,89 +399,152 @@ fn run_services_sequential(
     enabled_queue: &[ServiceQueueItem],
     report: &mut ServiceReport,
 ) -> Result<(), String> {
+    let total_count = enabled_queue.len();
+
     for (index, queue_item) in enabled_queue.iter().enumerate() {
-        // Check if cancelled before starting next service
-        {
-            let state = SERVICE_STATE.lock().unwrap();
-            if let Some(ref s) = *state {
-                if !s.is_running {
-                    break;
-                }
-            }
+        if is_cancelled() {
+            break;
         }
 
-        // Wait while paused (agent intervention)
-        {
-            let mut state = SERVICE_STATE.lock().unwrap();
-            while state
-                .as_ref()
-                .is_some_and(|s| s.is_paused && s.is_running)
-            {
-                state = PAUSE_CONDVAR.wait(state).unwrap();
-            }
-            // Re-check cancellation after resuming from pause
-            if let Some(ref s) = *state {
-                if !s.is_running {
-                    break;
-                }
-            }
+        if wait_while_paused() {
+            break;
         }
 
-        // Update current index
-        {
-            let mut state = SERVICE_STATE.lock().unwrap();
-            if let Some(ref mut s) = *state {
-                if let Some(ref mut r) = s.current_report {
-                    r.current_service_index = Some(index);
-                }
-            }
-        }
+        update_current_index(index);
+        emit_progress(app, index, total_count, &queue_item.service_id);
 
-        // Emit progress
-        let _ = app.emit(
-            "service-progress",
-            json!({
-                "currentIndex": index,
-                "totalCount": enabled_queue.len(),
-                "serviceId": queue_item.service_id
-            }),
-        );
-
-        // Run the service using the modular service system
+        // Run the service
         let result = services::run_service(&queue_item.service_id, &queue_item.options, app)
             .ok_or_else(|| format!("Unknown service: {}", queue_item.service_id))?;
 
-        // Record timing for service metrics (only for successful runs)
         if result.success {
-            let options_hash = Some(super::time_tracking::compute_options_hash(
-                &queue_item.options,
-            ));
-
-            if let Err(e) = super::time_tracking::record_service_time(
-                queue_item.service_id.clone(),
-                result.duration_ms,
-                None,
-                options_hash,
-            ) {
-                eprintln!("Failed to record service time: {}", e);
-            }
+            record_service_metrics(queue_item, result.duration_ms);
         }
 
         report.results.push(result);
 
-        // Update state with latest results and emit to frontend
-        {
-            let mut state = SERVICE_STATE.lock().unwrap();
-            if let Some(ref mut s) = *state {
-                if let Some(ref mut r) = s.current_report {
-                    r.results = report.results.clone();
-                }
-            }
-        }
+        sync_results_to_state(&report.results);
         let _ = app.emit("service-state-changed", get_service_run_state());
     }
 
     Ok(())
+}
+
+// =============================================================================
+// Shared Runner Helpers
+// =============================================================================
+
+/// Check whether the service run has been cancelled.
+fn is_cancelled() -> bool {
+    let state = SERVICE_STATE.lock().unwrap();
+    state.as_ref().is_some_and(|s| !s.is_running)
+}
+
+/// Block the current thread while the service run is paused.
+/// Returns `true` if the run was cancelled while paused.
+fn wait_while_paused() -> bool {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    while state
+        .as_ref()
+        .is_some_and(|s| s.is_paused && s.is_running)
+    {
+        state = PAUSE_CONDVAR.wait(state).unwrap();
+    }
+    // Re-check cancellation after resuming
+    state.as_ref().is_some_and(|s| !s.is_running)
+}
+
+/// Update the currently active service index in global state.
+fn update_current_index(index: usize) {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    if let Some(ref mut s) = *state {
+        if let Some(ref mut r) = s.current_report {
+            r.current_service_index = Some(index);
+        }
+    }
+}
+
+/// Update the active service indices (for parallel mode) in global state.
+fn update_active_indices(indices: &[usize]) {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    if let Some(ref mut s) = *state {
+        if let Some(ref mut r) = s.current_report {
+            r.current_service_indices = indices.to_vec();
+            r.current_service_index = indices.first().copied();
+        }
+    }
+}
+
+/// Sync the latest results into global state.
+fn sync_results_to_state(results: &[ServiceResult]) {
+    let mut state = SERVICE_STATE.lock().unwrap();
+    if let Some(ref mut s) = *state {
+        if let Some(ref mut r) = s.current_report {
+            r.results = results.to_vec();
+        }
+    }
+}
+
+/// Emit a service-progress event.
+fn emit_progress(app: &AppHandle, index: usize, total_count: usize, service_id: &str) {
+    let _ = app.emit(
+        "service-progress",
+        json!({
+            "currentIndex": index,
+            "totalCount": total_count,
+            "serviceId": service_id
+        }),
+    );
+}
+
+/// Record service timing metrics for a successful result.
+fn record_service_metrics(queue_item: &ServiceQueueItem, duration_ms: u64) {
+    let options_hash = Some(super::time_tracking::compute_options_hash(
+        &queue_item.options,
+    ));
+    if let Err(e) = super::time_tracking::record_service_time(
+        queue_item.service_id.clone(),
+        duration_ms,
+        None,
+        options_hash,
+    ) {
+        eprintln!("Failed to record service time: {}", e);
+    }
+}
+
+/// Check whether a service can start (no resource conflicts, dependencies satisfied).
+fn can_start_service(
+    index: usize,
+    queue_item: &ServiceQueueItem,
+    resource_map: &HashMap<String, Vec<String>>,
+    dep_map: &HashMap<String, Vec<String>>,
+    held_resources: &HashSet<String>,
+    completed: &HashSet<usize>,
+    enabled_queue: &[ServiceQueueItem],
+) -> bool {
+    let service_resources = resource_map
+        .get(&queue_item.service_id)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+
+    // Check resource conflicts
+    let has_conflict = service_resources.iter().any(|r| held_resources.contains(r));
+    if has_conflict {
+        return false;
+    }
+
+    // Check dependency satisfaction
+    let deps = dep_map
+        .get(&queue_item.service_id)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let deps_satisfied = deps.iter().all(|dep_id| {
+        let dep_index = enabled_queue.iter().position(|q| q.service_id == *dep_id);
+        dep_index.is_none_or(|idx| completed.contains(&idx))
+    });
+
+    let _ = index; // used for clarity at call sites
+    deps_satisfied
 }
 
 // =============================================================================
@@ -476,50 +559,34 @@ fn run_services_parallel(
     enabled_queue: &[ServiceQueueItem],
     report: &mut ServiceReport,
 ) -> Result<(), String> {
-    // Build a map of service_id -> exclusive_resources from definitions
+    // Build maps of service_id -> exclusive_resources / dependencies
     let all_defs = services::get_all_definitions();
     let resource_map: HashMap<String, Vec<String>> = all_defs
         .iter()
         .map(|d| (d.id.clone(), d.exclusive_resources.clone()))
         .collect();
-    let dep_map: std::collections::HashMap<String, Vec<String>> = all_defs
+    let dep_map: HashMap<String, Vec<String>> = all_defs
         .iter()
         .map(|d| (d.id.clone(), d.dependencies.clone()))
         .collect();
 
-    // Track state for the scheduler
     let total_count = enabled_queue.len();
     let results_collector: Arc<Mutex<Vec<(usize, ServiceResult)>>> =
         Arc::new(Mutex::new(Vec::new()));
 
-    // Track which indices have been started and completed
     let mut started: HashSet<usize> = HashSet::new();
     let mut completed: HashSet<usize> = HashSet::new();
-    // Resources currently held by running services
     let mut held_resources: HashSet<String> = HashSet::new();
-    // Map of currently running thread join handles with their index and resources
     let mut running: Vec<(usize, Vec<String>, std::thread::JoinHandle<()>)> = Vec::new();
 
-    // Notification channel for when a task completes
     let notify_pair = Arc::new((Mutex::new(false), Condvar::new()));
 
     loop {
-        // Check cancellation
-        {
-            let state = SERVICE_STATE.lock().unwrap();
-            if let Some(ref s) = *state {
-                if !s.is_running {
-                    break;
-                }
-            }
-        }
-
-        // If everything has been started and completed, we're done
-        if completed.len() == total_count {
+        if is_cancelled() || completed.len() == total_count {
             break;
         }
 
-        // Collect completed threads
+        // Reap finished threads and release their resources
         let mut newly_completed = Vec::new();
         running.retain(|(idx, resources, handle)| {
             if handle.is_finished() {
@@ -530,7 +597,6 @@ fn run_services_parallel(
             }
         });
 
-        // Release resources from completed tasks and join them
         for (idx, resources) in &newly_completed {
             completed.insert(*idx);
             for res in resources {
@@ -542,23 +608,9 @@ fn run_services_parallel(
         {
             let mut collected = results_collector.lock().unwrap();
             for (idx, result) in collected.drain(..) {
-                // Record timing for service metrics
                 if result.success {
-                    let queue_item = &enabled_queue[idx];
-                    let options_hash = Some(super::time_tracking::compute_options_hash(
-                        &queue_item.options,
-                    ));
-
-                    if let Err(e) = super::time_tracking::record_service_time(
-                        queue_item.service_id.clone(),
-                        result.duration_ms,
-                        None,
-                        options_hash,
-                    ) {
-                        eprintln!("Failed to record service time: {}", e);
-                    }
+                    record_service_metrics(&enabled_queue[idx], result.duration_ms);
                 }
-
                 report.results.push(result);
             }
         }
@@ -566,91 +618,52 @@ fn run_services_parallel(
         // Update state if anything changed
         if !newly_completed.is_empty() {
             let active_indices: Vec<usize> = running.iter().map(|(idx, _, _)| *idx).collect();
-            {
-                let mut state = SERVICE_STATE.lock().unwrap();
-                if let Some(ref mut s) = *state {
-                    if let Some(ref mut r) = s.current_report {
-                        r.results = report.results.clone();
-                        r.current_service_indices = active_indices.clone();
-                        r.current_service_index = active_indices.first().copied();
-                    }
-                }
-            }
+            sync_results_to_state(&report.results);
+            update_active_indices(&active_indices);
             let _ = app.emit("service-state-changed", get_service_run_state());
         }
 
-        // Try to start new services that don't conflict with running ones
+        // Launch eligible services
         let mut launched_any = false;
         for (index, queue_item) in enabled_queue.iter().enumerate() {
-            if started.contains(&index) {
+            if started.contains(&index) || is_cancelled() {
                 continue;
             }
 
-            // Check cancellation again
-            {
-                let state = SERVICE_STATE.lock().unwrap();
-                if let Some(ref s) = *state {
-                    if !s.is_running {
-                        break;
-                    }
-                }
+            if !can_start_service(
+                index,
+                queue_item,
+                &resource_map,
+                &dep_map,
+                &held_resources,
+                &completed,
+                enabled_queue,
+            ) {
+                continue;
             }
 
-            // Get this service's exclusive resources
+            // Reserve resources and mark as started
             let service_resources = resource_map
                 .get(&queue_item.service_id)
                 .cloned()
                 .unwrap_or_default();
-
-            // Check if any of its resources conflict with currently held ones
-            let has_conflict = service_resources.iter().any(|r| held_resources.contains(r));
-
-            // Check if all dependencies have completed
-            let deps = dep_map.get(&queue_item.service_id).cloned().unwrap_or_default();
-            let deps_satisfied = deps.iter().all(|dep_id| {
-                let dep_index = enabled_queue.iter().position(|q| q.service_id == *dep_id);
-                dep_index.is_none_or(|idx| completed.contains(&idx))
-            });
-
-            if has_conflict || !deps_satisfied {
-                continue; // Skip this service for now; it'll be picked up later
-            }
-
-            // Mark resources as held
             for res in &service_resources {
                 held_resources.insert(res.clone());
             }
             started.insert(index);
             launched_any = true;
 
-            // Emit progress for this service starting
-            let _ = app.emit(
-                "service-progress",
-                json!({
-                    "currentIndex": index,
-                    "totalCount": total_count,
-                    "serviceId": queue_item.service_id
-                }),
-            );
+            emit_progress(app, index, total_count, &queue_item.service_id);
 
-            // Update active indices in state
             let active_indices: Vec<usize> = running
                 .iter()
                 .map(|(idx, _, _)| *idx)
                 .chain(std::iter::once(index))
                 .collect();
-            {
-                let mut state = SERVICE_STATE.lock().unwrap();
-                if let Some(ref mut s) = *state {
-                    if let Some(ref mut r) = s.current_report {
-                        r.current_service_indices = active_indices.clone();
-                        r.current_service_index = active_indices.first().copied();
-                    }
-                }
-            }
+            update_active_indices(&active_indices);
             let _ = app.emit("service-state-changed", get_service_run_state());
 
-            // Spawn thread to run this service
+            // Spawn worker thread
             let results_tx = Arc::clone(&results_collector);
             let notify = Arc::clone(&notify_pair);
             let service_id = queue_item.service_id.clone();
@@ -669,13 +682,11 @@ fn run_services_parallel(
                         agent_analysis: None,
                     });
 
-                // Push result to collector
                 {
                     let mut collected = results_tx.lock().unwrap();
                     collected.push((index, result));
                 }
 
-                // Notify the scheduler that a task completed
                 let (lock, cvar) = &*notify;
                 let mut done = lock.lock().unwrap();
                 *done = true;
@@ -685,34 +696,25 @@ fn run_services_parallel(
             running.push((index, service_resources, handle));
         }
 
-        // If we launched nothing and there are still running tasks, wait for one to complete
+        // Wait or break if stuck
         if !launched_any && !running.is_empty() {
             let (lock, cvar) = &*notify_pair;
             let mut done = lock.lock().unwrap();
-            // Wait with a short timeout to periodically check cancellation
             if !*done {
-                let _ = cvar.wait_timeout(done, std::time::Duration::from_millis(250));
+                let _ = cvar.wait_timeout(
+                    done,
+                    std::time::Duration::from_millis(PARALLEL_POLL_INTERVAL_MS),
+                );
             } else {
                 *done = false;
             }
         } else if !launched_any && running.is_empty() && completed.len() < total_count {
-            // All remaining services conflict with each other but none are running
-            // This shouldn't happen, but handle it gracefully — start the next unstarted one
-            for (index, _queue_item) in enabled_queue.iter().enumerate() {
-                if !started.contains(&index) {
-                    // Force-start it sequentially by not checking resources
-                    // This is a safety fallback
-                    break;
-                }
-            }
-            // If we get here with nothing to do, break to avoid infinite loop
-            if started.len() + completed.len() >= total_count || running.is_empty() {
-                break;
-            }
+            // Safety fallback: break to avoid infinite loop
+            break;
         }
     }
 
-    // Wait for any remaining running threads
+    // Join remaining threads
     for (idx, resources, handle) in running {
         let _ = handle.join();
         completed.insert(idx);
@@ -721,23 +723,12 @@ fn run_services_parallel(
         }
     }
 
-    // Final collection of results
+    // Final collection
     {
         let mut collected = results_collector.lock().unwrap();
         for (idx, result) in collected.drain(..) {
             if result.success {
-                let queue_item = &enabled_queue[idx];
-                let options_hash = Some(super::time_tracking::compute_options_hash(
-                    &queue_item.options,
-                ));
-                if let Err(e) = super::time_tracking::record_service_time(
-                    queue_item.service_id.clone(),
-                    result.duration_ms,
-                    None,
-                    options_hash,
-                ) {
-                    eprintln!("Failed to record service time: {}", e);
-                }
+                record_service_metrics(&enabled_queue[idx], result.duration_ms);
             }
             report.results.push(result);
         }
@@ -1085,13 +1076,13 @@ fn compute_report_statistics(report: &ServiceReport) -> ReportStatistics {
     let total_findings =
         counts.info + counts.success + counts.warning + counts.error + counts.critical;
 
-    // Health score: start at 100, penalize for issues
-    let raw_score: i32 = 100
-        - (counts.critical as i32 * 30)
-        - (counts.error as i32 * 15)
-        - (counts.warning as i32 * 5)
-        + (counts.success as i32 * 2);
-    let health_score = raw_score.clamp(0, 100) as u8;
+    // Health score: start at base, penalize for issues, bonus for successes
+    let raw_score: i32 = HEALTH_SCORE_BASE
+        - (counts.critical as i32 * CRITICAL_FINDING_PENALTY)
+        - (counts.error as i32 * ERROR_FINDING_PENALTY)
+        - (counts.warning as i32 * WARNING_FINDING_PENALTY)
+        + (counts.success as i32 * SUCCESS_FINDING_BONUS);
+    let health_score = raw_score.clamp(0, HEALTH_SCORE_BASE) as u8;
 
     ReportStatistics {
         total_services,
@@ -1118,25 +1109,9 @@ pub fn get_report_statistics(report_id: String) -> Result<ReportStatistics, Stri
 // PDF Report Generation
 // =============================================================================
 
-/// Generate a PDF report and return the file path
-#[tauri::command]
-pub fn generate_report_pdf(
-    report_id: String,
-    output_path: Option<String>,
-) -> Result<String, String> {
-    let report = load_report(&report_id)?;
-    let stats = compute_report_statistics(&report);
-
-    // Determine output path
-    let pdf_path = match output_path {
-        Some(p) => std::path::PathBuf::from(p),
-        None => get_reports_dir().join(format!("{}.pdf", report.id)),
-    };
-
-    // Build PDF content as formatted text
-    let mut lines: Vec<String> = Vec::new();
-
-    // Header
+/// Format the PDF header section (report metadata).
+fn format_pdf_header(report: &ServiceReport) -> Vec<String> {
+    let mut lines = Vec::new();
     lines.push("═══════════════════════════════════════════════════════".to_string());
     lines.push("                   SERVICE REPORT                     ".to_string());
     lines.push("═══════════════════════════════════════════════════════".to_string());
@@ -1155,7 +1130,20 @@ pub fn generate_report_pdf(
     }
     lines.push(String::new());
 
-    // Statistics
+    if let Some(ref summary) = report.agent_summary {
+        lines.push("───────────────────────────────────────────────────────".to_string());
+        lines.push("  AI ANALYSIS SUMMARY                                 ".to_string());
+        lines.push("───────────────────────────────────────────────────────".to_string());
+        lines.push(summary.clone());
+        lines.push(String::new());
+    }
+
+    lines
+}
+
+/// Format the statistics section of the PDF.
+fn format_pdf_summary(stats: &ReportStatistics) -> Vec<String> {
+    let mut lines = Vec::new();
     lines.push("───────────────────────────────────────────────────────".to_string());
     lines.push("  STATISTICS                                          ".to_string());
     lines.push("───────────────────────────────────────────────────────".to_string());
@@ -1164,11 +1152,11 @@ pub fn generate_report_pdf(
     lines.push(format!("Failed:           {}", stats.failed));
     lines.push(format!(
         "Total Duration:   {:.1}s",
-        stats.total_duration_ms as f64 / 1000.0
+        stats.total_duration_ms as f64 / MS_PER_SECOND
     ));
     lines.push(format!(
         "Avg per Service:  {:.1}s",
-        stats.avg_duration_ms as f64 / 1000.0
+        stats.avg_duration_ms as f64 / MS_PER_SECOND
     ));
     lines.push(String::new());
     lines.push(format!(
@@ -1180,22 +1168,18 @@ pub fn generate_report_pdf(
         stats.findings_by_severity.success
     ));
     lines.push(String::new());
+    lines
+}
 
-    // Agent Summary
-    if let Some(ref summary) = report.agent_summary {
-        lines.push("───────────────────────────────────────────────────────".to_string());
-        lines.push("  AI ANALYSIS SUMMARY                                 ".to_string());
-        lines.push("───────────────────────────────────────────────────────".to_string());
-        lines.push(summary.clone());
-        lines.push(String::new());
-    }
-
-    // Per-service results
+/// Format the per-service findings section of the PDF.
+fn format_pdf_findings(results: &[ServiceResult]) -> Vec<String> {
     let definitions = services::get_all_definitions();
     let def_map: HashMap<String, &crate::types::ServiceDefinition> =
         definitions.iter().map(|d| (d.id.clone(), d)).collect();
 
-    for result in &report.results {
+    let mut lines = Vec::new();
+
+    for result in results {
         let service_name = def_map
             .get(&result.service_id)
             .map(|d| d.name.as_str())
@@ -1209,7 +1193,7 @@ pub fn generate_report_pdf(
         ));
         lines.push(format!(
             "  Duration: {:.1}s",
-            result.duration_ms as f64 / 1000.0
+            result.duration_ms as f64 / MS_PER_SECOND
         ));
         lines.push("───────────────────────────────────────────────────────".to_string());
 
@@ -1242,6 +1226,27 @@ pub fn generate_report_pdf(
         lines.push(String::new());
     }
 
+    lines
+}
+
+/// Generate a PDF report and return the file path
+#[tauri::command]
+pub fn generate_report_pdf(
+    report_id: String,
+    output_path: Option<String>,
+) -> Result<String, String> {
+    let report = load_report(&report_id)?;
+    let stats = compute_report_statistics(&report);
+
+    let pdf_path = match output_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => get_reports_dir().join(format!("{}.pdf", report.id)),
+    };
+
+    let mut lines = format_pdf_header(&report);
+    lines.extend(format_pdf_summary(&stats));
+    lines.extend(format_pdf_findings(&report.results));
+
     // Footer
     lines.push("═══════════════════════════════════════════════════════".to_string());
     lines.push(format!(
@@ -1252,12 +1257,10 @@ pub fn generate_report_pdf(
 
     let content = lines.join("\n");
 
-    // Ensure parent directory exists
     if let Some(parent) = pdf_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {}", e))?;
     }
 
-    // Write as a text-based report file (portable across all systems)
     fs::write(&pdf_path, &content).map_err(|e| format!("Failed to write report: {}", e))?;
 
     Ok(pdf_path.to_string_lossy().to_string())

@@ -12,7 +12,6 @@ import {
   Search,
   AlertCircle,
   AlertTriangle,
-  Info,
   XCircle,
   Loader2,
   Filter,
@@ -27,7 +26,7 @@ import {
   Download,
 } from 'lucide-react';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -39,43 +38,8 @@ import { AnimatedList, AnimatedItem } from '@/components/animation-context';
 
 import type { EventLogSource, EventLogEntry, EventLogFilter, EventLogStats } from '@/types';
 import { getLevelBadgeVariant, formatRelativeTime, getLevelRowClass } from '@/types/event-log';
-
-/** Get level icon */
-function LevelIcon({ level }: { level: string }) {
-  const l = level.toLowerCase();
-  if (l === 'critical') return <XCircle className="h-4 w-4 text-red-600" />;
-  if (l === 'error') return <AlertCircle className="h-4 w-4 text-destructive" />;
-  if (l === 'warning') return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-  if (l === 'information') return <Info className="h-4 w-4 text-blue-500" />;
-  return <Info className="h-4 w-4 text-muted-foreground" />;
-}
-
-/** Format timestamp */
-function formatTime(isoString: string): string {
-  try {
-    return new Date(isoString).toLocaleString();
-  } catch {
-    return isoString;
-  }
-}
-
-/** Compute ISO start time from a time range option */
-function computeStartTime(range: string): string | undefined {
-  if (range === 'all') return undefined;
-  const now = new Date();
-  switch (range) {
-    case '1h':
-      return new Date(now.getTime() - 60 * 60 * 1000).toISOString();
-    case '24h':
-      return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    case '7d':
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    case '30d':
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    default:
-      return undefined;
-  }
-}
+import { useClipboard } from '@/lib/clipboard-utils';
+import { LevelIcon, formatTime, computeStartTime } from '@/components/event-log/event-log-helpers';
 
 /**
  * Event Log Viewer Page - Main component
@@ -100,8 +64,8 @@ export function EventLogPage() {
   // Expanded entry
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
 
-  // Copy feedback state
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  // Clipboard
+  const { copyToClipboard, isCopied } = useClipboard();
   const [copiedAll, setCopiedAll] = useState(false);
 
   // Unique providers derived from entries
@@ -198,14 +162,6 @@ export function EventLogPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingEntries(false);
-    }
-  };
-
-  const copyToClipboard = (text: string, entryId?: number) => {
-    navigator.clipboard.writeText(text);
-    if (entryId !== undefined) {
-      setCopiedId(entryId);
-      setTimeout(() => setCopiedId(null), 2000);
     }
   };
 
@@ -599,14 +555,14 @@ export function EventLogPage() {
                                     variant="ghost"
                                     size="sm"
                                     className="h-6 px-2"
-                                    onClick={() => copyToClipboard(entry.message, entry.recordId)}
+                                    onClick={() => copyToClipboard(entry.message, String(entry.recordId))}
                                   >
-                                    {copiedId === entry.recordId ? (
+                                    {isCopied(String(entry.recordId)) ? (
                                       <Check className="h-3 w-3 mr-1 text-green-500" />
                                     ) : (
                                       <Copy className="h-3 w-3 mr-1" />
                                     )}
-                                    {copiedId === entry.recordId ? 'Copied' : 'Copy'}
+                                    {isCopied(String(entry.recordId)) ? 'Copied' : 'Copy'}
                                   </Button>
                                 </div>
                                 <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono">
